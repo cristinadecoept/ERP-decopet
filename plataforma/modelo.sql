@@ -256,3 +256,9 @@ CREATE TABLE IF NOT EXISTS tasas (
   id INTEGER PRIMARY KEY, fecha_valor TEXT NOT NULL, valor REAL NOT NULL, fuente TEXT NOT NULL,
   obtenido_en TEXT DEFAULT (datetime('now','localtime')), manual INTEGER DEFAULT 0,
   usuario_id INTEGER, nota TEXT, UNIQUE(fecha_valor, fuente));
+
+-- Quién está conectado. El navegador guarda solo una ficha al azar; la clave nunca sale de aquí.
+CREATE TABLE IF NOT EXISTS sesiones (
+  ficha TEXT PRIMARY KEY, usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  creada_en TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  vence_en TEXT NOT NULL, visto_en TEXT);

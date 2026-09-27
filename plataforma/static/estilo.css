@@ -793,3 +793,17 @@ html.oscuro .cf-err{background:#4a201c;color:#ffb3a8}
 .no-toca{margin-top:6px}
 .no-toca summary{cursor:pointer;opacity:.6;width:max-content}
 .no-toca summary:hover{opacity:1}
+
+/* Pantalla de entrada */
+.entrar-w{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--fondo);padding:20px}
+.entrar-c{width:min(360px,92vw);background:var(--sup);border-radius:16px;box-shadow:var(--sombra);padding:32px 30px}
+.entrar-logo{height:34px;margin-bottom:18px;display:block}
+.entrar-c h1{font-size:20px;margin:0 0 6px}
+.entrar-c p.mini{margin:0 0 16px;line-height:1.5}
+.entrar-c label{margin-top:14px}
+.entrar-c input{width:100%}
+.entrar-c .btn{width:100%;margin-top:20px;justify-content:center}
+.entrar-mal{margin-top:10px;font-size:13px;color:#b4261c}
+html.oscuro .entrar-mal{color:#ff9d93}
+.salir{display:block;margin:10px 0 2px;font-size:12px;opacity:.6}
+.salir:hover{opacity:1}

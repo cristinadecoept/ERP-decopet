@@ -1,5 +1,5 @@
 """Plataforma Decopet — pantallas. Parte 1: Órdenes."""
-import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time
+import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, hashlib
 from pathlib import Path
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
@@ -110,6 +110,11 @@ PERMISOS = {
     "admin": {"crear", "pago_por_confirmar", "confirmar_pago", "rechazar_pago", "precios", "coordinar", "despachar", "entregar", "editar_entrega", "incidencia", "reprogramar", "cancelar", "ver_dinero", "contra_entrega"},
     "logistica": {"crear", "coordinar", "entregar", "editar_entrega", "incidencia", "reprogramar"},
     "taller": {"taller"},   # Isaías y Manawa: solo su pantalla. Nada de clientes, órdenes ni dinero.
+    # El despachador SÍ ve dinero, pero solo el suyo: lo que se le debe por sus entregas.
+    # No ve el de la empresa ni el de nadie más. Por eso es un rol aparte de Logística.
+    "despachador": {"entregar", "mis_entregas"},
+    "invitado": set(),      # nadie conectado: no puede hacer nada hasta entrar
+    "sistema": set(),
 }
 # Tina (usuario de sistema) confirma sola los pagos digitales cuyo comprobante coincide; lo que no coincide queda "por revisar" para Cristina.
 # Siguiente paso "natural" desde cada estado
@@ -172,15 +177,30 @@ def db():
     try: yield con
     finally: con.close()
 
-TALLER_PERMITIDO = ("/taller", "/inventario", "/static", "/fotos", "/ver-como", "/favicon")
+# Cada rol restringido tiene su lista de lo que puede abrir. Todo lo demás lo devuelve a su pantalla.
+PUERTAS = {
+    "taller":      (("/taller", "/inventario", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/taller"),
+    "despachador": (("/mis-entregas", "/static", "/fotos", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
+}
+TALLER_PERMITIDO = PUERTAS["taller"][0]
+
+
+ABIERTO = ("/entrar", "/static", "/favicon", "/salir")   # lo único que se puede abrir sin haber entrado
 
 
 @app.middleware("http")
-async def puerta_taller(request: Request, call_next):
-    """El taller solo tiene su pantalla: cualquier otra dirección lo devuelve ahí.
-    Se comprueba aquí y no página por página, para que valga también para lo que se agregue después."""
-    if request.cookies.get("rol") == "taller" and not request.url.path.startswith(TALLER_PERMITIDO):
-        return RedirectResponse("/taller", status_code=303)
+async def puerta(request: Request, call_next):
+    """La puerta del ERP. Se comprueba aquí y no página por página, para que valga
+    también para lo que se agregue después:
+      · sin haber entrado, solo la pantalla de entrada
+      · el taller y los despachadores, solo lo suyo"""
+    ruta = request.url.path
+    if not ruta.startswith(ABIERTO):
+        if hay_claves() and not quien_es(request):
+            return RedirectResponse("/entrar", status_code=303)
+        permitido, casa = PUERTAS.get(rol_de(request), (None, None))
+        if permitido and not ruta.startswith(permitido):
+            return RedirectResponse(casa, status_code=303)
     return await call_next(request)
 
 
@@ -214,6 +234,8 @@ COLUMNAS = (
     ("produccion", "cantidad", "INTEGER NOT NULL DEFAULT 1"), ("produccion", "fecha_pago", "TEXT"),
     ("produccion", "recibido", "INTEGER DEFAULT 0"), ("produccion", "tipo_pedido", "TEXT DEFAULT 'produccion'"),
     ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
+    ("usuarios", "usuario", "TEXT"), ("usuarios", "clave_hash", "TEXT"), ("usuarios", "creado_en", "TEXT"),
+    ("usuarios", "despachador", "TEXT"),   # a qué despachador corresponde este usuario
     ("repuestos_prepagados", "agencia", "TEXT"),
     ("repuestos_prepagados", "delivery", "REAL NOT NULL DEFAULT 0"),
     ("repuestos_prepagados", "delivery_forma", "TEXT"),
@@ -288,10 +310,75 @@ def nombre_completo(nombre_pila, apellido):
     return capitalizar(" ".join(x.strip() for x in (nombre_pila or "", apellido or "") if x and x.strip()))
 
 
-def rol_de(request: Request):
-    return request.cookies.get("rol", "admin")
+# ------------------------------------------------------------------ QUIÉN ERES
+# La clave nunca se guarda: se guarda una huella de la que no se puede volver atrás.
+def _huella(clave, sal):
+    return hashlib.pbkdf2_hmac("sha256", clave.encode(), bytes.fromhex(sal), 200_000).hex()
 
-def usuario_id(rol): return {"admin": 1, "logistica": 2, "taller": 4}.get(rol, 1)
+
+def cifrar_clave(clave):
+    sal = secrets.token_hex(16)
+    return f"{sal}${_huella(clave, sal)}"
+
+
+def clave_correcta(clave, guardado):
+    if not guardado or "$" not in (guardado or ""): return False
+    sal, huella = guardado.split("$", 1)
+    return secrets.compare_digest(_huella(clave or "", sal), huella)
+
+
+DURACION_SESION = 12 * 60 * 60     # 12 horas: una jornada
+
+
+def abrir_sesion(con, uid):
+    ficha = secrets.token_urlsafe(32)
+    vence = (datetime.datetime.now() + datetime.timedelta(seconds=DURACION_SESION)).isoformat(" ", "seconds")
+    con.execute("DELETE FROM sesiones WHERE vence_en < datetime('now','localtime')")
+    con.execute("INSERT INTO sesiones (ficha, usuario_id, vence_en) VALUES (?,?,?)", (ficha, uid, vence))
+    con.commit(); return ficha
+
+
+def quien_es(request: Request):
+    """El usuario conectado, o None. Se lee de la ficha del navegador, no de un rol escrito a mano."""
+    ficha = request.cookies.get("sesion")
+    if not ficha: return None
+    con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
+    try:
+        u = con.execute("""SELECT u.* FROM sesiones s JOIN usuarios u ON u.id=s.usuario_id
+                           WHERE s.ficha=? AND s.vence_en >= datetime('now','localtime') AND u.activo=1""", (ficha,)).fetchone()
+        if u: con.execute("UPDATE sesiones SET visto_en=datetime('now','localtime') WHERE ficha=?", (ficha,)); con.commit()
+        return dict(u) if u else None
+    finally:
+        con.close()
+
+
+def hay_claves(con=None):
+    """¿Ya se puso alguna clave? Si no, el ERP todavía no tiene dueño."""
+    propio = con is None
+    if propio: con = sqlite3.connect(DB)
+    try:
+        return bool(con.execute("SELECT 1 FROM usuarios WHERE clave_hash IS NOT NULL AND activo=1").fetchone())
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        if propio: con.close()
+
+
+def rol_de(request: Request):
+    u = quien_es(request)
+    if not u: return "admin" if not hay_claves() else "invitado"
+    # solo el administrador puede mirar el ERP como si fuera otro, para revisarlo
+    if u["rol"] == "admin":
+        ver = request.cookies.get("ver_como")
+        if ver in PERMISOS: return ver
+    return u["rol"]
+
+
+def usuario_id(rol, request=None):
+    if request is not None:
+        u = quien_es(request)
+        if u: return u["id"]
+    return {"admin": 1, "logistica": 2, "taller": 4}.get(rol, 1)
 
 
 def solo_taller(request):
@@ -302,7 +389,9 @@ def render(request, nombre, **ctx):
     ctx["v_css"] = int((BASE / "static" / "estilo.css").stat().st_mtime)  # evita que el navegador use una copia vieja del estilo
     if "tasa" not in ctx:
         con = sqlite3.connect(DB); con.row_factory = sqlite3.Row; ctx["tasa"] = tasa_hoy(con); con.close()
-    ctx.update(request=request, rol=rol, puede=PERMISOS[rol], hoy=datetime.date.today().isoformat(), seccion=ctx.get("seccion", ""))
+    ctx.update(request=request, rol=rol, puede=PERMISOS[rol], hoy=datetime.date.today().isoformat(),
+               seccion=ctx.get("seccion", ""), usuario=ctx.get("usuario") or quien_es(request),
+               viendo_como=request.cookies.get("ver_como") or "")
     resp = tpl.TemplateResponse(nombre, ctx, headers={"Cache-Control": "no-store"})   # Safari guardaba paneles viejos
     # al salir de Resultados se cierra la sesión: si vuelve, pide la clave otra vez
     if not request.url.path.startswith(("/finanzas", "/historial")) and request.cookies.get("res_ok"):
@@ -310,9 +399,58 @@ def render(request, nombre, **ctx):
     return resp
 
 
+@app.get("/entrar", response_class=HTMLResponse)
+def entrar(request: Request, mal: str = "", con=Depends(db)):
+    if quien_es(request): return RedirectResponse("/inicio", status_code=303)
+    return render(request, "entrar.html", seccion="entrar", primera_vez=not hay_claves(con),
+                  mal=mal, sin_menu=True)
+
+
+@app.post("/entrar")
+def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form(""), con=Depends(db)):
+    u = con.execute("SELECT * FROM usuarios WHERE lower(TRIM(usuario))=? AND activo=1",
+                    (usuario.strip().lower(),)).fetchone()
+    if not (u and clave_correcta(clave, u["clave_hash"])):
+        return RedirectResponse("/entrar?mal=1", status_code=303)
+    casa = PUERTAS.get(u["rol"], (None, "/inicio"))[1]
+    r = RedirectResponse(casa, status_code=303)
+    r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True, samesite="lax")
+    r.delete_cookie("ver_como"); r.delete_cookie("rol")
+    return r
+
+
+@app.post("/entrar/primera-vez")
+def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), con=Depends(db)):
+    """La primera vez, Cristina pone su propia clave. Nadie más la ve nunca, ni queda escrita."""
+    if hay_claves(con): return RedirectResponse("/entrar", status_code=303)
+    if len(clave.strip()) < 6 or clave != clave2:
+        return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 6 else "distinta"), status_code=303)
+    u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
+    con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), u["id"])); con.commit()
+    r = RedirectResponse("/inicio", status_code=303)
+    r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True, samesite="lax")
+    r.delete_cookie("rol")
+    return r
+
+
+@app.get("/salir")
+def salir(request: Request, con=Depends(db)):
+    f = request.cookies.get("sesion")
+    if f: con.execute("DELETE FROM sesiones WHERE ficha=?", (f,)); con.commit()
+    r = RedirectResponse("/entrar", status_code=303)
+    r.delete_cookie("sesion"); r.delete_cookie("ver_como"); r.delete_cookie("rol"); r.delete_cookie("res_ok")
+    return r
+
+
 @app.get("/ver-como/{rol}")
-def ver_como(rol: str, volver: str = "/ordenes"):
-    r = RedirectResponse(volver, status_code=303); r.set_cookie("rol", rol if rol in PERMISOS else "admin"); return r
+def ver_como(request: Request, rol: str, volver: str = "/ordenes"):
+    """Vista previa: el administrador mira el ERP como lo vería otro. No cambia quién eres."""
+    u = quien_es(request)
+    if u and u["rol"] != "admin": return RedirectResponse("/inicio", status_code=303)
+    r = RedirectResponse(volver, status_code=303)
+    if rol == "admin": r.delete_cookie("ver_como")
+    else: r.set_cookie("ver_como", rol if rol in PERMISOS else "admin", samesite="lax")
+    return r
 
 @app.get("/")
 def raiz(): return RedirectResponse("/inicio", status_code=303)
@@ -1549,6 +1687,9 @@ def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""
     return render(request, "configuracion.html", seccion="configuracion",
                   empresa=cfg_json(con, "empresa", {}) or {}, EMPRESA_CAMPOS=EMPRESA_CAMPOS,
                   documentos=cfg_json(con, "documentos", []) or [],
+                  usuarios=con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY activo DESC, rol, nombre").fetchall(),
+                  ROLES=ROLES, yo=quien_es(request),
+                  despachadores_l=[r["nombre"] for r in con.execute("SELECT nombre FROM despachadores WHERE activo=1 ORDER BY nombre")],
                   equipo=eq, sueldos=sue, ciclo=CICLO_REPUESTO, iva=round(IVA * 100, 2),
                   clave=val("clave_resultados"), ventas_auto=val("ventas_auto", "0") == "1",
                   cashflow_desde=val("cashflow_desde"), tarifa_agencia=cfg_json(con, "tarifa_agencia", {}) or {},
@@ -1616,6 +1757,40 @@ def documento_borrar(request: Request, nombre: str, con=Depends(db)):
     ruta = (DOCS / nombre).resolve()
     if str(ruta).startswith(str(DOCS.resolve())) and ruta.exists(): ruta.unlink()
     return RedirectResponse("/configuracion?ok=doc", status_code=303)
+
+
+ROLES = {"admin": "Administradora · lo ve todo", "logistica": "Logística · órdenes y clientes, sin dinero",
+         "taller": "Taller · solo su pantalla", "despachador": "Despachador · solo sus entregas"}
+
+
+@app.post("/configuracion/usuario")
+def usuario_guardar(request: Request, id: int = Form(0), nombre: str = Form(""), usuario: str = Form(""),
+                    rol: str = Form("logistica"), despachador: str = Form(""), clave: str = Form(""),
+                    activo: str = Form(""), borrar: str = Form(""), con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    yo = quien_es(request)
+    if borrar and id:
+        if yo and yo["id"] == id: return RedirectResponse("/configuracion?err=yo", status_code=303)
+        con.execute("UPDATE usuarios SET activo=0 WHERE id=?", (id,))   # nunca se borra: el historial lo nombra
+        con.execute("DELETE FROM sesiones WHERE usuario_id=?", (id,)); con.commit()
+        return RedirectResponse("/configuracion?ok=usuario", status_code=303)
+    u = (usuario or "").strip().lower()
+    if not (nombre.strip() and u): return RedirectResponse("/configuracion?err=usuario", status_code=303)
+    otro = con.execute("SELECT id FROM usuarios WHERE lower(TRIM(usuario))=? AND id!=?", (u, id or 0)).fetchone()
+    if otro: return RedirectResponse("/configuracion?err=repetido", status_code=303)
+    if clave.strip() and len(clave.strip()) < 6: return RedirectResponse("/configuracion?err=corta", status_code=303)
+    if id:
+        con.execute("UPDATE usuarios SET nombre=?, usuario=?, rol=?, despachador=?, activo=? WHERE id=?",
+                    (nombre.strip(), u, rol, despachador.strip() or None, 1 if activo else 0, id))
+        if not activo: con.execute("DELETE FROM sesiones WHERE usuario_id=?", (id,))
+    else:
+        cur = con.execute("INSERT INTO usuarios (nombre,usuario,rol,despachador,activo,creado_en) VALUES (?,?,?,?,1,date('now'))",
+                          (nombre.strip(), u, rol, despachador.strip() or None))
+        id = cur.lastrowid
+    if clave.strip():
+        con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), id))
+        con.execute("DELETE FROM sesiones WHERE usuario_id=? AND ficha!=?", (id, request.cookies.get("sesion") or ""))
+    con.commit(); return RedirectResponse("/configuracion?ok=usuario", status_code=303)
 
 
 @app.post("/configuracion/respaldo")
@@ -3495,6 +3670,49 @@ def resumen_despachador(con, nombre, hoy):
     r["debe"] = (r["debe"] or 0) + v["m"]          # los viajes a la agencia se le pagan igual que las entregas
     r["n_viajes"] = v["n"]; r["debe_viajes"] = v["m"]   # se cuentan aparte: son viajes, no entregas
     return r | {"zonas": zonas, "ultimo_pago": ult}
+
+
+@app.get("/mis-entregas", response_class=HTMLResponse)
+def mis_entregas(request: Request, con=Depends(db)):
+    """La pantalla del despachador: lo que le toca hoy, lo que se le debe y lo que ha entregado.
+    Ve dinero, pero solo el suyo: nunca el de la empresa ni el de otro despachador."""
+    u = quien_es(request)
+    nombre = (u or {}).get("despachador")
+    if rol_de(request) == "admin" and not nombre:
+        nombre = request.query_params.get("quien", "")       # para que Cristina pueda ver cómo se ve
+    if not nombre: return RedirectResponse("/inicio", status_code=303)
+    hoy = datetime.date.today()
+    r = resumen_despachador(con, nombre, hoy)
+    ruta = ruta_despachador(con, nombre, hoy.isoformat())
+    hist = con.execute("""SELECT o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
+                          COALESCE(o.delivery,0) pago, o.estado, o.despachador_pagado,
+                          COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien
+                          FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
+                          WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
+                          ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
+    mes = hoy.strftime("%Y-%m")
+    pagos = con.execute("SELECT fecha, monto, entregas FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC LIMIT 12", (nombre,)).fetchall()
+    return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, r=r, ruta=ruta,
+                  ruta_cobrar=sum(f["cobrar"] for f in ruta),
+                  hist=hist, pagos=pagos, hoy_iso=hoy.isoformat(),
+                  ganado_mes=round(sum(h["pago"] for h in hist if (h["fecha"] or "")[:7] == mes), 2),
+                  ganado_todo=round(sum(h["pago"] for h in hist), 2),
+                  n_entregadas=sum(1 for h in hist if h["estado"] == "entregada"))
+
+
+@app.post("/mis-entregas/{oid}/entregado")
+def mi_entrega_hecha(request: Request, oid: int, con=Depends(db)):
+    """El despachador marca entregado desde la calle. Actualiza la orden en todo el ERP."""
+    u = quien_es(request)
+    if not (u and u["despachador"]): return RedirectResponse("/inicio", status_code=303)
+    o = con.execute("SELECT despachador, estado FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if not o or o["despachador"] != u["despachador"] or o["estado"] == "cancelada":
+        return RedirectResponse("/mis-entregas", status_code=303)   # solo sus propias entregas
+    hoy = datetime.date.today().isoformat()
+    con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=COALESCE(fecha_entrega,?), actualizado_en=datetime('now','localtime') WHERE id=?", (hoy, oid))
+    registrar(con, oid, u["id"], "estado", f"Entregado por {u['despachador']}")
+    con.commit()
+    return RedirectResponse("/mis-entregas", status_code=303)
 
 
 @app.get("/despachadores", response_class=HTMLResponse)

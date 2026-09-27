@@ -4,6 +4,10 @@
 {% if err == 'tipo' %}<div class="cf-err">Ese archivo no sirve. Tiene que ser PDF, JPG, PNG o WEBP.</div>
 {% elif err == 'grande' %}<div class="cf-err">El archivo pesa más de 20 MB.</div>
 {% elif err == 'doc' %}<div class="cf-err">No elegiste ningún archivo.</div>
+{% elif err == 'repetido' %}<div class="cf-err">Ese correo o usuario ya lo tiene otra persona.</div>
+{% elif err == 'corta' %}<div class="cf-err">La clave tiene que tener al menos 6 caracteres.</div>
+{% elif err == 'yo' %}<div class="cf-err">No puedes quitarte el acceso a ti misma.</div>
+{% elif err == 'usuario' %}<div class="cf-err">Hacen falta el nombre y el correo o usuario.</div>
 {% elif err %}<div class="cf-err">No se pudo hacer el respaldo. Revisa que iCloud esté conectado.</div>{% endif %}
 
 <div class="tarjeta cf-b">
@@ -14,6 +18,43 @@
  {% else %}<p class="cf-d ln-alerta">Todavía no hay ninguna copia.</p>{% endif %}
  <form method="post" action="/configuracion/respaldo"><button class="btn chico">Respaldar ahora</button></form>
  <p class="mini" style="margin-top:8px">Copia la base de datos a iCloud, fuera del disco de la Mac. Se guardan los últimos 30 días.</p>
+ </div>
+</div>
+
+<div class="tarjeta cf-b">
+ <h3>Quién entra</h3>
+ <div class="cf-cuerpo">
+  <table class="lineas"><tr><th>Nombre</th><th>Correo o usuario</th><th>Qué puede ver</th><th>Clave</th><th></th></tr>
+  {% for u in usuarios %}<tr class="{{ '' if u.activo else 'bloqueado' }}">
+   <td><b>{{ u.nombre }}</b>{% if yo and yo.id == u.id %}<span class="mini"> · eres tú</span>{% endif %}</td>
+   <td class="mono">{{ u.usuario or '—' }}</td>
+   <td class="mini">{{ ROLES.get(u.rol, u.rol) }}{% if u.despachador %} · {{ u.despachador }}{% endif %}{% if not u.activo %} · <b>sin acceso</b>{% endif %}</td>
+   <td>{% if u.clave_hash %}<span class="pago pagada">puesta</span>{% else %}<span class="pago por_confirmar">sin clave</span>{% endif %}</td>
+   <td style="text-align:right;width:90px">
+    <details class="cobro"><summary class="btn sec chico">Cambiar</summary>
+     <form method="post" action="/configuracion/usuario" class="cobro-f" style="min-width:270px">
+      <input type="hidden" name="id" value="{{ u.id }}">
+      <label style="margin-top:0">Nombre</label><input name="nombre" value="{{ u.nombre }}" required>
+      <label>Correo o usuario</label><input name="usuario" value="{{ u.usuario or '' }}" required>
+      <label>Qué puede ver</label><select name="rol">{% for k, t in ROLES.items() %}<option value="{{ k }}" {{ 'selected' if k==u.rol }}>{{ t }}</option>{% endfor %}</select>
+      <label>Si es despachador, ¿cuál?</label><select name="despachador"><option value="">—</option>{% for d in despachadores_l %}<option {{ 'selected' if d==u.despachador }}>{{ d }}</option>{% endfor %}</select>
+      <label>Clave nueva <span class="mini">déjalo vacío para no cambiarla</span></label><input type="password" name="clave" autocomplete="new-password" minlength="6">
+      <label class="cf-check" style="margin-top:12px"><input type="checkbox" name="activo" {{ 'checked' if u.activo }}><span>Puede entrar</span></label>
+      <p style="margin:10px 0 0"><button class="btn chico">Guardar</button>
+       {% if not (yo and yo.id == u.id) %}<button class="btn pel chico" name="borrar" value="1" onclick="return confirm('¿Quitarle el acceso a {{ u.nombre }}?')">Quitar acceso</button>{% endif %}</p>
+     </form></details>
+   </td></tr>{% endfor %}</table>
+
+  <details class="fal-w" style="margin-top:14px"><summary>Agregar a alguien</summary>
+   <form method="post" action="/configuracion/usuario" class="g2" style="margin-top:10px">
+    <div><label>Nombre</label><input name="nombre" required></div>
+    <div><label>Correo o usuario</label><input name="usuario" placeholder="correo@shopdecopet.com o un nombre corto" required></div>
+    <div><label>Qué puede ver</label><select name="rol">{% for k, t in ROLES.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
+    <div><label>Si es despachador, ¿cuál?</label><select name="despachador"><option value="">—</option>{% for d in despachadores_l %}<option>{{ d }}</option>{% endfor %}</select></div>
+    <div><label>Clave</label><input type="password" name="clave" minlength="6" autocomplete="new-password"></div>
+    <div style="display:flex;align-items:end"><button class="btn chico">Agregar</button></div>
+   </form></details>
+  <p class="mini" style="margin-top:10px">A nadie se le borra: se le quita el acceso y su nombre sigue en el historial. La clave no se puede recuperar, solo cambiar por otra.</p>
  </div>
 </div>
 
