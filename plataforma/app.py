@@ -184,26 +184,68 @@ async def puerta_taller(request: Request, call_next):
     return await call_next(request)
 
 
+# Columnas que se fueron agregando con el tiempo y no están en modelo.sql.
+# Se aplican al arrancar, así una base nueva queda igual que la que está en uso.
+COLUMNAS = (
+    ("abonos_produccion", "gasto_id", "INTEGER"),
+    ("clientes", "origen", "TEXT"), ("clientes", "origen_nota", "TEXT"),
+    ("clientes", "porche_tamano", "TEXT"), ("clientes", "porche_version", "TEXT"),
+    ("clientes", "referido_id", "INTEGER"),
+    ("compromisos", "precio_unitario", "REAL"), ("compromisos", "unidad", "TEXT"),
+    ("compromisos_pagos", "motivo", "TEXT"),
+    ("gastos", "cantidad", "REAL"), ("gastos", "compra_grande", "INTEGER NOT NULL DEFAULT 0"),
+    ("gastos", "unidad", "TEXT"),
+    ("mov_inventario", "color", "TEXT"),
+    ("movimientos", "categoria", "TEXT"), ("movimientos", "comprobante", "TEXT"),
+    ("movimientos", "notas", "TEXT"), ("movimientos", "subcategoria", "TEXT"),
+    ("notas_taller", "produccion_id", "INTEGER"),
+    ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
+    ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
+    ("ordenes", "despachador_pago_id", "INTEGER"), ("ordenes", "en_registro", "INTEGER DEFAULT 0"),
+    ("ordenes", "factura_fecha", "TEXT"), ("ordenes", "factura_hecha", "INTEGER DEFAULT 0"),
+    ("ordenes", "factura_numero", "TEXT"), ("ordenes", "factura_por", "INTEGER"),
+    ("ordenes", "pago_despachador", "REAL"), ("ordenes", "receptor_cedula", "TEXT"),
+    ("ordenes", "receptor_correo", "TEXT"), ("ordenes", "requiere_factura", "INTEGER DEFAULT 0"),
+    ("ordenes", "viaje_id", "INTEGER"),
+    ("packs", "deliveries_prepagados", "INTEGER DEFAULT 0"), ("packs", "delivery_pagado", "INTEGER"),
+    ("packs", "delivery_programado", "REAL"), ("packs", "despachador_programado", "TEXT"),
+    ("packs", "fecha_programada", "TEXT"), ("packs", "nota_programada", "TEXT"),
+    ("packs", "retiro_programado", "INTEGER"), ("packs", "tipo_programado", "TEXT"),
+    ("produccion", "cantidad", "INTEGER NOT NULL DEFAULT 1"), ("produccion", "fecha_pago", "TEXT"),
+    ("produccion", "recibido", "INTEGER DEFAULT 0"), ("produccion", "tipo_pedido", "TEXT DEFAULT 'produccion'"),
+    ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
+    ("repuestos_prepagados", "agencia", "TEXT"),
+    ("repuestos_prepagados", "delivery", "REAL NOT NULL DEFAULT 0"),
+    ("repuestos_prepagados", "delivery_forma", "TEXT"),
+    ("repuestos_prepagados", "delivery_pagado", "INTEGER NOT NULL DEFAULT 0"),
+    ("repuestos_prepagados", "en_ruta", "INTEGER NOT NULL DEFAULT 0"),
+    ("repuestos_prepagados", "envio", "TEXT"), ("repuestos_prepagados", "monto", "REAL"),
+)
+
+
+def preparar_base(ruta):
+    """Deja una base lista para usar: crea las tablas y agrega las columnas que falten.
+    Sirve igual para la base en uso y para una recién creada."""
+    con = sqlite3.connect(ruta)
+    con.executescript((BASE / "modelo.sql").read_text())
+    hay = {}
+    for tabla, col, tipo in COLUMNAS:
+        if tabla not in hay: hay[tabla] = {r[1] for r in con.execute(f"PRAGMA table_info({tabla})")}
+        if col not in hay[tabla]:
+            con.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}"); hay[tabla].add(col)
+    con.commit(); return con
+
+
 @app.on_event("startup")
 def _arranque():
-    con = sqlite3.connect(DB); con.executescript((BASE / "modelo.sql").read_text()); con.commit()  # crea tablas nuevas sin tocar datos
-    cols = [r[1] for r in con.execute("PRAGMA table_info(ordenes)")]
-    for col, tp in (("factura_numero", "TEXT"), ("factura_fecha", "TEXT"), ("factura_por", "INTEGER")):
-        if col not in cols: con.execute(f"ALTER TABLE ordenes ADD COLUMN {col} {tp}")
-    cn = [r[1] for r in con.execute("PRAGMA table_info(notas_taller)")]
-    for col, tp in (("produccion_id", "INTEGER"), ("resuelto", "INTEGER NOT NULL DEFAULT 0"), ("resuelto_en", "TEXT")):
-        if col not in cn: con.execute(f"ALTER TABLE notas_taller ADD COLUMN {col} {tp}")
-    cp = [r[1] for r in con.execute("PRAGMA table_info(produccion)")]
-    if "fecha_pago" not in cp: con.execute("ALTER TABLE produccion ADD COLUMN fecha_pago TEXT")
-    cc = [r[1] for r in con.execute("PRAGMA table_info(clientes)")]
-    for col, tp in (("origen", "TEXT"), ("referido_id", "INTEGER"), ("origen_nota", "TEXT")):
-        if col not in cc: con.execute(f"ALTER TABLE clientes ADD COLUMN {col} {tp}")
+    con = preparar_base(DB)
     if not con.execute("SELECT 1 FROM despachadores").fetchone():   # primera vez: la lista fija pasa a la tabla (los históricos quedan inactivos)
         for n in DESPACHADORES: con.execute("INSERT OR IGNORE INTO despachadores (nombre, activo) VALUES (?,1)", (n,))
         for (n,) in con.execute("SELECT DISTINCT despachador FROM ordenes WHERE despachador IS NOT NULL AND despachador!=''").fetchall():
             con.execute("INSERT OR IGNORE INTO despachadores (nombre, activo) VALUES (?,0)", (n,))
         con.commit()
-    con.close(); cargar_despachadores(); cargar_formas_pago(); cargar_ajustes(); arrancar_respaldo()
+    con.close(); cargar_despachadores(); cargar_formas_pago(); cargar_ajustes()
+    if os.environ.get("DECOPET_PRUEBAS") != "1": arrancar_respaldo()   # las pruebas no respaldan
     bcv.programar(DB)
 
 

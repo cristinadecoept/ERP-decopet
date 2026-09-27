@@ -237,3 +237,22 @@ CREATE TABLE IF NOT EXISTS faltas (
 
 -- Un vencimiento que se salta (no tocaba pagarlo ese mes) queda anotado con su motivo.
 -- gasto_id NULL + motivo = saltado; gasto_id lleno = pagado.
+
+-- Fotos extra de un producto (además de la principal), con o sin fondo.
+CREATE TABLE IF NOT EXISTS producto_fotos (
+  id INTEGER PRIMARY KEY, producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  archivo TEXT NOT NULL, etiqueta TEXT, orden INTEGER DEFAULT 0,
+  creado_en TEXT DEFAULT (datetime('now','localtime')), tipo TEXT NOT NULL DEFAULT 'sin_fondo');
+
+-- De qué está hecho cada producto: el Porche PRO Mediano gasta 1 caja de madera mediana.
+CREATE TABLE IF NOT EXISTS receta (
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  insumo_id   INTEGER NOT NULL REFERENCES productos(id),
+  cantidad    REAL NOT NULL DEFAULT 1,
+  PRIMARY KEY (producto_id, insumo_id));
+
+-- Tasa del BCV por día, con la del próximo día hábil que es la que se cobra.
+CREATE TABLE IF NOT EXISTS tasas (
+  id INTEGER PRIMARY KEY, fecha_valor TEXT NOT NULL, valor REAL NOT NULL, fuente TEXT NOT NULL,
+  obtenido_en TEXT DEFAULT (datetime('now','localtime')), manual INTEGER DEFAULT 0,
+  usuario_id INTEGER, nota TEXT, UNIQUE(fecha_valor, fuente));
