@@ -24,6 +24,15 @@ tar -czf "$TMPC" -C "$RAIZ" \
   --exclude="plataforma/data" --exclude="data" --exclude="Branding y Fotos" \
   plataforma scripts app docs .git .gitignore LEEME.md 2>/dev/null || true
 
+# las fotos de producto y los papeles de la empresa. Pesan y casi no cambian,
+# así que solo se vuelven a empaquetar cuando hay algo nuevo.
+TMPA=""
+ARCH="$RAIZ/plataforma/data/fotos $RAIZ/plataforma/data/documentos"
+if [ -d "$RAIZ/plataforma/data/fotos" ] || [ -d "$RAIZ/plataforma/data/documentos" ]; then
+  TMPA="$(dirname "$TMP")/decopet-archivos-$SELLO.tgz"
+  tar -czf "$TMPA" -C "$RAIZ/plataforma/data" fotos documentos 2>/dev/null || true
+fi
+
 DESTINOS=(); VISTOS=()
 for base in "$HOME/Library/CloudStorage"/GoogleDrive-*/"Mi unidad" \
             "$HOME/Library/CloudStorage"/GoogleDrive-*/"My Drive" \
@@ -49,7 +58,14 @@ for D in "${DESTINOS[@]}"; do
   cp "$TMP" "$D/decopet-ultimo.db"
   [ -n "$TMP2" ] && cp "$TMP2" "$D/decopet-airtable-ultimo.db"
   [ -f "$TMPC" ] && cp "$TMPC" "$D/decopet-programa-ultimo.tgz"
+  # los archivos solo se vuelven a subir si cambió alguno desde la última copia
+  if [ -n "$TMPA" ] && [ -f "$TMPA" ]; then
+    if [ ! -f "$D/decopet-archivos-ultimo.tgz" ] || [ -n "$(find $ARCH -newer "$D/decopet-archivos-ultimo.tgz" -print -quit 2>/dev/null)" ]; then
+      cp "$TMPA" "$D/decopet-archivos-ultimo.tgz"
+      echo "$(date '+%Y-%m-%d %H:%M') fotos y documentos actualizados"
+    fi
+  fi
   ls -1t "$D"/decopet-2*.db 2>/dev/null | tail -n +31 | while read -r v; do rm -f "$v"; done
   echo "$(date '+%Y-%m-%d %H:%M') respaldo ok → $D/decopet-$SELLO.db"
 done
-rm -f "$TMP" "$TMP2" "$TMPC"
+rm -f "$TMP" "$TMP2" "$TMPC" "$TMPA"

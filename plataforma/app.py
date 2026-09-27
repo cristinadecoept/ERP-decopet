@@ -2310,6 +2310,153 @@ def _fecha(v):
     except Exception: return None
 
 
+@app.get("/exportar-todo")
+def exportar_todo(request: Request, con=Depends(db)):
+    """Tu negocio entero en un Excel que se lee sin el ERP. Si un día el ERP no está,
+    con este archivo sigues teniendo tus clientes, tus ventas y tus cuentas."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    F = lambda x: _fecha(x) if x else None
+    hojas = []
+
+    hojas.append(("Clientes",
+        [("Cliente", 26, ""), ("Teléfono", 16, ""), ("Correo", 26, ""), ("Cédula", 14, ""), ("Ciudad", 16, ""),
+         ("Porche", 20, ""), ("Órdenes", 9, "n"), ("Comprado", 13, "$"), ("Saldo a favor", 13, "$"),
+         ("Última compra", 14, "f"), ("Cliente desde", 14, "f")],
+        [(r["nombre"], r["telefono"], r["correo"], r["cedula"], r["ciudad"],
+          " ".join(x for x in (r["porche_version"], r["porche_tamano"]) if x) or None,
+          r["n"], r["gastado"], r["credito"] or None, F(r["ultima"]), F(r["creado_en"]))
+         for r in con.execute("""SELECT c.*,
+             (SELECT COUNT(*) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') n,
+             (SELECT COALESCE(SUM(o.total),0) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') gastado,
+             (SELECT COALESCE(SUM(cc.monto),0) FROM credito_cliente cc WHERE cc.cliente_id=c.id) credito,
+             (SELECT MAX(substr(o.creado_en,1,10)) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') ultima
+             FROM clientes c ORDER BY c.nombre""")]))
+
+    hojas.append(("Órdenes",
+        [("Orden", 10, ""), ("Fecha", 13, "f"), ("Cliente", 24, ""), ("Entrega", 16, ""), ("Despachador", 14, ""),
+         ("Estado", 13, ""), ("Pago", 14, ""), ("Total", 12, "$"), ("Pagado", 12, "$"), ("Delivery", 10, "$"), ("Entregada", 13, "f")],
+        [(r["numero"], F(r["creado_en"]), r["cliente"], ENTREGA.get(r["tipo_entrega"] or "", r["tipo_entrega"]), r["despachador"],
+          E_LABEL.get(r["estado"], r["estado"]), P_LABEL.get(r["estado_pago"], r["estado_pago"]),
+          r["total"], r["pagado"], r["delivery"], F(r["fecha_entrega"]))
+         for r in con.execute("""SELECT o.*, c.nombre cliente,
+             (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') pagado
+             FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id ORDER BY o.id""")]))
+
+    hojas.append(("Productos vendidos",
+        [("Orden", 10, ""), ("Fecha", 13, "f"), ("Cliente", 24, ""), ("Producto", 30, ""),
+         ("Cantidad", 10, "n"), ("Precio", 12, "$"), ("Total", 12, "$")],
+        [(r["numero"], F(r["creado_en"]), r["cliente"], r["producto"], r["cantidad"], r["precio"], r["total"])
+         for r in con.execute("""SELECT o.numero, o.creado_en, c.nombre cliente,
+             COALESCE(NULLIF(l.nombre,''), p.nombre) producto, l.cantidad, l.precio, l.total
+             FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
+             LEFT JOIN clientes c ON c.id=o.cliente_id LEFT JOIN productos p ON p.id=l.producto_id
+             WHERE o.estado!='cancelada' ORDER BY o.id, l.id""")]))
+
+    hojas.append(("Pagos recibidos",
+        [("Fecha", 13, "f"), ("Orden", 10, ""), ("Cliente", 24, ""), ("Forma", 18, ""), ("Caja", 20, ""),
+         ("Monto USD", 12, "$"), ("Estado", 13, "")],
+        [(F(r["fecha"]), r["numero"], r["cliente"], r["forma"], r["cuenta"], r["monto_usd"], r["estado"])
+         for r in con.execute("""SELECT p.*, o.numero, c.nombre cliente FROM pagos p
+             JOIN ordenes o ON o.id=p.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
+             ORDER BY p.fecha, p.id""")]))
+
+    hojas.append(("Gastos",
+        [("Fecha", 13, "f"), ("Categoría", 22, ""), ("Subcategoría", 20, ""), ("Qué", 28, ""),
+         ("Pagado a", 20, ""), ("Caja", 20, ""), ("Monto USD", 12, "$")],
+        [(F(r["fecha"]), r["categoria"], r["subcategoria"], r["descripcion"], r["proveedor"], r["caja"], r["monto_usd"])
+         for r in con.execute("""SELECT g.*, cu.nombre caja FROM gastos g LEFT JOIN cuentas cu ON cu.id=g.cuenta_id
+             ORDER BY g.fecha, g.id""")]
+        + [("", "TOTAL GASTADO", "", "", "", "", con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM gastos").fetchone()[0])],
+        True))
+
+    cs = saldos(con)
+    hojas.append(("Cajas",
+        [("Caja", 24, ""), ("Moneda", 9, ""), ("Saldo inicial", 14, "$"), ("Ingresos", 12, "$"),
+         ("Gastos", 12, "$"), ("Entradas", 12, "$"), ("Salidas", 12, "$"), ("Saldo", 13, "$")],
+        [(c["nombre"], c["moneda"], c["saldo_inicial"], c["ingresos"], c["gastos"], c["entradas"], c["salidas"], c["saldo"])
+         for c in cs]
+        + [("TOTAL EN CAJA", "", None, None, None, None, None,
+            round(sum(c["saldo"] for c in cs if c["tipo"] == "operativa"), 2))],
+        True))
+
+    hojas.append(("Inventario",
+        [("Producto", 30, ""), ("Tipo", 12, ""), ("Disponible", 12, "n"), ("Mínimo", 10, "n"), ("Proveedor", 18, "")],
+        [(r["nombre"], r["tipo"], r["hay"], r["minimo"], r["proveedor"])
+         for r in con.execute("""SELECT p.nombre, p.tipo, p.minimo, p.proveedor,
+             COALESCE((SELECT SUM(m.cantidad) FROM mov_inventario m WHERE m.producto_id=p.id),0) hay
+             FROM productos p WHERE p.activo=1 ORDER BY (p.tipo='insumo') DESC, p.orden""")]))
+
+    hojas.append(("Proveedores",
+        [("Proveedor", 24, ""), ("Teléfono", 16, ""), ("Qué le compras", 40, ""), ("Notas", 30, "")],
+        [(r["nombre"], r["telefono"], r["items"], r["notas"])
+         for r in con.execute("""SELECT p.*, (SELECT GROUP_CONCAT(i.item, ' · ') FROM proveedor_items i WHERE i.proveedor_id=p.id) items
+             FROM proveedores p ORDER BY p.nombre""")]))
+
+    hojas.append(("Producción",
+        [("Pedido", 8, "n"), ("Qué", 26, ""), ("A quién", 18, ""), ("Pedidos", 9, "n"), ("Llegaron", 9, "n"),
+         ("Costo", 12, "$"), ("Abonado", 12, "$"), ("Estado", 14, ""), ("Se esperaba", 13, "f")],
+        [(r["id"], r["pieza"], r["responsable"], r["cantidad"], r["recibido"], r["costo"], r["abonado"],
+          r["estado"], F(r["fecha_esperada"]))
+         for r in con.execute("""SELECT pr.*, (SELECT COALESCE(SUM(a.monto),0) FROM abonos_produccion a WHERE a.produccion_id=pr.id) abonado
+             FROM produccion pr ORDER BY pr.id""")]))
+
+    hojas.append(("Despachadores",
+        [("Despachador", 20, ""), ("Teléfono", 16, ""), ("Entregas", 10, "n"), ("Ganado", 12, "$"),
+         ("Se le debe", 12, "$"), ("Activo", 9, "")],
+        [(d["nombre"], d["telefono"], d["n"], d["ganado"], d["debe"], "Sí" if d["activo"] else "No")
+         for d in con.execute("""SELECT d.*,
+             (SELECT COUNT(*) FROM ordenes o WHERE o.despachador=d.nombre AND o.estado!='cancelada' AND o.origen_excel=0) n,
+             (SELECT COALESCE(SUM(COALESCE(o.delivery,0)),0) FROM ordenes o WHERE o.despachador=d.nombre AND o.estado!='cancelada' AND o.origen_excel=0) ganado,
+             (SELECT COALESCE(SUM(COALESCE(o.delivery,0)),0) FROM ordenes o WHERE o.despachador=d.nombre AND o.estado!='cancelada' AND o.origen_excel=0 AND o.despachador_pagado=0) debe
+             FROM despachadores d ORDER BY d.activo DESC, d.nombre""")]))
+
+    hojas.append(("Pagos fijos",
+        [("Pago", 24, ""), ("A quién", 18, ""), ("Cada cuánto", 22, ""), ("Monto", 12, "$"),
+         ("Categoría", 22, ""), ("Activo", 9, "")],
+        [(r["nombre"], r["proveedor"], {"semanal": "Todas las semanas", "quincenal": "15 y último",
+          "mensual": "Una vez al mes", "inicio_mes": "Primeros días del mes"}.get(r["frecuencia"], r["frecuencia"]),
+          r["monto"], f"{r['categoria']} · {r['subcategoria'] or ''}".strip(" ·"), "Sí" if r["activo"] else "No")
+         for r in con.execute("SELECT * FROM compromisos ORDER BY activo DESC, nombre")]))
+
+    hojas.append(("Mascotas",
+        [("Perro", 20, ""), ("Raza", 20, ""), ("Dueño", 24, ""), ("Cumpleaños", 13, "f"), ("Notas", 30, "")],
+        [(m["nombre"], m["raza"], m["cliente"], F(m["fecha_nacimiento"]), m["notas"])
+         for m in con.execute("""SELECT m.*, c.nombre cliente FROM mascotas m
+             LEFT JOIN clientes c ON c.id=m.cliente_id ORDER BY c.nombre, m.nombre""")]))
+
+    hojas.append(("Direcciones",
+        [("Cliente", 24, ""), ("Dirección", 46, ""), ("Zona", 16, ""), ("Ciudad", 16, ""), ("Principal", 10, "")],
+        [(d["cliente"], d["direccion"], d["zona"], d["ciudad"], "Sí" if d["principal"] else "")
+         for d in con.execute("""SELECT d.*, c.nombre cliente FROM direcciones d
+             JOIN clientes c ON c.id=d.cliente_id ORDER BY c.nombre, d.principal DESC""")]))
+
+    hojas.append(("Movimientos de caja",
+        [("Fecha", 13, "f"), ("Tipo", 12, ""), ("De", 20, ""), ("A", 20, ""), ("Concepto", 30, ""), ("Monto USD", 12, "$")],
+        [(F(m["fecha"]), m["tipo"], m["origen"], m["destino"], m["concepto"] or m["notas"], m["monto_usd"])
+         for m in con.execute("""SELECT m.*, co.nombre origen, cd.nombre destino FROM movimientos m
+             LEFT JOIN cuentas co ON co.id=m.cuenta_origen_id LEFT JOIN cuentas cd ON cd.id=m.cuenta_destino_id
+             ORDER BY m.fecha, m.id""")]))
+
+    hojas.append(("Equipo",
+        [("Nombre", 20, ""), ("Correo o usuario", 28, ""), ("Qué puede ver", 26, ""), ("Activo", 9, "")],
+        [(u["nombre"], u["usuario"], ROLES.get(u["rol"], u["rol"]), "Sí" if u["activo"] else "No")
+         for u in con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY rol, nombre")]))
+
+    hojas.append(("Arqueos",
+        [("Fecha", 13, "f"), ("Caja", 22, ""), ("Decía el ERP", 13, "$"), ("Conté", 13, "$"),
+         ("Diferencia", 13, "$"), ("Nota", 30, "")],
+        [(F(a_["fecha"]), a_["caja"], a_["saldo_erp"], a_["contado"], a_["diferencia"], a_["nota"])
+         for a_ in con.execute("""SELECT a.*, c.nombre caja FROM arqueos a JOIN cuentas c ON c.id=a.cuenta_id
+             ORDER BY a.fecha DESC, a.id DESC""")]))
+
+    hojas.append(("Repuestos pendientes",
+        [("Cliente", 24, ""), ("Tipo", 14, ""), ("Tamaño", 12, ""), ("Faltan", 9, "n"), ("Desde", 13, "f")],
+        [(k["cliente"], "Pack", k["tamano"], k["saldo"], F(k["creado_en"])) for k in cargar_packs(con) if k["saldo"] > 0]
+        + [(r["cliente"], "Prepagado", r["tamano"], 1, F(r["pagado_en"])) for r in cargar_prepagados(con)]))
+
+    return hoja_excel(hojas, f"decopet-{datetime.date.today():%Y-%m-%d}", "Los datos del ERP")
+
+
 @app.get("/clientes/exportar")
 def clientes_exportar(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)

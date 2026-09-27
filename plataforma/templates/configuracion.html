@@ -16,8 +16,13 @@
  {% if respaldos.ultimo %}
   <p class="cf-d">Última copia: <b>{{ respaldos.ultimo }}</b>{% if respaldos.dias > 2 %} <span class="ln-alerta">· hace {{ respaldos.dias }} días</span>{% elif respaldos.dias == 0 %} · hoy{% endif %} · {{ respaldos.n }} copia{{ 's' if respaldos.n != 1 }} guardada{{ 's' if respaldos.n != 1 }}</p>
  {% else %}<p class="cf-d ln-alerta">Todavía no hay ninguna copia.</p>{% endif %}
- <form method="post" action="/configuracion/respaldo"><button class="btn chico">Respaldar ahora</button></form>
- <p class="mini" style="margin-top:8px">Copia la base de datos a iCloud, fuera del disco de la Mac. Se guardan los últimos 30 días.</p>
+ <div style="display:flex;gap:8px;flex-wrap:wrap">
+  <form method="post" action="/configuracion/respaldo"><button class="btn chico">Respaldar ahora</button></form>
+  <a class="btn sec chico" href="/exportar-todo">Bajar los datos a Excel</a>
+ </div>
+ <p class="mini" style="margin-top:8px">El respaldo copia la base de datos a la nube, fuera del disco de la Mac; se guardan los últimos 30 días.
+  El Excel trae los datos — clientes, órdenes, ventas, pagos, gastos, cajas, inventario, proveedores, producción y equipo — y se lee sin el ERP.
+  Las fotos y tus documentos no caben en una hoja de cálculo: esos van en el respaldo.</p>
  </div>
 </div>
 
