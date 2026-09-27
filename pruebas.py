@@ -166,6 +166,57 @@ def _():
     assert A.cifra("") in (None, 0)
 
 
+# ─────────────────────────────────────────────── saldo a favor
+print("\nSALDO A FAVOR")
+
+@prueba("Pagar de más deja saldo a favor del cliente, no se pierde")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',22)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,estado,fecha) VALUES (1,'Efectivo USD',25,'confirmado','2026-09-27')")
+    con.commit()
+    sobra = A.sobrante_a_favor(con, 1, 1); con.commit()
+    assert sobra == 3, sobra
+    assert A.credito_de(con, 1) == 3, A.credito_de(con, 1)
+
+@prueba("No se duplica si se vuelve a mirar la misma orden")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',22)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,estado,fecha) VALUES (1,'Efectivo USD',25,'confirmado','2026-09-27')")
+    con.commit()
+    A.sobrante_a_favor(con, 1, 1); con.commit()
+    A.sobrante_a_favor(con, 1, 1); con.commit()
+    assert A.credito_de(con, 1) == 3, "se duplicó: " + str(A.credito_de(con, 1))
+
+@prueba("Pagar con saldo a favor no infla ninguna caja")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',22)")
+    con.commit()
+    A.mover_credito(con, 1, 3, "sin vuelto"); con.commit()
+    # así lo registra la ruta: sin caja, porque no entra plata nueva
+    con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado)
+                   VALUES (1,?,3,3,'USD','2026-09-27','confirmado')""", (A.SALDO_FAVOR,))
+    A.mover_credito(con, 1, -3, "usado", 1); con.commit()
+    caja = con.execute("SELECT cuenta FROM pagos WHERE forma=?", (A.SALDO_FAVOR,)).fetchone()["cuenta"]
+    assert caja is None, f"el pago con saldo apuntó a la caja {caja}"
+    assert A.credito_de(con, 1) == 0
+
+
+@prueba("Cuando lo usa, el saldo baja")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
+    con.commit()
+    A.mover_credito(con, 1, 3, "no había vuelto"); con.commit()
+    A.mover_credito(con, 1, -3, "lo usó en un repuesto"); con.commit()
+    assert A.credito_de(con, 1) == 0, A.credito_de(con, 1)
+
+
 # ─────────────────────────────────────────────── no perder datos sin querer
 print("\nNO BORRAR LO QUE NO SE TOCÓ")
 

@@ -270,3 +270,11 @@ CREATE TABLE IF NOT EXISTS arqueos (
   saldo_erp REAL NOT NULL, contado REAL NOT NULL, diferencia REAL NOT NULL,
   ajustado INTEGER NOT NULL DEFAULT 0, nota TEXT, usuario_id INTEGER,
   creado_en TEXT DEFAULT (datetime('now','localtime')));
+
+-- Saldo a favor del cliente: cuando paga de más porque no hay vuelto, o cuando queda
+-- un resto que no alcanza para un repuesto. Positivo = se le debe; negativo = lo usó.
+CREATE TABLE IF NOT EXISTS credito_cliente (
+  id INTEGER PRIMARY KEY, cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+  fecha TEXT NOT NULL, monto REAL NOT NULL, motivo TEXT,
+  orden_id INTEGER REFERENCES ordenes(id), usuario_id INTEGER,
+  creado_en TEXT DEFAULT (datetime('now','localtime')));

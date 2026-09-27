@@ -654,6 +654,7 @@ def cargar_ordenes(con, filtros, rol):
              (SELECT d.zona      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_zona,
              (SELECT d.ciudad    FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_ciudad,
              (SELECT d.maps      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_maps,
+             COALESCE((SELECT SUM(cc.monto) FROM credito_cliente cc WHERE cc.cliente_id=o.cliente_id),0) credito,
              (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
              (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l
               WHERE l.orden_id=o.id AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL)
@@ -849,6 +850,8 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
             # la orden queda como lo que de verdad cobró: si trajo menos, queda con saldo, no "pagada"
             nuevo_estado = estado_pago_de(o["pagado"] + monto, o["total"])
             sets.append("estado_pago=?"); args.append(nuevo_estado)
+            sobra = sobrante_a_favor(con, oid, uid, fe)   # pagó de más porque no había vuelto
+            if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
             if monto:
                 falto = round(o["total"] - o["pagado"] - monto, 2)
                 registrar(con, oid, uid, "pago", f"Cobrado contra entrega {fmt_usd(monto)} en efectivo el {fe} → {caja_efectivo(con)}"
@@ -948,15 +951,34 @@ async def cobrar_saldo(request: Request, oid: int, con=Depends(db)):
     """Cristina registra un cobro y lo deja confirmado de una (sin pasar por 'por revisar')."""
     rol = rol_de(request); f = await request.form(); uid = usuario_id(rol)
     if "confirmar_pago" not in PERMISOS[rol]: return volver(oid, request)
-    o = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()
-    monto = float(f.get("monto_usd") or 0); forma = f.get("forma") or "Efectivo USD"
+    o = con.execute("SELECT total, cliente_id FROM ordenes WHERE id=?", (oid,)).fetchone()
+    monto = float(cifra(f.get("monto_usd")) or 0); forma = f.get("forma") or "Efectivo USD"
     if monto <= 0: return volver(oid, request)
+    # Pagar con lo que ya tenía a favor: no entra plata nueva, se gasta la que ya había entrado
+    if forma == SALDO_FAVOR:
+        disponible = credito_de(con, o["cliente_id"])
+        monto = round(min(monto, disponible), 2)
+        if monto <= 0: return volver(oid, request)
+        con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado,confirmado_por,confirmado_en)
+                       VALUES (?,?,?,?,'USD',?,'confirmado',?,datetime('now','localtime'))""",
+                    (oid, SALDO_FAVOR, monto, monto, datetime.date.today().isoformat(), uid))
+        mover_credito(con, o["cliente_id"], -monto, "Usado en una compra", oid, uid)
+        pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+        con.execute("UPDATE ordenes SET estado_pago=? WHERE id=?", (estado_pago_de(pagado, o["total"]), oid)); fijar_fecha_pago(con, oid)
+        queda = credito_de(con, o["cliente_id"])
+        registrar(con, oid, uid, "pago", f"Usó {fmt_usd(monto)} de su saldo a favor"
+                  + (f" · le quedan {fmt_usd(queda)}" if queda > 0.009 else " · no le queda saldo"))
+        con.commit(); return volver(oid, request)
     en_bs = es_bolivares(forma); tasa = tasa_hoy(con)["valor"]
     con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,'confirmado',?,datetime('now','localtime'))",
                 (oid, forma, monto, monto * tasa if en_bs else monto, "VES" if en_bs else "USD", tasa if en_bs else None, FORMA_CUENTA.get(forma), f.get("referencia") or None, datetime.date.today().isoformat(), uid))
     pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
     con.execute("UPDATE ordenes SET estado_pago=? WHERE id=?", (estado_pago_de(pagado, o["total"]), oid)); fijar_fecha_pago(con, oid)
-    registrar(con, oid, uid, "pago", f"Cobro registrado: {forma} {fmt_usd(monto)}" + (f" · queda {fmt_usd(o['total'] - pagado)}" if pagado < o["total"] - 0.01 else " · saldada")); con.commit(); return volver(oid, request)
+    sobra = sobrante_a_favor(con, oid, uid)
+    registrar(con, oid, uid, "pago", f"Cobro registrado: {forma} {fmt_usd(monto)}"
+              + (f" · queda {fmt_usd(o['total'] - pagado)}" if pagado < o["total"] - 0.01 else " · saldada")
+              + (f" · {fmt_usd(sobra)} le quedan a favor" if sobra else ""))
+    con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/entrega")
@@ -1459,6 +1481,47 @@ async def efectivo_registrado(request: Request, con=Depends(db)):
         con.execute(f"UPDATE pagos SET en_cashflow=1 WHERE id IN ({','.join('?' * len(ids))})", ids)
         con.commit()
     return RedirectResponse(f.get("volver") or "/cashflow", status_code=303)
+
+
+# ------------------------------------------------------------------ SALDO A FAVOR
+SALDO_FAVOR = "Saldo a favor"
+
+
+def credito_de(con, cliente_id):
+    """Lo que el cliente tiene a favor. Sale de pagar de más cuando no hay vuelto."""
+    r = con.execute("SELECT COALESCE(SUM(monto),0) FROM credito_cliente WHERE cliente_id=?", (cliente_id,)).fetchone()
+    return round(r[0] or 0, 2)
+
+
+def mover_credito(con, cliente_id, monto, motivo, oid=None, uid=None, fecha=None):
+    """Positivo: se le queda debiendo. Negativo: lo usó en una compra."""
+    if not cliente_id or abs(monto) < 0.005: return
+    con.execute("INSERT INTO credito_cliente (cliente_id, fecha, monto, motivo, orden_id, usuario_id) VALUES (?,?,?,?,?,?)",
+                (cliente_id, fecha or datetime.date.today().isoformat(), round(monto, 2), motivo, oid, uid))
+
+
+def sobrante_a_favor(con, oid, uid, fecha=None):
+    """Si en una orden se cobró más que su total, el sobrante queda a favor del cliente
+    en vez de quedar como un error. Devuelve cuánto quedó a favor."""
+    o = con.execute("SELECT cliente_id, total FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if not o: return 0
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+    ya = con.execute("SELECT COALESCE(SUM(monto),0) FROM credito_cliente WHERE orden_id=? AND monto>0", (oid,)).fetchone()[0]
+    sobra = round(pagado - (o["total"] or 0) - ya, 2)
+    if sobra > 0.009:
+        mover_credito(con, o["cliente_id"], sobra, "Pagó de más (sin vuelto)", oid, uid, fecha)
+        return sobra
+    return 0
+
+
+@app.post("/clientes/{cid}/credito")
+def credito_manual(request: Request, cid: int, monto: str = Form("0"), motivo: str = Form(""),
+                   volver_a: str = Form(""), con=Depends(db)):
+    """Anotar o descontar un saldo a favor a mano."""
+    if "confirmar_pago" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
+    m = cifra(monto) or 0
+    if m: mover_credito(con, cid, m, motivo.strip() or ("Saldo a favor" if m > 0 else "Usado"), None, usuario_id(rol_de(request), request))
+    con.commit(); return RedirectResponse(volver_a or f"/clientes/{cid}", status_code=303)
 
 
 def caja_efectivo(con):
@@ -2136,10 +2199,11 @@ def revision(request: Request, con=Depends(db)):
     huerf = con.execute("SELECT COUNT(*) FROM abonos_produccion WHERE gasto_id IS NULL").fetchone()[0]
     chequeo("Cada pago a proveedor tiene su gasto", huerf == 0, f"{huerf} pagos sin gasto" if huerf else "todos con gasto")
 
-    # 3 · lo cobrado en una orden no puede pasarse del total
+    # 3 · lo cobrado de más tiene que estar a favor del cliente, no perdido
     mal = [f"#{r['numero']}" for r in con.execute("""SELECT o.numero FROM ordenes o WHERE o.estado!='cancelada'
-             AND COALESCE((SELECT SUM(monto_usd) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado'),0) > o.total + 0.01""")]
-    chequeo("Ninguna orden tiene cobrado más de su total", not mal, ", ".join(mal[:8]) or "todas correctas")
+             AND COALESCE((SELECT SUM(monto_usd) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado'),0)
+               > o.total + COALESCE((SELECT SUM(cc.monto) FROM credito_cliente cc WHERE cc.orden_id=o.id AND cc.monto>0),0) + 0.01""")]
+    chequeo("Lo cobrado de más quedó a favor del cliente", not mal, ", ".join(mal[:8]) or "todas correctas")
 
     # 4 · una orden marcada pagada tiene que tener los pagos
     inc = [f"#{r['numero']}" for r in con.execute("""SELECT o.numero FROM ordenes o WHERE o.estado_pago='pagada'
@@ -3450,7 +3514,10 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
         r["pro"] = r["pro"] or (r["porche_version"] == "PRO")
         r["basico"] = (r["porches"] or "").startswith("Básico") or r["porche_version"] == "Básico"
         r["pendientes"] = [k for k in ("telefono", "correo", "ciudad") if r[k] == "Pendiente"] + (["perro"] if r["perro_pend"] else [])
-    conteos = {"todos": len(rows), "pro": sum(1 for r in rows if r["pro"]), "basico": sum(1 for r in rows if r["basico"]), "pendientes": sum(1 for r in rows if r["pendientes"])}
+    creditos = {r[0]: round(r[1], 2) for r in con.execute("SELECT cliente_id, SUM(monto) FROM credito_cliente GROUP BY cliente_id HAVING SUM(monto) > 0.009")}
+    for r in rows: r["credito"] = creditos.get(r["id"], 0)
+    conteos = {"todos": len(rows), "pro": sum(1 for r in rows if r["pro"]), "basico": sum(1 for r in rows if r["basico"]),
+               "pendientes": sum(1 for r in rows if r["pendientes"]), "credito": sum(1 for r in rows if r["credito"])}
     for k in TIPOS_CLIENTE: conteos[k] = sum(1 for r in rows if r["tipo"] == k)
     ciudades = {}
     for r in rows:
@@ -3462,6 +3529,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
     elif ver == "pro": rows = [r for r in rows if r["pro"]]
     elif ver == "basico": rows = [r for r in rows if r["basico"]]
     elif ver == "pendientes": rows = [r for r in rows if r["pendientes"]]
+    elif ver == "credito": rows = sorted([r for r in rows if r["credito"]], key=lambda r: -r["credito"])
     elif ver in TIPOS_CLIENTE: rows = [r for r in rows if r["tipo"] == ver]
     if ciudad: rows = [r for r in rows if ciudad.strip().lower() in (r["ciudad"] or "").lower()]
     if origen: rows = [r for r in rows if (r["origen"] or "Sin registrar") == origen]
@@ -3657,7 +3725,9 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
                              COALESCE((SELECT SUM(total) FROM ordenes o WHERE o.cliente_id=clientes.id AND o.estado!='cancelada'),0) gastado
                              FROM clientes WHERE referido_id=? ORDER BY id""", (c["id"],)).fetchall()
     lo_trajo = con.execute("SELECT id, nombre FROM clientes WHERE id=?", (c["referido_id"],)).fetchone() if c["referido_id"] else None
-    return render(request, "cliente.html", seccion="clientes", c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
+    return render(request, "cliente.html", seccion="clientes",
+                  credito=credito_de(con, cid),
+                  credito_mov=con.execute("SELECT * FROM credito_cliente WHERE cliente_id=? ORDER BY id DESC LIMIT 12", (cid,)).fetchall(), c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
                   refirio=refirio, lo_trajo=lo_trajo,
                   packs=packs, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
                   etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack,

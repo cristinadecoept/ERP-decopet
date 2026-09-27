@@ -4,6 +4,7 @@
 <button class="btn" onclick="location.href='/ordenes?estado=todas&nueva={{ c.id }}'">+ Nueva orden</button></div>
 
 <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:16px">
+ {% if rol=='admin' and credito %}<div class="tile"><b style="color:var(--verde-osc)">{{ credito|usd }}</b><span>Saldo a favor</span><i>se le descuenta en su próxima compra</i></div>{% endif %}
  <div class="tile"><b>{{ nums.n }}</b><span>Pedidos</span><i>{{ nums.unidades|int }} productos en total</i></div>
  {% if rol=='admin' %}<div class="tile"><b>{{ nums.total|usd }}</b><span>Total gastado</span><i>{% if nums.mejor_que is not none %}compra más que el {{ nums.mejor_que }} % de tus clientes{% else %}&nbsp;{% endif %}</i></div>
  <div class="tile"><b>{{ nums.ticket|usd }}</b><span>Ticket promedio</span><i>{% if nums.mayor %}su pedido más grande fue de {{ nums.mayor.total|usd }} el {{ nums.mayor.creado_en|fecha }}{% else %}—{% endif %}</i></div>{% endif %}
@@ -107,4 +108,23 @@ document.querySelectorAll('form').forEach(f=>{
   });
 });
 </script>
+
+{% if rol=='admin' %}<div class="tarjeta cf-b" style="margin-top:16px"><h3>Saldo a favor</h3>
+ <div class="cf-cuerpo">
+  <p class="cf-d">{% if credito %}Tiene <b>{{ credito|usd }}</b> a favor.{% else %}No tiene saldo a favor.{% endif %}
+   <span class="mini">Se genera solo cuando paga de más porque no hay vuelto. También lo puedes anotar a mano.</span></p>
+  {% if credito_mov %}<table class="lineas"><tr><th>Fecha</th><th>Qué pasó</th><th class="num">Monto</th></tr>
+  {% for m in credito_mov %}<tr>
+   <td class="mono mini" style="width:100px">{{ m.fecha|dia }}</td>
+   <td>{{ m.motivo or '—' }}{% if m.orden_id %}<span class="mini"> · orden</span>{% endif %}</td>
+   <td class="num"><b style="color:{{ 'var(--verde-osc)' if m.monto > 0 else '#b45a1c' }}">{{ '+' if m.monto > 0 }}{{ m.monto|usd }}</b></td>
+  </tr>{% endfor %}</table>{% endif %}
+  <form method="post" action="/clientes/{{ c.id }}/credito" class="cf-doc">
+   <input type="hidden" name="volver_a" value="/clientes/{{ c.id }}">
+   <div class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" placeholder="2.50" style="width:100px"></div>
+   <input name="motivo" placeholder="por qué (no había vuelto, lo usó…)">
+   <button class="btn chico">Anotar</button>
+  </form>
+  <p class="mini">Para descontarlo cuando lo use, anota el monto en negativo: −2.50</p>
+ </div></div>{% endif %}
 {% endblock %}
