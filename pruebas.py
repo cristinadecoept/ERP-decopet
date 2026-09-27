@@ -166,6 +166,30 @@ def _():
     assert A.cifra("") in (None, 0)
 
 
+# ─────────────────────────────────────────────── no perder datos sin querer
+print("\nNO BORRAR LO QUE NO SE TOCÓ")
+
+@prueba("Editar un cliente sin mandar todos los campos no borra los demás")
+def _():
+    import asyncio
+    con = base_limpia()
+    con.execute("""INSERT INTO clientes (id,nombre,nombre_pila,apellido,telefono,correo)
+                   VALUES (1,'Ana Pérez','Ana','Pérez','0414-1112233','ana@x.com')""")
+    con.commit()
+    # se manda solo la ciudad, como haría un formulario a medio llenar
+    campos = {"ciudad": "Caracas"}
+    actual = con.execute("SELECT * FROM clientes WHERE id=1").fetchone()
+    limpiar = {"telefono": lambda v: v, "correo": lambda v: v, "ciudad": lambda v: v}
+    cambia = {k: fn(campos.get(k)) for k, fn in limpiar.items() if k in campos}
+    con.execute(f"UPDATE clientes SET {', '.join(k + '=?' for k in cambia)} WHERE id=1", tuple(cambia.values()))
+    con.commit()
+    r = con.execute("SELECT nombre, apellido, telefono, correo, ciudad FROM clientes WHERE id=1").fetchone()
+    assert r["nombre"] == "Ana Pérez", r["nombre"]
+    assert r["telefono"] == "0414-1112233", "le borró el teléfono"
+    assert r["correo"] == "ana@x.com", "le borró el correo"
+    assert r["ciudad"] == "Caracas"
+
+
 # ─────────────────────────────────────────────── poder reconstruir el ERP
 print("\nRECONSTRUIR DESDE CERO")
 

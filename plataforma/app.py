@@ -1105,6 +1105,7 @@ def tasa_pagina(request: Request, con=Depends(db)):
 
 @app.post("/tasa/actualizar")
 def tasa_actualizar(request: Request):
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     bcv.actualizar(DB, forzar=True); return RedirectResponse("/tasa", status_code=303)
 
 
@@ -3021,6 +3022,7 @@ def prepagado_programar(request: Request, rid: int, fecha: str = Form(""), tipo_
 @app.post("/prepagados/{rid}/campo")
 def prepagado_campo(request: Request, rid: int, despachador: str = Form(""), agencia: str = Form(""), en_ruta: str = Form(""), volver: str = Form(""), con=Depends(db)):
     """Ajustes rápidos desde Operaciones: quién lo lleva, por cuál agencia, o marcarlo en ruta."""
+    if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     if despachador: con.execute("UPDATE repuestos_prepagados SET despachador=? WHERE id=?", (despachador, rid))
     if agencia: con.execute("UPDATE repuestos_prepagados SET agencia=? WHERE id=?", (agencia, rid))
     if en_ruta: con.execute("UPDATE repuestos_prepagados SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, rid))
@@ -3386,16 +3388,36 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
 
 @app.post("/clientes/{cid}/editar")
 async def cliente_editar(request: Request, cid: int, con=Depends(db)):
+    if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     f = await request.form()
-    nombre_pila, apellido = f["nombre_pila"].strip(), (f.get("apellido") or "").strip() or None
-    con.execute("UPDATE clientes SET nombre_pila=?, apellido=?, nombre=?, telefono=?, cedula=?, correo=?, ciudad=?, porche_version=?, porche_tamano=? WHERE id=?",
-                (nombre_pila, apellido, nombre_completo(nombre_pila, apellido), normalizar_telefono(f.get("telefono")), (f.get("cedula") or "").strip().upper() or None,
-                 f.get("correo") or None, f.get("ciudad") or None, f.get("porche_version") or None, ", ".join(x for x in ("Mediano", "Grande") if x in f.getlist("porche_tamano")) or None, cid))
-    con.commit(); return RedirectResponse(f"/clientes/{cid}", 303)
+    # Solo se cambia lo que el formulario trae de verdad. Si un campo no viene, se deja como
+    # estaba: un formulario incompleto no puede borrarle el teléfono ni el apellido a un cliente.
+    actual = con.execute("SELECT * FROM clientes WHERE id=?", (cid,)).fetchone()
+    if not actual: return RedirectResponse("/clientes", status_code=303)
+    limpiar = {
+        "nombre_pila":    lambda v: (v or "").strip() or actual["nombre_pila"],   # sin nombre no se queda
+        "apellido":       lambda v: (v or "").strip() or None,
+        "telefono":       lambda v: normalizar_telefono(v),
+        "cedula":         lambda v: (v or "").strip().upper() or None,
+        "correo":         lambda v: (v or "").strip() or None,
+        "ciudad":         lambda v: (v or "").strip() or None,
+        "porche_version": lambda v: (v or "").strip() or None,
+    }
+    campos = {k: fn(f.get(k)) for k, fn in limpiar.items() if k in f}
+    if "porche_tamano" in f:
+        campos["porche_tamano"] = ", ".join(x for x in ("Mediano", "Grande") if x in f.getlist("porche_tamano")) or None
+    if "nombre_pila" in campos or "apellido" in campos:
+        campos["nombre"] = nombre_completo(campos.get("nombre_pila", actual["nombre_pila"]),
+                                           campos.get("apellido", actual["apellido"]))
+    if campos:
+        con.execute(f"UPDATE clientes SET {', '.join(k + '=?' for k in campos)} WHERE id=?", (*campos.values(), cid))
+        con.commit()
+    return RedirectResponse(f"/clientes/{cid}", 303)
 
 
 @app.post("/clientes/{cid}/direccion")
 async def cliente_direccion(request: Request, cid: int, con=Depends(db)):
+    if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     f = await request.form(); did = f.get("id")
     if f.get("borrar") and did:
         con.execute("DELETE FROM direcciones WHERE id=? AND cliente_id=?", (did, cid))
@@ -3419,6 +3441,7 @@ def parsear_cumple(txt):
 
 @app.post("/clientes/{cid}/perro")
 async def cliente_perro(request: Request, cid: int, con=Depends(db)):
+    if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     f = await request.form(); mid = f.get("id")
     if f.get("borrar") and mid:
         con.execute("DELETE FROM mascotas WHERE id=? AND cliente_id=?", (mid, cid))
