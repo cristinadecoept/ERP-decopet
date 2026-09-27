@@ -1,5 +1,5 @@
 """Plataforma Decopet — pantallas. Parte 1: Órdenes."""
-import datetime, json, sqlite3, re, os, subprocess, secrets
+import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time
 from pathlib import Path
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
@@ -203,7 +203,7 @@ def _arranque():
         for (n,) in con.execute("SELECT DISTINCT despachador FROM ordenes WHERE despachador IS NOT NULL AND despachador!=''").fetchall():
             con.execute("INSERT OR IGNORE INTO despachadores (nombre, activo) VALUES (?,0)", (n,))
         con.commit()
-    con.close(); cargar_despachadores(); cargar_formas_pago(); cargar_ajustes()
+    con.close(); cargar_despachadores(); cargar_formas_pago(); cargar_ajustes(); arrancar_respaldo()
     bcv.programar(DB)
 
 
@@ -848,6 +848,29 @@ def ciclo_de(ritmo):
     return min(ritmo, CICLO_REPUESTO) if ritmo else CICLO_REPUESTO
 
 IVA = 0.16   # IVA Venezuela: el catálogo muestra el precio con IVA al lado (para Cashea y facturas)
+
+
+def respaldo_al_dia(horas=12):
+    """¿El último respaldo es de hace menos de N horas?"""
+    r = lista_respaldos()
+    if not r.get("ts"): return False
+    return (datetime.datetime.now() - r["ts"]).total_seconds() < horas * 3600
+
+
+def arrancar_respaldo():
+    """El respaldo se hace desde el propio ERP, no con un programa aparte: macOS no deja que
+    un proceso programado lea dentro de Documentos. Mientras el ERP esté abierto se respalda solo."""
+    def bucle():
+        time.sleep(15)        # deja que el ERP termine de cargar antes del primer intento
+        while True:
+            try:
+                if not respaldo_al_dia():
+                    subprocess.run(["/bin/bash", str(BASE.parent / "scripts" / "respaldo.sh")],
+                                   capture_output=True, text=True, timeout=120)
+            except Exception:
+                pass          # un respaldo fallido nunca puede tumbar el ERP
+            time.sleep(30 * 60)
+    threading.Thread(target=bucle, daemon=True).start()
 
 
 def cargar_ajustes():
@@ -1496,7 +1519,7 @@ def lista_respaldos():
         f = sorted(carpeta.glob("decopet-2*.db"), key=lambda x: x.stat().st_mtime, reverse=True)
         if f:
             t = datetime.datetime.fromtimestamp(f[0].stat().st_mtime)
-            return {"n": len(f), "ultimo": t.strftime("%d/%m/%Y %H:%M"),
+            return {"n": len(f), "ultimo": t.strftime("%d/%m/%Y %H:%M"), "ts": t,
                     "dias": (datetime.date.today() - t.date()).days, "carpeta": str(carpeta)}
         return {"n": 0, "ultimo": None, "dias": None, "carpeta": str(carpeta)}
     return {"n": 0, "ultimo": None, "dias": None, "carpeta": None}
