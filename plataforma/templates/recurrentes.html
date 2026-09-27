@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% block titulo %}Pagos recurrentes · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Pagos recurrentes</h1><div class="sub">Lo que se paga siempre. El Inicio te avisa cuando toca.</div></div><button class="btn" onclick="document.getElementById('f-rec').hidden=false">+ Nuevo pago fijo</button></div>
+<div id="f-rec" hidden class="tabla" style="padding:18px 22px;margin-bottom:16px"><form method="post" action="/finanzas/recurrentes">
+<div class="g3"><div><label>Nombre</label><input name="nombre" required ></div><div><label>Frecuencia</label><select name="frecuencia" id="r-frec" onchange="rDia()"><option value="semanal">Semanal</option><option value="quincenal">Quincena y último</option><option value="inicio_mes">Primeros días del mes</option><option value="mensual">Un día fijo del mes</option></select></div><div id="r-dia"><label id="r-dia-lb">¿Qué día?</label><select name="dia" id="r-dia-sel">{% for d in DIAS_SEM %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0==4 }}>{{ d|capitalize }}</option>{% endfor %}</select></div></div>
+<div class="g3"><div><label>Monto habitual</label><div style="display:flex;gap:6px"><input type="number" step="0.01" name="monto"><select name="moneda" style="width:90px"><option>USD</option><option>VES</option></select></div></div><div><label>Categoría</label><select name="categoria" id="g-cat" onchange="sub()">{% for c in cats %}<option>{{ c }}</option>{% endfor %}</select></div><div><label>Subcategoría</label><select name="subcategoria" id="g-sub"></select></div></div>
+<div class="g3"><div><label>¿Se paga por cantidad? <span class="mini">opcional</span></label><input name="unidad" placeholder="sacos, metros, horas…"></div><div><label>Precio por unidad <span class="mini">opcional</span></label><input type="number" step="0.01" name="precio_unitario" placeholder="3.00"></div><div><label>Proveedor / persona</label><input name="proveedor"></div></div>
+<div class="g3"><div><label>Sale de (caja habitual)</label><select name="cuenta_id"><option value="">—</option>{% for c in cuentas %}<option value="{{ c.id }}">{{ c.codigo }} · {{ c.nombre }}</option>{% endfor %}</select></div><div><label>Nota</label><input name="nota"></div></div>
+<p><button class="btn chico">Guardar</button> <button type="button" class="btn sec chico" onclick="document.getElementById('f-rec').hidden=true">Cancelar</button></p></form></div>
+<h2 class="seccion-t">Por pagar</h2>
+<div class="tabla"><table class="rec-t"><tr><th>Vence</th><th>Pago</th><th class="num">Monto</th><th>Estado</th><th></th></tr>
+{% for pg in pend %}<tr><td class="mono">{{ pg.vence|dia }}</td><td><b>{{ pg.nombre }}</b>{% if pg.proveedor %}<div class="mini">{{ pg.proveedor }}</div>{% endif %}</td><td class="num">{% if pg.monto %}{{ pg.monto|usd if pg.moneda=='USD' else ('Bs ' ~ '{:,.0f}'.format(pg.monto)) }}{% else %}—{% endif %}</td>
+<td>{% if pg.estado=='vencido' %}<span class="pago rechazado">vencido</span>{% elif pg.estado=='hoy' %}<span class="pago por_confirmar">hoy</span>{% else %}<span class="pago por_cobrar">en {{ pg.dias }} día{{ 's' if pg.dias!=1 }}</span>{% endif %}</td>
+<td><form method="post" action="/finanzas/recurrentes/{{ pg.id }}/pagar" style="display:flex;gap:6px;align-items:center"><input type="hidden" name="vence" value="{{ pg.vence }}">
+{% if pg.unidad %}<input type="number" step="0.01" name="cantidad" class="rec-cant" data-p="{{ pg.precio_unitario or '' }}" placeholder="{{ pg.unidad }}" title="¿Cuántos {{ pg.unidad }}?" style="width:92px"><span class="mini rec-x">{{ pg.unidad }}{% if pg.precio_unitario %} · ${{ '%g'|format(pg.precio_unitario) }} c/u{% endif %}</span>{% endif %}
+<input type="number" step="0.01" name="monto" value="{{ pg.monto or '' }}" required placeholder="$" class="rec-monto" style="width:95px"><input type="date" name="fecha" value="{{ pg.vence if pg.vence >= hoy else hoy }}" title="¿Qué día lo pagaste?" style="width:150px"><select name="cuenta_id" style="width:170px">{% for c in cuentas %}<option value="{{ c.id }}" {{ 'selected' if c.id==pg.cuenta_id }}>{{ c.codigo }} · {{ c.nombre }}</option>{% endfor %}</select><button class="btn chico">Pagado</button></form>
+ <details class="cobro no-toca"><summary class="mini">Este mes no toca</summary>
+  <form method="post" action="/finanzas/recurrentes/{{ pg.id }}/saltar" class="cobro-f" style="min-width:250px">
+   <input type="hidden" name="vence" value="{{ pg.vence }}">
+   <label style="margin-top:0">¿Por qué no toca?</label>
+   <input name="motivo" placeholder="me lo regalaron, no hubo servicio…" autofocus>
+   <p style="margin:8px 0 0"><button class="btn sec chico">Sacarlo del recordatorio</button></p>
+  </form></details></td></tr>
+{% else %}<tr><td colspan="5" class="vacio">Nada por pagar ahora mismo.</td></tr>{% endfor %}</table></div>
+<h2 class="seccion-t">Pagos fijos definidos</h2>
+<div class="tabla"><table><tr><th>Nombre</th><th>Frecuencia</th><th class="num">Monto</th><th>Categoría</th><th>Caja</th><th></th></tr>
+{% for c in comps %}<tr style="{{ 'opacity:.5' if not c.activo }}"><td><b>{{ c.nombre }}</b>{% if c.proveedor %}<div class="mini">{{ c.proveedor }}</div>{% endif %}</td><td>{{ {'semanal':'Todas las semanas','quincenal':'Quincena y último','inicio_mes':'Primeros días del mes','mensual':'Un día fijo del mes'}.get(c.frecuencia, c.frecuencia) }}{% if c.frecuencia=='semanal' %} · {{ DIAS_SEM[c.dia if c.dia is not none else 4] }}{% elif c.frecuencia=='inicio_mes' %} <span class="mini">· hasta el {{ c.dia or 5 }}</span>{% elif c.frecuencia=='mensual' %} · día {{ c.dia }}{% else %} · 15 y último{% endif %}</td><td class="num">{% if c.monto %}{{ c.monto|usd if c.moneda=='USD' else ('Bs ' ~ '{:,.0f}'.format(c.monto)) }}{% else %}—{% endif %}</td><td class="mini">{{ c.categoria or '' }}{% if c.subcategoria %} · {{ c.subcategoria }}{% endif %}</td><td class="mini">{{ c.cuenta or '—' }}</td><td><form method="post" action="/finanzas/recurrentes/{{ c.id }}/toggle"><button class="btn sec chico">{{ 'Pausar' if c.activo else 'Activar' }}</button></form></td></tr>
+{% else %}<tr><td colspan="6" class="vacio">Todavía no hay pagos fijos. Crea el primero con "+ Nuevo pago fijo".</td></tr>{% endfor %}</table></div>
+{% if hist %}<h2 class="seccion-t">Historial</h2><div class="tabla"><table><tr><th>Vencía</th><th>Pago</th><th>Qué pasó</th><th>Caja</th><th class="num">Monto</th><th></th></tr>
+{% for h in hist %}<tr>
+ <td class="mono">{{ h.vence|dia }}</td><td>{{ h.nombre }}</td>
+ <td>{% if h.gasto_id %}<span class="pago pagada">pagado</span>{% if h.pagado_en %}<span class="mini"> · {{ h.pagado_en|fecha(true) }}</span>{% endif %}
+  {% else %}<span class="pago por_cobrar">no tocaba</span>{% if h.motivo %}<div class="mini">{{ h.motivo }}</div>{% endif %}{% endif %}</td>
+ <td class="mini">{{ h.caja or '—' }}</td>
+ <td class="num">{{ h.monto_usd|usd if h.monto_usd is not none else '—' }}</td>
+ <td style="width:34px;text-align:right">{% if not h.gasto_id %}<form method="post" action="/finanzas/recurrentes/{{ h.compromiso_id }}/reactivar" title="Devolverlo a por pagar"><input type="hidden" name="vence" value="{{ h.vence }}"><button class="btn sec chico">↩</button></form>{% endif %}</td>
+</tr>{% endfor %}</table></div>{% endif %}
+<script>const CATS={{ cats|tojson }};function sub(){const s=document.getElementById('g-sub');s.innerHTML=(CATS[document.getElementById('g-cat').value]||[]).map(x=>`<option>${x}</option>`).join('');}sub();
+function rDia(){const f=document.getElementById('r-frec').value,d=document.getElementById('r-dia'),s=document.getElementById('r-dia-sel'),lb=document.getElementById('r-dia-lb');
+ d.hidden=(f==='quincenal');
+ if(f==='mensual'){lb.textContent='¿Qué día?';s.innerHTML=Array.from({length:28},(_,i)=>`<option value="${i+1}">Día ${i+1}</option>`).join('');}
+ else if(f==='semanal'){lb.textContent='¿Qué día?';s.innerHTML={{ DIAS_SEM|tojson }}.map((x,i)=>`<option value="${i}" ${i===4?'selected':''}>${x[0].toUpperCase()+x.slice(1)}</option>`).join('');}
+ else if(f==='inicio_mes'){lb.textContent='¿Hasta qué día tienes para pagarlo?';s.innerHTML=[3,5,7,10].map(n=>`<option value="${n}" ${n===5?'selected':''}>Dentro de los primeros ${n} días</option>`).join('');}} document.querySelectorAll('.rec-cant').forEach(i=>i.addEventListener('input',()=>{const p=parseFloat(i.dataset.p),c=parseFloat(i.value);
+  const m=i.closest('form').querySelector('.rec-monto');if(p&&c)m.value=(p*c).toFixed(2);}));
+</script>
+{% endblock %}

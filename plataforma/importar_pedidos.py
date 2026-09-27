@@ -1,0 +1,122 @@
+"""Carga "Pedidos-Todos los pedidos.csv" (Airtable, 2026) en ÓRDENES. NUNCA toca el Registro de ventas (origen_excel=2).
+Uso: ./.venv/bin/python -m plataforma.importar_pedidos "/ruta/archivo.csv" [--cargar]
+Decisiones de Cristina (20 sep 2026): fechas 2020/2004 → 2026; saldo negativo = delivery pagado aparte; Tarek Atta total $22; Regalo → orden tipo regalo sin pago;
+"Repuesto (pack / orden previa)" era error del bot → Pago Móvil; fecha de pago posterior a la de entrega → se iguala a la de entrega;
+columnas Excel/LDP/Incluir en resumen se ignoran, salvo Excel='R F' que marca factura fiscal hecha; Cashea siempre requiere factura fiscal."""
+import sys, csv, re, sqlite3, datetime, collections
+from pathlib import Path
+DB = Path(__file__).parent / "data" / "plataforma.db"
+
+def n(s): return " ".join((s or "").split())
+def money(s): return float((s or "0").replace("$", "").replace(",", "") or 0)
+
+PROD = {"pro mediano": ("PRO-M", None, 0), "pro grande": ("PRO-G", None, 0), "pro mediano + malla": ("PRO-M", None, 1), "pro grande + malla": ("PRO-G", None, 1),
+        "repuesto grande": ("REP-G", None, 0), "repuesto mediano": ("REP-M", None, 0), "repuesto grande + malla": ("REP-G", None, 1), "repuesto mediano + malla": ("REP-M", None, 1),
+        "rampa estándar": ("RAMPA-MINI", None, 0), "rampa estandar": ("RAMPA-MINI", None, 0), "rampa nueva": ("RAMPA-N", None, 0),
+        "pack 3 repuestos medianos": ("PACK3-M", None, 0), "pack 3 repuestos grandes": ("PACK3-G", None, 0), "pack 4 repuestos cashea": ("PACK4", None, 0), "pack 8 repuestos cashea": ("PACK8", None, 0),
+        "comedor 10cm": ("COM-10", None, 0), "comedor 15cm": ("COM-15", None, 0), "comedor 20cm": ("COM-20", None, 0), "bar 25cm": ("BAR-25", None, 0), "bar 30cm": ("BAR-30", None, 0),
+        "básico grande": ("BAS-G", None, 0), "básico mediano": ("BAS-M", None, 0), "basico grande": ("BAS-G", None, 0), "basico mediano": ("BAS-M", None, 0),
+        "malla por separado": ("MALLA", None, 0), "bowl pequeno": ("BOWL-P", None, 0), "bowl pequeño": ("BOWL-P", None, 0)}
+for cm, sku in (("10", "SLOW-10"), ("15", "SLOW-15"), ("20", "SLOW-20"), ("25", "SLOW-20"), ("30", "SLOW-30")):
+    for col in ("azul", "rosado"): PROD[f"slow chow {cm}cm {col}"] = (sku, col, 0)
+PAGO = {"pago movil": "Pago Móvil", "bnc": "Cashea BNC", "zelle": "Zelle", "efectivo": "Efectivo USD", "binance": "Binance USDT", "venmo": "Venmo", "pay pal": "PayPal", "paypal": "PayPal", "pipol pay": "Pipol Pay",
+        "repuesto (pack / orden previa)": "Pago Móvil"}
+CUENTA = {"Pago Móvil": "Pago Movil BVC", "Cashea BNC": "Cashea BNC", "Zelle": "Zelle Decopet", "Efectivo USD": "Caja", "Binance USDT": "Caja USDT", "Venmo": "Venmo", "PayPal": "Pay Pal", "Pipol Pay": "Pipol Pay"}
+AGENCIAS = {"tealca": "Tealca", "mrw": "MRW", "zoom": "Zoom", "liberty express": "Liberty Express"}
+DESPACH = {"ingrid": "Ingrid", "juan": "Juan", "cristina": "Cristina", "tony": "Tony", "fernando": "Fernando"}
+
+def fecha_iso(s):
+    s = n(s)
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s): return s
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", s)
+    return f"{m.group(3)}-{int(m.group(1)):02d}-{int(m.group(2)):02d}" if m else None
+
+def leer(ruta):
+    rows = list(csv.DictReader(open(ruta, "rb").read().decode("utf-8-sig").splitlines()))
+    out = []; avisos = collections.defaultdict(list)
+    for r in rows:
+        oid = int(r["ID"]); cliente = n(r["Cliente"]) or "Sin nombre"
+        if cliente == "Sin nombre": avisos["sin nombre"].append(oid)
+        fp = fecha_iso(r["Fecha Pago"]) or "2026-01-01"
+        if fp[:4] in ("2020", "2004"): fp = "2026" + fp[4:]; avisos["fecha corregida a 2026"].append((oid, cliente))
+        fe = fecha_iso(r["Fecha Entrega"])
+        if fe and fe < fp: avisos["fecha pago igualada a la de entrega"].append((oid, cliente, fp, fe)); fp = fe
+        lineas = []
+        for it in re.split(r"\s*,\s*", n(r["Productos"])):
+            m = re.match(r"^(.*?)\s*x\s*(\d+)$", it); nombre, cant = (m.group(1).strip(), int(m.group(2))) if m else (it, 1)
+            k = nombre.lower()
+            if k not in PROD: avisos["producto sin mapa"].append((oid, nombre)); continue
+            lineas.append((PROD[k], cant))
+        total, pagado, saldo = money(r["Total"]), money(r["Monto pagado"]), money(r["Saldo pendiente"])
+        delivery, perso, desc = money(r["Delivery"]), money(r["Personalizacion"]), money(r["Descuento"])
+        deliv_entregas = money(r["Delivery Entregas"])
+        if cliente.lower() == "tarek atta" and total == 1: total = 22; saldo = 0; avisos["total corregido (Tarek Atta → $22)"].append(oid)
+        if saldo < 0: delivery += -saldo; total += -saldo; saldo = 0; avisos["saldo negativo → delivery pagado aparte"].append((oid, cliente))
+        forma_x = n(r["Forma de Pago"]).lower(); regalo = forma_x == "regalo"
+        formas = ([PAGO[forma_x]] if forma_x in PAGO else [PAGO.get(f.strip(), None) for f in forma_x.split("/")]) if not regalo else []
+        if any(f is None for f in formas): avisos["forma de pago sin mapa"].append((oid, forma_x)); formas = [f for f in formas if f]
+        if "repuesto (pack" in forma_x: avisos["forma 'Repuesto (pack…)' → Pago Móvil"].append(oid)
+        canal = "cashea" if n(r["Canal"]).lower() == "cashea" else "whatsapp"
+        te = n(r["Tipo de Entrega"]).lower(); desp_x = n(r["Despachador"]).lower(); ag_x = n(r["Agencia"]).lower(); ciudad = n(r["Ciudad"]) or None
+        agencia = AGENCIAS.get(ag_x) or AGENCIAS.get(desp_x); despachador = DESPACH.get(desp_x)
+        if te == "pick up": tipo = "pickup"
+        elif te == "envio nacional" or (te == "pendientes de contacto" and agencia): tipo = "nacional"
+        elif ciudad and ciudad.lower() not in ("caracas", "ccs", "caracas."): tipo = "delivery_fuera" if not agencia else "nacional"
+        else: tipo = "delivery"
+        if te == "pendientes de contacto": avisos["'Pendientes de contacto' → según despachador"].append((oid, cliente, tipo))
+        status = n(r["Status"]).lower(); entregada = status != "pagado por coordinar"   # solo "Pagado por coordinar" queda pendiente; los packs pendientes se manejan como retiros
+        inc = int(n(r["Repuestos incluidos"]) or 0); ent = int(n(r["Repuestos entregados"]) or 0); pend = int(n(r["Repuestos pendientes"]) or 0)
+        out.append(dict(id=oid, cliente=cliente, fecha_pago=fp, fecha_entrega=fe, lineas=lineas, total=round(total, 2), pagado=round(pagado, 2), saldo=round(saldo, 2), delivery=delivery, perso=perso, descuento=desc,
+                        deliv_entregas=deliv_entregas, formas=formas, regalo=regalo, canal=canal, tipo=tipo, agencia=agencia, despachador=despachador, ciudad=ciudad,
+                        dir_nueva=n(r["Dirección nueva"]) or None, dir_hab=n(r["Dirección habitual"]) or None, retira=n(r["Retira el cliente"]), notas=n(r["Notas"]) or None,
+                        entregada=entregada, status=n(r["Status"]), pack_inc=inc, pack_ent=ent, pack_pend=pend, factura_hecha=(canal == "cashea"), requiere_factura=(canal == "cashea")))   # Cristina: las facturas de Cashea están al día
+    return out, avisos
+
+def cargar(pedidos):
+    con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
+    cols = [r[1] for r in con.execute("PRAGMA table_info(ordenes)")]
+    for c in ("requiere_factura", "factura_hecha"):
+        if c not in cols: con.execute(f"ALTER TABLE ordenes ADD COLUMN {c} INTEGER DEFAULT 0")
+    prod = {r["sku"]: dict(r) for r in con.execute("SELECT * FROM productos")}
+    opc_malla = prod["OPC-MALLA"]; opc_perso = prod["OPC-PERSO"]
+    cli = {n(r["nombre"]).lower(): r["id"] for r in con.execute("SELECT id, nombre FROM clientes")}
+    tasa = (con.execute("SELECT valor FROM tasas ORDER BY fecha_valor DESC LIMIT 1").fetchone() or [0])[0]
+    n_ok = 0
+    for p in pedidos:
+        cid = cli.get(p["cliente"].lower())
+        if not cid:
+            cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,origen_excel) VALUES (?,?,?,1)", (p["cliente"].split(" ")[0], " ".join(p["cliente"].split(" ")[1:]) or None, p["cliente"])); cid = cur.lastrowid; cli[p["cliente"].lower()] = cid
+        subtotal = round(p["total"] - p["delivery"] - p["perso"] + p["descuento"], 2)
+        base = sum(prod[sku]["precio"] * cant for (sku, _, _), cant in p["lineas"]) or 1
+        estado_pago = "pagada" if p["regalo"] or p["saldo"] <= 0.01 else ("abonada" if p["pagado"] > 0 else "sin_pago")
+        if p["canal"] == "cashea" and estado_pago == "pagada": estado_pago = "pagada"
+        forma_txt = " + ".join(dict.fromkeys(p["formas"])) or ("Regalo" if p["regalo"] else None)
+        cur = con.execute("""INSERT INTO ordenes (numero,tipo,cliente_id,canal,creada_por,estado,estado_pago,subtotal,descuento,iva,delivery,total,tasa_bcv,comision,tipo_entrega,direccion,ciudad,despachador,agencia,
+                             fecha_prometida,fecha_entrega,notas_entrega,forma_pago_prevista,modalidad_envio,origen_excel,requiere_factura,factura_hecha,creado_en,actualizado_en) VALUES (?,?,?,?,1,?,?,?,?,0,?,?,?,0,?,?,?,?,?,?,?,?,?,?,2,?,?,?,?)""",
+                          (f"#{p['id']}", "regalo" if p["regalo"] else "venta", cid, p["canal"], "entregada" if p["entregada"] else "pendiente", estado_pago, subtotal, p["descuento"], p["delivery"], p["total"], tasa,
+                           p["tipo"], p["dir_nueva"] or p["dir_hab"], p["ciudad"], p["despachador"], p["agencia"], p["fecha_entrega"] or p["fecha_pago"], p["fecha_entrega"] if p["entregada"] else None,
+                           p["notas"], forma_txt, "cobro_destino" if p["tipo"] == "nacional" else None, 1 if p["requiere_factura"] else 0, 1 if p["factura_hecha"] else 0, p["fecha_pago"] + " 12:00:00", p["fecha_pago"] + " 12:00:00"))
+        oid = cur.lastrowid
+        for (sku, color, malla), cant in p["lineas"]:
+            pr = prod[sku]; extras = (opc_malla["precio"] if malla else 0) * cant
+            parte = round(subtotal * (pr["precio"] * cant / base), 2) if base else 0
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,color,malla,extras,total) VALUES (?,?,?,?,?,?,?,?,?,?)", (oid, pr["id"], pr["nombre"], cant, pr["precio"], pr["costo"], color, 1 if malla else 0, extras, parte))
+            if sku.startswith("PACK") and p["pack_inc"]:
+                k = con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,creado_en) VALUES (?,?,?,?,?,?,?,?)",
+                                (cid, oid, pr["id"], "Grande" if sku.endswith("G") else ("Mediano" if sku.endswith("M") else None), p["pack_inc"], 1 if p["pack_ent"] >= 1 else 0, "activo" if p["pack_pend"] > 0 else "completo", p["fecha_pago"] + " 12:00:00")).lastrowid
+                extra_deliv = p["deliv_entregas"]; retiros = max(p["pack_ent"] - 1, 0)   # "Delivery Entregas" = delivery cobrado en los retiros (aparte del de la orden)
+                for i in range(retiros):   # retiros posteriores: no tenemos fechas exactas en Airtable, se usa la fecha de entrega/pago
+                    con.execute("INSERT INTO entregas_repuesto (pack_id,fecha,tipo_entrega,delivery_cobrado,notas,usuario_id) VALUES (?,?,?,?,?,1)", (k, p["fecha_entrega"] or p["fecha_pago"], p["tipo"], round(extra_deliv / retiros, 2), "migrado de Airtable (fecha aproximada)"))
+        if p["perso"]: con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,?,?,?,?)", (oid, opc_perso["id"], opc_perso["nombre"], 1, p["perso"], p["perso"]))
+        if p["pagado"] > 0 and not p["regalo"] and p["formas"]:
+            con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,cuenta,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,'USD',?,?,'confirmado',1,?)",
+                        (oid, forma_txt, p["pagado"], p["pagado"], CUENTA.get(p["formas"][0]), p["fecha_pago"], p["fecha_pago"] + " 12:00:00"))
+        if p["retira"] == "No, un tercero": con.execute("UPDATE ordenes SET receptor_nombre=? WHERE id=?", ("otra persona (ver notas)", oid))
+        n_ok += 1
+    con.commit(); return n_ok
+
+if __name__ == "__main__":
+    ped, avisos = leer(sys.argv[1]); print(f"Pedidos: {len(ped)} · total ${sum(p['total'] for p in ped):,.2f}")
+    for k, v in avisos.items(): print(f"- {k}: {len(v)} → {v[:5]}")
+    print("packs con saldo:", sum(1 for p in ped if p["pack_pend"] > 0), "| pendientes de entrega:", sum(1 for p in ped if not p["entregada"]), "| cashea (requiere factura):", sum(1 for p in ped if p["requiere_factura"]), "| factura hecha:", sum(1 for p in ped if p["factura_hecha"]))
+    if "--cargar" in sys.argv: print("Cargados", cargar(ped))

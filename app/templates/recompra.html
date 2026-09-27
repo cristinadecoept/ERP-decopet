@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Clientes para recompra de repuesto</h1>
+<p class="muted">Tienen Porche PRO y llevan entre {{ ciclo }} y 120 días sin comprar nada. Los primeros de la lista son los que "acaban de vencer" — son los mejores para escribirles hoy.</p>
+<div class="tarjeta"><table><tr><th>Cliente</th><th>Teléfono</th><th>Primer Porche</th><th>Último pedido</th><th class="num">Días sin pedir</th><th class="num">Repuestos comprados</th><th class="num">Pedidos</th></tr>
+{% for r in rows %}<tr><td><a href="/clientes/{{ r.id }}">{{ r.nombre }}</a></td><td>{{ r.telefono or '—' }}</td><td>{{ r.primer_porche|fecha }}</td><td>{{ r.ultimo_pedido|fecha }}</td><td class="num"><b>{{ r.dias_sin_pedir }}</b></td><td class="num">{{ r.repuestos_comprados|int }}</td><td class="num">{{ r.pedidos }}</td></tr>{% endfor %}</table></div>
+{% endblock %}

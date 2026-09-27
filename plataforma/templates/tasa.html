@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block titulo %}Tasa BCV · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Tasa BCV</h1><div class="sub">Se actualiza sola al arrancar y cada 6 horas. Cada orden guarda la tasa del día en que se creó y nunca se recalcula.</div></div>
+<form method="post" action="/tasa/actualizar"><button class="btn sec">Actualizar ahora</button></form></div>
+<div class="tiles">
+ <div class="tile"><b>{{ '{:,.2f}'.format(tasa.valor or 0) }}</b><span>Bs por dólar, vigente hoy</span><i>fecha valor {{ tasa.fecha_valor|fecha }} · {{ tasa.fuente }}{% if tasa.manual %} · corrección manual{% endif %}</i></div>
+ <div class="tile {{ 'rojo' if tasa.estado.error and not tasa.estado.valor }}"><b style="font-size:16px">{{ tasa.estado.ultimo_intento or '—' }}</b><span>Último intento de actualización</span><i>{% if tasa.estado.error %}⚠ {{ tasa.estado.error }}{% else %}sin errores{% endif %}</i></div>
+ <div class="tile {{ 'nar' if tasa.alerta }}"><b style="font-size:16px">{{ tasa.alerta or 'OK' }}</b><span>Estado</span><i>si falla, se sigue usando la última tasa conocida</i></div>
+</div>
+{% if tasa.alerta %}<div class="nota-log" style="margin-top:12px">{{ tasa.alerta }}. Puedes corregirla a mano abajo; queda registrado quién y por qué.</div>{% endif %}
+<div class="fila2" style="margin-top:18px">
+ <div class="tabla"><div class="tabla-t">Historial</div><table><tr><th>Fecha valor</th><th class="num">Bs/$</th><th>Fuente</th><th>Obtenida</th><th>Nota</th></tr>
+ {% for t in hist %}<tr><td>{{ t.fecha_valor }}</td><td class="num"><b>{{ '{:,.2f}'.format(t.valor) }}</b></td><td>{{ t.fuente }}{% if t.manual %} <span class="al pago">manual · {{ t.usuario }}</span>{% endif %}</td><td class="mini">{{ t.obtenido_en|fecha(true) }}</td><td class="mini">{{ t.nota or '' }}</td></tr>{% endfor %}</table></div>
+ {% if rol=='admin' %}<div class="tabla" style="padding:14px"><div class="tabla-t" style="margin:-14px -14px 10px">Corrección manual</div>
+ <form method="post" action="/tasa/manual"><div class="g2"><div><label>Bs por dólar</label><input type="number" step="0.0001" name="valor" required></div><div><label>Fecha valor</label><input type="date" name="fecha_valor" value="{{ hoy }}" required></div></div>
+ <label>Motivo (obligatorio)</label><input name="nota" required placeholder="ej. el BCV no publicó y usé la tasa del banco"><p><button class="btn">Guardar corrección</button></p></form></div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Abre el ERP de Decopet. Al cerrar la app desde el Dock, el servidor se detiene.
+RAIZ="$(cd "$(dirname "$0")/../../.." && pwd)"
+cd "$RAIZ" || exit 1
+LOG="plataforma/data/servidor.log"
+
+# si ya estaba corriendo, solo abre la ventana
+if curl -s -o /dev/null --max-time 1 http://127.0.0.1:8765/inicio; then
+  open "http://127.0.0.1:8765/inicio"; exit 0
+fi
+
+./.venv/bin/uvicorn plataforma.app:app --host 127.0.0.1 --port 8765 >> "$LOG" 2>&1 &
+SERVIDOR=$!
+trap 'kill $SERVIDOR 2>/dev/null' EXIT INT TERM
+
+for i in $(seq 1 40); do
+  curl -s -o /dev/null --max-time 1 http://127.0.0.1:8765/inicio && break
+  sleep 0.25
+done
+open "http://127.0.0.1:8765/inicio"
+wait $SERVIDOR

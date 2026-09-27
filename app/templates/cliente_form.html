@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Nuevo cliente</h1><form method="post"><div class="fila">
+ <div class="tarjeta"><h2>Datos</h2><div class="grid2"><div><label>Nombre</label><input name="nombre" required></div><div><label>Teléfono</label><input name="telefono"></div></div>
+ <div class="grid2"><div><label>Correo</label><input name="correo"></div><div><label>Canal de origen</label><select name="canal_origen">{% for x in CANALES %}<option value="{{ x }}">{{ x }}</option>{% endfor %}</select></div></div>
+ <div class="grid2"><div><label>Ciudad</label><input name="ciudad" value="Caracas"></div><div><label>Zona</label><input name="zona"></div></div><label>Dirección</label><input name="direccion"><label>Notas</label><textarea name="notas" rows="2"></textarea></div>
+ <div class="tarjeta"><h2>Perro (opcional)</h2><div class="grid2"><div><label>Nombre</label><input name="mascota_nombre"></div><div><label>Raza</label><input name="mascota_raza"></div></div>
+ <div class="grid2"><div><label>Fecha de nacimiento</label><input type="date" name="mascota_nacimiento"></div><div><label>Tamaño</label><select name="mascota_tamano"><option value="">—</option><option>mini</option><option>mediano</option><option>grande</option></select></div></div></div>
+</div><p><button class="btn">Guardar cliente</button> <a href="/clientes" class="btn sec">Cancelar</a></p></form>
+{% endblock %}

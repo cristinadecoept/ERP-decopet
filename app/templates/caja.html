@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Caja</h1>
+{% if not corte %}<div class="alerta"><b>Primer paso:</b> define la <b>fecha de corte</b> (el día desde el que el ERP lleva la caja) y el saldo que tiene cada caja ese día. A partir de ahí, cada pago y cada gasto mueven los saldos solos.</div>{% endif %}
+<div class="fila">
+ <div class="tarjeta" style="flex:2 1 500px"><h2>Saldos {% if corte %}<span class="muted">(desde {{ corte|fecha }})</span>{% endif %}</h2>
+  <form method="post" action="/caja/corte"><div class="grid3"><div><label>Fecha de corte</label><input type="date" name="fecha_corte" value="{{ corte or hoy }}"></div></div>
+  <table><tr><th>Caja</th><th>Moneda</th><th class="num">Saldo inicial</th><th class="num">+ Ingresos</th><th class="num">− Gastos</th><th class="num">± Movim.</th><th class="num">Saldo actual</th></tr>
+  {% set ns = namespace(total=0) %}{% for c in cajas %}{% set saldo = c.saldo_inicial + c.ingresos - c.egresos + c.movimientos %}{% set ns.total = ns.total + saldo %}
+  <tr><td>{{ c.nombre }}</td><td class="small muted">{{ c.moneda }}</td><td class="num"><input type="number" step="0.01" name="saldo_{{ c.id }}" value="{{ c.saldo_inicial }}" style="width:110px"></td><td class="num up">{{ c.ingresos|usd }}</td><td class="num down">{{ c.egresos|usd }}</td><td class="num">{{ c.movimientos|usd }}</td><td class="num"><b>{{ saldo|usd }}</b></td></tr>{% endfor %}
+  <tr><td colspan="6" class="num"><b>Total (USD ref.)</b></td><td class="num"><b>{{ ns.total|usd }}</b></td></tr></table>
+  <p><button class="btn sec">Guardar fecha de corte y saldos iniciales</button></p></form></div>
+ <div class="tarjeta"><h2>Movimiento manual</h2><form method="post" action="/caja/movimiento">
+  <label>Caja</label><select name="caja_id">{% for c in cajas %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select>
+  <label>Tipo</label><select name="tipo"><option value="ingreso">Ingreso (no ligado a un pedido)</option><option value="egreso">Egreso (no es gasto de la empresa)</option><option value="transferencia">Transferencia entre cajas</option><option value="ajuste">Ajuste</option></select>
+  <label>Caja destino (solo transferencia)</label><select name="caja_destino"><option value="">—</option>{% for c in cajas %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select>
+  <div class="grid2"><div><label>Monto USD</label><input type="number" step="0.01" name="monto" required></div><div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}"></div></div>
+  <label>Concepto</label><input name="concepto"><p><button class="btn">Registrar</button></p></form></div>
+</div>
+<div class="tarjeta"><h2>Últimos movimientos</h2><table><tr><th>Fecha</th><th>Tipo</th><th>Caja</th><th>Concepto</th><th class="num">Monto</th></tr>
+{% for m in movs %}<tr><td>{{ m.fecha|fecha }}</td><td class="small">{{ m.tipo }}</td><td>{{ m.caja or '—' }}</td><td>{% if m.pedido_id %}<a href="/pedidos/{{ m.pedido_id }}">{{ m.concepto }}</a>{% else %}{{ m.concepto or '' }}{% endif %}</td><td class="num {{ 'up' if m.monto>=0 else 'down' }}">{{ m.monto|usd }}</td></tr>{% else %}<tr><td colspan="5" class="muted">Nada todavía después de la fecha de corte.</td></tr>{% endfor %}</table></div>
+{% endblock %}

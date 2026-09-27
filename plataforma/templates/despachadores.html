@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block titulo %}Despachadores · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Despachadores</h1><div class="sub">{% if 'ver_dinero' in puede %}Cada pedido que le asignas suma lo que le pagas por esa zona. El lunes entras, marcas pagado y vuelve a cero.{% else %}Quién entrega y qué lleva hoy.{% endif %}</div></div>{% if rol=='admin' %}<button class="btn" onclick="document.getElementById('nuevo').hidden=!document.getElementById('nuevo').hidden">+ Nuevo despachador</button>{% endif %}</div>
+
+{% if rol=='admin' %}<div class="tarjeta" id="nuevo" hidden style="margin-bottom:16px"><h3>Nuevo despachador</h3>
+<form method="post" action="/despachadores/guardar"><div class="g2"><div><label>Nombre</label><input name="nombre" required></div><div><label>Teléfono</label><input name="telefono" placeholder="0414-1234567"></div></div>
+<label>Notas <span class="mini">(zona que cubre, moto, horario…)</span></label><input name="notas"><p style="margin:10px 0 0"><button class="btn chico">Guardar</button></p></form></div>{% endif %}
+
+<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));margin-bottom:18px">
+{% for d in despachadores if d.activo %}<a class="tile desp-card" href="/despachadores/{{ d.id }}" style="text-align:left;text-decoration:none;color:inherit">
+ <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div class="desp-avatar c{{ loop.index0 % 5 }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17" r="2.5"/><circle cx="18.5" cy="17" r="2.5"/><path d="M8 17h8.5"/><path d="M5.5 17 8 11.5h5.5l3 5.5"/><path d="M13.5 11.5 12 8H9"/><path d="M15 11.5h3.5l1.5 2.5"/><path d="M3.5 13h4.5"/></svg><span>{{ d.nombre[0] }}</span></div><div style="flex:1;min-width:0"><b style="font-size:17px">{{ d.nombre }}</b><div class="mini">{% if d.telefono %}{{ d.telefono }}{% else %}sin teléfono{% endif %}</div></div></div>
+ {% if 'ver_dinero' in puede %}<b style="font-size:30px;line-height:1.1;color:{{ '#b45a1c' if d.debe else 'var(--verde-osc)' }}">{{ (d.debe or 0)|usd }}</b><div class="mini">{% set x = [] %}{% if d.n_debe %}{% set _ = x.append(d.n_debe ~ ' entrega' ~ ('s' if d.n_debe!=1 else '')) %}{% endif %}{% if d.n_viajes %}{% set _ = x.append(d.n_viajes ~ ' viaje' ~ ('s' if d.n_viajes!=1 else '') ~ ' a la agencia') %}{% endif %}{% if x %}le debes por {{ x|join(' · ') }}{% if d.n_sin_entregar %} ({{ d.n_sin_entregar }} aún sin entregar){% endif %}{% else %}al día{% endif %}</div>
+ {% else %}<b style="font-size:30px;line-height:1.1">{{ d.n_debe or 0 }}</b><div class="mini">entrega{{ 's' if d.n_debe!=1 }} esta semana</div>{% endif %}
+ <div class="mini" style="margin-top:10px">{% for z in d.zonas %}<span class="canal" style="margin:0 4px 4px 0">{{ z.z }} · {{ z.n }}</span>{% endfor %}</div>
+ {% if 'ver_dinero' in puede %}<div class="mini" style="margin-top:6px">{% if d.ultimo_pago %}último pago {{ d.ultimo_pago.fecha|dia }} · {{ d.ultimo_pago.monto|usd }}{% else %}sin pagos registrados{% endif %}</div>{% endif %}
+</a>{% endfor %}
+</div>
+
+{% set inactivos = despachadores|rejectattr('activo')|list %}
+{% if inactivos %}<p class="mini" style="margin:4px 2px">Inactivos: {% for d in inactivos %}<a href="/despachadores/{{ d.id }}" style="color:inherit">{{ d.nombre }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+{% endblock %}

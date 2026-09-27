@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block titulo %}Marketing · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Marketing</h1></div>
+<form method="get"><select name="anio" onchange="this.form.submit()">{% for a in anios %}<option {{ 'selected' if anio==a }}>{{ a }}</option>{% endfor %}</select></form></div>
+
+<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));margin-bottom:16px">
+ <div class="tile"><b>{{ r.nuevos }}</b><span>Clientes nuevos en {{ anio }}</span></div>
+ <div class="tile"><b>{{ r.gasto|usd }}</b><span>Gastado en publicidad</span></div>
+ <div class="tile"><b>{% if r.costo is not none %}{{ r.costo|usd }}{% else %}—{% endif %}</b><span>Te cuesta cada cliente</span><i>{% if r.costo is none %}sin gasto de publicidad todavía{% endif %}</i></div>
+</div>
+
+{% if sin_origen %}<div class="nota-log" style="margin-bottom:16px"><b>{{ sin_origen }} de {{ total_cl }} clientes</b> no tienen registrado cómo te conocieron.</div>{% endif %}
+
+<div class="g2" style="align-items:start">
+<div class="tarjeta"><h3>De dónde vienen</h3>
+{% if origen %}<table class="lineas"><tr><th>Cómo nos conoció</th><th class="num" style="padding-right:16px">Clientes</th><th class="num">Gastan en promedio</th></tr>
+{% for o in origen %}<tr class="fila" onclick="location.href='/clientes?origen={{ o.o|urlencode }}'"><td>{{ o.o }}</td><td class="num" style="padding-right:16px"><b>{{ o.n }}</b></td><td class="num">{{ o.promedio|usd }}</td></tr>{% endfor %}</table>
+<div class="mini" style="margin-top:8px">El que trae más no siempre es el mejor: mira la columna de la derecha.</div>
+{% else %}<div class="vacio">Nadie con origen registrado en {{ anio }}.</div>{% endif %}</div>
+
+<div class="tarjeta"><h3>Quién te refiere</h3>
+{% if refs %}<table class="lineas"><tr><th>Cliente</th><th class="num" style="padding-right:16px">Ha traído</th><th class="num">Le compraron</th></tr>
+{% for r in refs %}<tr><td><b>{{ r.quien }}</b></td><td class="num" style="padding-right:16px">{{ r.n }}</td><td class="num">{{ r.trajo|usd }}</td></tr>{% endfor %}</table>
+{% else %}<div class="vacio">Todavía nadie registrado como referido. Al crear un cliente elige «Recomendación de otro cliente» y di quién fue.</div>{% endif %}</div>
+</div>
+
+{% if meses %}<div class="tarjeta" style="margin-top:16px"><h3>Meses en que invertiste</h3>
+<table class="lineas"><tr><th>Mes</th><th class="num" style="padding-right:16px">Publicidad</th><th class="num" style="padding-right:16px">Clientes nuevos</th><th class="num">Costo por cliente</th></tr>
+{% for m in meses %}<tr><td>{{ m.mes }}</td><td class="num" style="padding-right:16px">{{ m.gasto|usd }}</td><td class="num" style="padding-right:16px"><b>{{ m.nuevos }}</b></td><td class="num">{% if m.costo is not none %}{{ m.costo|usd }}{% else %}—{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

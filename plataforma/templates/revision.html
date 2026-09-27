@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block titulo %}Revisión · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Revisión</h1><div class="sub">Comprueba que los números del ERP cuadren entre sí</div></div></div>
+
+<div class="tabla rev-cab {{ 'mal' if n_mal }}">
+ <b>{% if n_mal %}⚠️ {{ n_mal }} cosa{{ 's' if n_mal!=1 }} por revisar{% else %}✓ Todo cuadra{% endif %}</b>
+ <span class="mini">{% if n_mal %}Mira abajo cuál es y avísame.{% else %}Las cuentas del ERP son consistentes entre sí.{% endif %}</span>
+</div>
+
+<div class="tabla" style="margin-top:14px"><table>
+{% for c in ch %}<tr><td style="width:34px;font-size:16px">{{ '✅' if c.ok else '⚠️' }}</td>
+ <td><b>{{ c.nombre }}</b><div class="mini">{{ c.detalle }}</div></td></tr>{% endfor %}
+</table></div>
+
+<div class="nota-cli" style="margin-top:14px"><span class="t">Qué hacer si algo no cuadra</span>
+Ninguna de estas revisiones cambia nada: solo miran. Si aparece un ⚠️, mándame lo que dice y yo lo reviso.
+</div>
+{% endblock %}

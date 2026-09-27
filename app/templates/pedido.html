@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block titulo %}{{ p.numero }}{% endblock %}{% block cuerpo %}
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap"><h1>Pedido {{ p.numero }} <span class="tag {{ p.estado }}">{{ ESTADO_LABEL[p.estado] }}</span> <span class="tag {{ p.canal }}">{{ p.canal }}</span></h1><a href="/pedidos" class="muted">← volver</a></div>
+<div class="pasos">{% set idx = ESTADOS.index(p.estado) %}{% for e in ESTADOS[:-1] %}<span class="{{ 'ok' if loop.index0<idx else ('actual' if loop.index0==idx) }}">{{ ESTADO_LABEL[e] }}</span>{% endfor %}</div>
+<div class="fila">
+ <div class="tarjeta" style="flex:2 1 420px"><h2>Detalle</h2>
+  <p><b>Cliente:</b> {% if p.cliente_id %}<a href="/clientes/{{ p.cliente_id }}">{{ p.cliente }}</a>{% else %}—{% endif %} {% if p.telefono %}· {{ p.telefono }}{% endif %}<br>
+  <b>Fecha:</b> {{ p.fecha|fecha }} {% if p.fecha_entrega %}· <b>Entregado:</b> {{ p.fecha_entrega|fecha }}{% endif %}<br>
+  <b>Entrega:</b> {{ TIPOS_ENTREGA.get(p.tipo_entrega,'—') }} {% if p.agencia %}({{ p.agencia }}){% endif %} {% if p.despachador %}· <b>Despachador:</b> {{ p.despachador }}{% endif %}<br>
+  {% if p.zona or p.direccion %}<b>Dirección:</b> {{ p.zona or '' }} {{ p.direccion or '' }}{% endif %}</p>
+  <table><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Total</th></tr>
+  {% for i in items %}<tr><td>{{ i.producto or i.descripcion }}{% if i.personalizacion %}<div class="small muted">Personalizado: {{ i.personalizacion }}</div>{% endif %}</td><td class="num">{{ i.cantidad|int }}</td><td class="num">{{ i.precio_unitario|usd }}</td><td class="num">{{ i.total|usd }}</td></tr>{% endfor %}
+  <tr><td colspan="3" class="num muted">Delivery</td><td class="num">{{ p.delivery|usd }}</td></tr>
+  <tr><td colspan="3" class="num"><b>Total</b></td><td class="num"><b>{{ p.total|usd }}</b></td></tr>
+  <tr><td colspan="3" class="num muted">Pagado</td><td class="num {{ 'up' if pagado>=p.total-0.01 else 'down' }}">{{ pagado|usd }}</td></tr></table>
+  <form method="post" action="/pedidos/{{ p.id }}/notas"><div class="grid3"><div><label>Tipo de entrega</label><select name="tipo_entrega"><option value="">—</option>{% for k,v in TIPOS_ENTREGA.items() %}<option value="{{ k }}" {{ 'selected' if p.tipo_entrega==k }}>{{ v }}</option>{% endfor %}</select></div>
+   <div><label>Agencia (envío nacional)</label><input name="agencia" value="{{ p.agencia or '' }}" placeholder="Tealca, MRW…"></div><div><label>&nbsp;</label><button class="btn sec">Guardar</button></div></div>
+   <label>Notas</label><textarea name="notas" rows="2">{{ p.notas or '' }}</textarea></form>
+ </div>
+ <div style="flex:1 1 300px">
+  <div class="tarjeta"><h2>Cambiar estado</h2><form method="post" action="/pedidos/{{ p.id }}/estado">
+   <label>Nuevo estado</label><select name="estado">{% for e in ESTADOS %}<option value="{{ e }}" {{ 'selected' if p.estado==e }}>{{ ESTADO_LABEL[e] }}</option>{% endfor %}</select>
+   <label>Despachador</label><select name="despachador_id"><option value="">—</option>{% for d in despachadores %}<option value="{{ d.id }}" {{ 'selected' if p.despachador_id==d.id }}>{{ d.nombre }}</option>{% endfor %}</select>
+   <label>Fecha de entrega (si se marca entregado)</label><input type="date" name="fecha_entrega" value="{{ p.fecha_entrega or hoy }}">
+   <p><button class="btn">Actualizar</button></p></form></div>
+  <div class="tarjeta"><h2>Registrar pago</h2><form method="post" action="/pedidos/{{ p.id }}/pago">
+   <label>Método</label><select name="metodo_id">{% for m in metodos %}<option value="{{ m.id }}">{{ m.nombre }} ({{ m.moneda_recibida }})</option>{% endfor %}</select>
+   <div class="grid2"><div><label>Monto (USD ref.)</label><input type="number" step="0.01" name="monto" value="{{ '%.2f'|format(p.total - pagado) if p.total-pagado>0 else '' }}"></div><div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}"></div></div>
+   <div class="grid2"><div><label>Monto recibido (Bs, si aplica)</label><input type="number" step="0.01" name="monto_moneda"></div><div><label>Tasa</label><input type="number" step="0.0001" name="tasa"></div></div>
+   <label>Referencia / comprobante</label><input name="referencia"><p><button class="btn">Registrar</button></p></form>
+   {% if pagos %}<table>{% for pa in pagos %}<tr><td>{{ pa.fecha|fecha }}</td><td>{{ pa.metodo }}</td><td class="num">{{ pa.monto_usd|usd }}</td></tr>{% endfor %}</table>{% endif %}</div>
+  {% if cashea %}<div class="tarjeta"><h2>Cashea</h2><p class="small">Ref: {{ cashea.referencia or '—' }} · Cobro: <b>{{ cashea.estado_cobro }}</b> · Cobrado {{ cashea.monto_cobrado|usd }} de {{ cashea.monto_total|usd }} <a href="/cashea">editar →</a></p></div>{% endif %}
+ </div>
+</div>
+<div class="tarjeta"><h2>Resumen para el despachador</h2><div class="pre" id="resumen">{{ resumen }}</div>
+<p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('resumen').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>
+{% endblock %}

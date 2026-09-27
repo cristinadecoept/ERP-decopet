@@ -1,0 +1,168 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Decopet · Análisis y plan</title>
+<style>
+:root{--verde:#5A9075;--crema:#EFE8E1;--naranja:#E1782E;--coral:#F89980;--gris:#ABBABA;--arena:#E4B18F;--tinta:#22302a}
+body{margin:0;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;background:#fbf9f6;color:var(--tinta);font-size:15px;line-height:1.55}
+.top{background:var(--verde);color:#fff;padding:28px 32px}.top h1{margin:0;font-size:24px}.top p{margin:6px 0 0;opacity:.9}
+main{max-width:980px;margin:0 auto;padding:24px 32px 60px}
+h2{font-size:20px;margin:36px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--crema);color:#2f5a44}
+h3{font-size:15.5px;margin:20px 0 6px;color:#3d6a52}
+table{width:100%;border-collapse:collapse;margin:8px 0 14px;font-size:14px}th{background:var(--crema);text-align:left;padding:7px 9px;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px}td{padding:7px 9px;border-bottom:1px solid #eee7de;vertical-align:top}
+.nota{background:var(--crema);border-left:4px solid var(--naranja);padding:10px 14px;border-radius:6px;margin:12px 0}
+.ok{color:var(--verde);font-weight:600}.no{color:#b3402b;font-weight:600}.est{display:inline-block;background:#fff;border:1px solid var(--gris);border-radius:99px;padding:1px 9px;font-size:12.5px;white-space:nowrap}
+.flujo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0}.flujo span{background:var(--verde);color:#fff;border-radius:8px;padding:5px 10px;font-size:13px}.flujo i{color:var(--gris);font-style:normal}
+ol li,ul li{margin:3px 0}.q{counter-reset:q}.q li{margin:6px 0}.q b{color:var(--naranja)}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:700px){.dos{grid-template-columns:1fr}main{padding:16px}}
+.caja{background:#fff;border:1px solid #e6dfd5;border-radius:10px;padding:12px 16px}
+small{color:#6b7570}
+</style></head><body>
+<div class="top"><h1>Plataforma de gestión de Decopet — análisis y plan</h1><p>Documento de trabajo · 13 de septiembre de 2026 · privado</p></div>
+<main>
+
+<h2>1. Lo que entiendo que quieres</h2>
+<p>Un <b>sitio web privado</b> (usuario y contraseña, desde computadora o celular) que sea <b>el único lugar donde vive la información de Decopet</b>. No es un programa contable: es el sistema con el que se opera la marca día a día, y que además te deja ver el negocio completo.</p>
+<ul>
+<li><b>Reemplaza a Airtable</b> como fuente central. Airtable queda solo para auditar, importar histórico y validar la transición; después se apaga para la operación diaria.</li>
+<li><b>Los canales alimentan por detrás</b> (Tina/WhatsApp, Shopify, Cashea, Meta). Nadie copia la misma información en dos sitios.</li>
+<li><b>Dos experiencias distintas</b> sobre los mismos datos: una para logística (simple, sin dinero) y una para ti (todo).</li>
+<li><b>El centro es el cliente y su recompra.</b> Especialmente el ciclo porche PRO → repuestos → packs, que hoy no se controla bien.</li>
+<li><b>Todo es auditable:</b> cada acción importante guarda quién y cuándo; cada número se puede abrir para ver qué órdenes, clientes o movimientos lo forman; ninguna estimación se presenta como hecho.</li>
+<li><b>Los precios viven en el catálogo</b>, no en el código; cada orden guarda el precio y la tasa BCV que se usaron ese día.</li>
+</ul>
+<div class="nota"><b>Qué pasa con lo que ya construí hoy.</b> El prototipo de esta tarde fue útil para dos cosas que siguen valiendo: la <b>limpieza e importación de tus 3 años de ventas</b> (7.794 pedidos, nombres de producto y formas de pago unificados, cifras cuadradas con tu Excel de caja) y el catálogo con sus alias. Lo que este brief cambia es el <b>modelo de datos</b> (receptor distinto del cliente, packs y consumo, notas clasificadas, roles y permisos, historial de cambios, cuentas vs. utilidad) y el <b>diseño</b>. No voy a estirar el prototipo: lo correcto es rediseñar el esqueleto con este documento como base y reutilizar la importación.</div>
+
+<h2>2. Logística vs. Cristina: dos experiencias sobre la misma información</h2>
+<table><tr><th></th><th>Logística (Juan, Isaías, quien entre)</th><th>Cristina (y quien tenga rol de administración)</th></tr>
+<tr><td><b>Al entrar ve</b></td><td>"Operación de hoy": qué preparar, coordinar, entregar, qué está retrasado, qué incidencias hay.</td><td>"Panel general": lo mismo de operación + venta de hoy, venta cobrada, ticket promedio, pagos por confirmar.</td></tr>
+<tr><td><b>Secciones</b></td><td>Inicio · Operaciones · Órdenes (vista logística) · Clientes (solo contacto y entrega) · Inventario (ver disponible, marcar preparado).</td><td>Las 9 secciones completas.</td></tr>
+<tr><td><b>En una orden ve</b></td><td>Cliente, teléfono, productos, tipo de entrega, dirección, receptor, agencia, guía, horario, notas de entrega, si está pagada (sí/no/contra entrega) y forma de pago.</td><td>Todo lo anterior + comprobante, referencia, tasa BCV, costos, ganancia, margen, comisión del canal, campaña, historial de cambios.</td></tr>
+<tr><td><b>Puede hacer</b></td><td>Marcar preparado, coordinar, asignar despachador, agregar guía, marcar despachado y entregado, reportar incidencia, reprogramar. <span class="no">No</span> confirma pagos ni cancela (salvo que decidas lo contrario).</td><td>Todo, incluido confirmar pagos, cancelar, modificar precios, registrar gastos, gestionar usuarios.</td></tr>
+<tr><td><b>Nunca ve</b></td><td>Gastos, utilidad, cash flow, sueldos, márgenes, analítica, marketing, configuración, notas marcadas como "privada para dirección".</td><td>—</td></tr>
+</table>
+<p>Propongo tres roles iniciales, administrables desde Configuración: <span class="est">Administradora</span> <span class="est">Operación y ventas</span> (crea órdenes, confirma pagos, coordina) <span class="est">Logística</span> (solo entregas). Tina entra como <b>usuario de sistema</b>: lo que ella crea queda firmado por ella en el historial.</p>
+
+<h2>3. Mapa de módulos</h2>
+<table><tr><th>Sección</th><th>Qué contiene</th><th>Quién la ve</th></tr>
+<tr><td><b>1. Inicio</b></td><td>Contadores del día, todos clicables: órdenes nuevas · pagos por confirmar · pagadas por coordinar · en preparación · pendientes por entregar · repuestos de packs solicitados · entregas retrasadas · incidencias abiertas · conversaciones esperando respuesta* · venta de hoy · venta cobrada · ticket promedio. Los tres últimos solo para administración.</td><td>Todos (versión recortada para logística)</td></tr>
+<tr><td><b>2. Operaciones</b></td><td>Despachos pendientes agrupados por tipo de entrega (pick-up, delivery Caracas, envío nacional, Cashea Envíos, otro) con acciones rápidas en cada fila. Sección aparte "Repuestos de packs por entregar". Colas: por confirmar, por coordinar, por preparar, listos, delivery de hoy, pick-ups de hoy, nacionales pendientes, sin guía, entregas sin confirmar, retrasados, incidencias, reclamos, intervención humana*, seguimientos pendientes.</td><td>Todos</td></tr>
+<tr><td><b>3. Órdenes</b></td><td>Lista con filtros y búsqueda; ficha completa en panel lateral; creación manual; historial de cambios; incidencias y reclamos ligados a la orden.</td><td>Todos (campos de dinero solo administración)</td></tr>
+<tr><td><b>4. Clientes</b></td><td>Ficha: datos, direcciones, perros, comportamiento comercial, notas clasificadas, oportunidades (como preguntas), packs y consumo, fotos/contenido, referidos.</td><td>Logística: solo datos de contacto/entrega y notas marcadas para logística</td></tr>
+<tr><td><b>5. Inventario y producción</b></td><td>Existencias por estado (disponible, reservado, en preparación, en producción, defectuoso), mínimos, cobertura en días, órdenes de producción, recomendación de cuánto producir con su cálculo visible.</td><td>Logística: ver y marcar; administración: todo</td></tr>
+<tr><td><b>6. Finanzas</b></td><td>Cuentas y saldos, cash flow, gastos, retiros y aportes de Cristina, transferencias, cuentas por cobrar (Cashea, Vidapets, clientes), utilidad vs. dinero disponible, tasa BCV con historial.</td><td>Solo administración</td></tr>
+<tr><td><b>7. Marketing y referidos</b></td><td>Campañas y creatividades (inicialmente cargadas a mano o por exportación de Meta), atribución de clientes y órdenes, ROAS; programa de referidos (declarado → rastreado → validado → recompensado); fotos y permisos de publicación.</td><td>Solo administración</td></tr>
+<tr><td><b>8. Analítica</b></td><td>Ventas, productos, clientes, zonas, operación, finanzas, marketing, packs. Cada indicador abre los registros que lo componen.</td><td>Solo administración</td></tr>
+<tr><td><b>9. Configuración</b></td><td>Catálogo y precios, categorías de gasto, cuentas, agencias, zonas, usuarios y permisos, política de tasa BCV, integraciones.</td><td>Solo administración</td></tr>
+</table>
+<p><small>* "Conversaciones esperando respuesta" e "intervención humana" dependen de que Tina/KAI pueda avisarle a la plataforma. Hasta verificarlo, no lo prometo.</small></p>
+
+<h2>4. Flujo de una orden</h2>
+<div class="flujo"><span>Nueva</span><i>→</i><span>Pago por confirmar</span><i>→</i><span>Pagada</span><i>→</i><span>En preparación</span><i>→</i><span>Lista</span><i>→</i><span>Coordinada</span><i>→</i><span>Despachada</span><i>→</i><span>Entregada</span><i>→</i><span>Seguimiento</span></div>
+<table><tr><th>Estado</th><th>Qué significa</th><th>Quién lo pone</th><th>Qué hace el sistema solo</th></tr>
+<tr><td><b>Nueva</b></td><td>Existe la orden, nadie ha reportado pago.</td><td>Tina, Shopify, Ingrid o Cristina.</td><td>Número único; congela precios y tasa BCV del día; muestra las notas del cliente marcadas "al crear orden"; avisa si el cliente tiene un pack con saldo (por si en realidad es un repuesto, no una venta).</td></tr>
+<tr><td><b>Pago por confirmar</b></td><td>El cliente mandó comprobante.</td><td>Tina / Ingrid.</td><td>Guarda comprobante y referencia. <span class="no">Nada entra en caja todavía.</span></td></tr>
+<tr><td><b>Pagada</b></td><td>El pago se validó contra la cuenta.</td><td>Tina (cuando coincide) / Operación / Cristina.</td><td>Registra el dinero en la cuenta correspondiente como <b>cobrado</b>; reserva el inventario; guarda quién confirmó. Si es Cashea: se registra como <b>cuenta por cobrar a Cashea</b>, no como cobrado. Si es efectivo contra entrega: la orden sigue sin pago hasta la entrega (ver abajo).</td></tr>
+<tr><td><b>En preparación</b></td><td>Se está armando/empacando.</td><td>Logística.</td><td>Inventario pasa de reservado a en preparación.</td></tr>
+<tr><td><b>Lista</b></td><td>Empacada, esperando salida.</td><td>Logística.</td><td>Entra a la cola "listos".</td></tr>
+<tr><td><b>Coordinada</b></td><td>Fecha, horario, dirección y receptor acordados; despachador o agencia asignada.</td><td>Operación / Logística.</td><td>Aparece en "delivery de hoy", "pick-ups de hoy" o "nacionales pendientes" según el día. Genera el resumen para el despachador.</td></tr>
+<tr><td><b>Despachada</b></td><td>Salió: motorizado en ruta, entregada a la agencia (con guía) o cliente avisado para pick-up.</td><td>Logística.</td><td>Inventario sale definitivamente. Envío nacional sin guía queda marcado en "sin guía".</td></tr>
+<tr><td><b>Entregada</b></td><td>Confirmación de entrega.</td><td>Logística (o Tina si el cliente confirma).</td><td>Fecha real de entrega; calcula tiempos; si era contra entrega, registra el cobro en efectivo en la caja del despachador; si es porche PRO o pack, inicia el seguimiento de repuestos.</td></tr>
+<tr><td><b>Seguimiento</b></td><td>Días después: cómo le fue, y para porche/packs, cuándo tocaría el repuesto.</td><td>Sistema propone, Operación ejecuta.</td><td>Crea la tarea con fecha; registra respuesta.</td></tr>
+</table>
+<h3>Caminos alternativos</h3>
+<table><tr><th>Caso</th><th>Qué pasa</th></tr>
+<tr><td><b>Pago contra entrega (efectivo)</b></td><td>Camino que tu lista no nombra pero que existe hoy: la orden avanza a preparación con estado de pago "contra entrega" y el cobro se registra al entregar. No cuenta como cobrada hasta entonces.</td></tr>
+<tr><td><b>Pago rechazado</b></td><td>Vuelve a "Nueva" con motivo; se guarda el intento.</td></tr>
+<tr><td><b>Modificada</b></td><td>Se guarda antes/después y quién. Si ya estaba pagada, aparece diferencia a cobrar o devolver.</td></tr>
+<tr><td><b>Cancelada</b></td><td>Siempre con motivo. Si había pago: reembolso (salida de caja) o saldo a favor del cliente — <b>necesito saber cuál usan</b>. Inventario reservado se libera.</td></tr>
+<tr><td><b>Entrega fallida</b></td><td>Motivo (no estaba, dirección errada, no contestó…). Vuelve a "Coordinada" → <b>Reprogramada</b>. Si hubo costo de motorizado, se registra como gasto de logística ligado a la orden.</td></tr>
+<tr><td><b>Devuelta</b></td><td>Producto regresa a inventario como "devuelto / por revisar", no directo a disponible. Reembolso si aplica.</td></tr>
+<tr><td><b>Reposición</b></td><td>Nueva orden de tipo "reposición", total 0, ligada a la orden original; su costo real va a gasto "Posventa".</td></tr>
+<tr><td><b>Donación</b></td><td>Orden de tipo "donación", total 0; costo a gasto "Donaciones".</td></tr>
+<tr><td><b>Incidencia / Reclamo</b></td><td>Registro ligado a la orden: tipo, descripción, responsable, abierto/cerrado, resolución. No cambia el estado de la orden por sí solo.</td></tr>
+</table>
+<div class="nota"><b>Reglas que quedan fijadas:</b> el cliente y quien recibe son campos distintos (el receptor va en los datos logísticos de la orden); una orden no pagada nunca suma a "cobrado"; Cashea es cuenta por cobrar hasta que Cashea liquide; cada cambio de estado guarda usuario y fecha; nunca se reutiliza una orden vieja.</div>
+
+<h2>5. Flujo de un repuesto que pertenece a un pack</h2>
+<p>La clave es separar cuatro cosas que hoy se mezclan: <b>la compra del pack</b> (una venta), <b>el saldo del pack</b> (unidades que Decopet le debe al cliente), <b>la solicitud</b> (el cliente pide uno) y <b>la entrega</b> (sale físicamente). Solo la primera es dinero.</p>
+<ol>
+<li><b>Compra.</b> Orden normal con "Pack 3 repuestos". El sistema crea un <b>pack activo</b> del cliente: unidades totales 3, entregadas al momento X, saldo 3−X. <i>(Necesito saber qué se entrega al momento: ¿ninguna, una, o a veces todas?)</i></li>
+<li><b>Solicitud.</b> El cliente escribe (a Tina o a Ingrid). Se registra una <b>solicitud de repuesto</b> ligada al pack: fecha, tipo de entrega, dirección, notas. <span class="no">No se crea una venta.</span> Aparece en Operaciones → "Repuestos de packs por entregar", con cliente, pack, total, entregados, restantes después de esta, fecha prevista, estado.</li>
+<li><b>Entrega.</b> Se coordina y despacha como cualquier envío (pick-up, delivery o nacional). Al marcar entregado: saldo −1, inventario de repuestos −1, fecha real, quién entregó. <i>(¿Se cobra el delivery de cada repuesto? Si sí, ese cobro sí es un movimiento de caja, pero no una venta de producto.)</i></li>
+<li><b>Cálculo de duración.</b> Solo cuando hay una entrega anterior conocida: duración = fecha de esta entrega − fecha de la anterior. Se guarda con un nivel de confianza:
+ <ul><li><b>Alta:</b> un solo porche, un perro, no tenía unidades previas, entregas registradas una por una.</li>
+ <li><b>Media:</b> recibió varias unidades juntas (se reparte el tiempo entre ellas) o tenía unidades previas conocidas.</li>
+ <li><b>Baja:</b> varios perros o porches, compró repuestos por otra vía, o dejó de usarlo un tiempo.</li></ul></li>
+<li><b>Saldo en cero.</b> El pack se cierra. Se genera una <b>oportunidad</b> ("podría necesitar un nuevo pack alrededor del día X") calculada con la duración promedio <i>de ese cliente</i>; si no tiene historial, con el promedio general del tamaño de porche, marcada como estimación.</li>
+</ol>
+<div class="dos"><div class="caja"><b>Ejemplo A — entregas una por una.</b> Compra pack de 3 el día 0 y recibe 1. Pide el segundo el día 34, el tercero el día 70, y recompra el día 101. Duraciones: 34, 36, 31 → promedio 33,7 días. Confianza <span class="ok">alta</span> si tiene un perro y no tenía unidades previas.</div>
+<div class="caja"><b>Ejemplo B — las tres juntas.</b> Recibe las 3 el día 0 y recompra el día 101. El sistema muestra "≈ 33,7 días por repuesto (estimado)", confianza <span style="color:#b8860b;font-weight:600">media</span>: no sabemos si le sobró alguno o si alternó con paseos. Si además tenía unidades de antes, baja.</div></div>
+<p>Con esto salen las métricas que pediste (duración por cliente, por tamaño, por número de perros, recompra a 30/60/90/120/180 días, clientes fuera de patrón, unidades a producir) <b>siempre etiquetadas como confirmadas o estimadas</b>.</p>
+
+<h2>6. Datos y accesos que necesito revisar (Etapa 1: auditoría)</h2>
+<table><tr><th>Fuente</th><th>Qué voy a revisar</th><th>Qué necesito de ti</th></tr>
+<tr><td><b>Airtable</b></td><td>Tablas, campos, vistas, cómo escribe Tina, cómo registran hoy los repuestos de packs, duplicados de clientes.</td><td>Un token de <b>solo lectura</b> (te doy los pasos; se pega en un archivo, nunca en el chat).</td></tr>
+<tr><td><b>Tina / KAI</b></td><td>Qué datos captura, cómo los manda a Airtable, si puede avisar a otro sistema (webhook/API), si puede leer de otro sistema.</td><td>Pedirle a KAI su documentación o un contacto técnico. Sin esto, la integración con Tina es la más incierta.</td></tr>
+<tr><td><b>Shopify</b></td><td>Pedidos, clientes, productos, precios, descuentos, estados.</td><td>Crear una "app personalizada" en tu panel de Shopify con permiso de lectura (te guío).</td></tr>
+<tr><td><b>Cashea</b></td><td>Qué exporta el panel de comercio: órdenes, IVA, cuotas, comisión, liquidaciones, envíos. Si hay API o solo reportes.</td><td>Un reporte mensual de ejemplo y acceso al panel para ver qué existe. <b>No prometo integración hasta verlo.</b></td></tr>
+<tr><td><b>Meta</b></td><td>Campañas, inversión, conversaciones iniciadas.</td><td>Al inicio: exportación mensual desde el Administrador de anuncios. La conexión automática requiere una aprobación de Meta que toma tiempo; la evaluamos después.</td></tr>
+<tr><td><b>Excel de ventas y control de caja</b></td><td>Ya revisados e importados.</td><td>Confirmar qué es "MINI" (2023) y "RAMPA" a secas.</td></tr>
+<tr><td><b>Costos por producto</b></td><td>Sin esto no hay ganancia ni margen en ninguna pantalla.</td><td>Costo actual de cada producto (materiales + mano de obra + empaque), aunque sea aproximado, y desde cuándo aplica.</td></tr>
+<tr><td><b>Catálogo real</b></td><td>Variantes exactas (alturas de comedores, tamaños Slow Chow, cinta antideslizante, malla), precios vigentes, qué se produce bajo pedido.</td><td>Lista actual de precios.</td></tr>
+<tr><td><b>Tasa BCV</b></td><td>Fuente oficial (bcv.org.ve) y una fuente de respaldo. Verificaré que se pueda leer automáticamente.</td><td>Política si la tasa cambia antes del pago.</td></tr>
+<tr><td><b>Cuentas</b></td><td>Lista definitiva de cuentas, saldo inicial y fecha de corte.</td><td>Saldos del día que arranquemos.</td></tr>
+</table>
+
+<h2>7. Preguntas que no puedo responder con lo que tengo</h2>
+<h3>Equipo y permisos</h3>
+<ol class="q">
+<li><b>Ingrid:</b> antes me dijiste que despacha; ahora aparece como "operación y ventas". ¿Vende, atiende WhatsApp y confirma pagos, o solo entrega?</li>
+<li><b>Andre:</b> ¿qué es exactamente? ¿Un segundo bot, un nombre con el que Tina firma, o una persona?</li>
+<li><b>Manawa</b> lo mencionaste antes y no aparece ahora. ¿Sigue?</li>
+<li>¿Juan necesita entrar al sistema, o le basta recibir el resumen por WhatsApp? (Cambia si diseño un acceso ultra simple para él.)</li>
+<li>¿Quién puede confirmar un pago cuando Tina no lo hace automáticamente? ¿Solo tú?</li>
+</ol>
+<h3>Órdenes y dinero</h3>
+<ol class="q" start="6">
+<li>¿Cuándo aplica <b>IVA</b>? ¿Solo en Cashea y en facturas fiscales que pida el cliente? ¿Está incluido en el precio de lista?</li>
+<li><b>Comisión Cashea:</b> ¿qué porcentaje? ¿Te liquidan en bolívares o dólares, y a qué tasa? ¿Cada cuánto?</li>
+<li>Si un cliente cancela después de pagar, ¿devuelven el dinero o queda como saldo a favor?</li>
+<li>Envío nacional a cobro en destino: el cliente paga la agencia directo, ¿correcto? Entonces no pasa por tu caja.</li>
+<li>¿Quién fija la <b>fecha prometida</b>? ¿Tina la ofrece al cliente, o la coordina Ingrid después?</li>
+<li>Tu "sueldo" fijo mensual que aparece en el Excel: ¿lo tratamos como sueldo (gasto de la empresa) o como retiro de propietaria? Cambia la utilidad.</li>
+<li>Delivery en Caracas: ¿lo cobra Decopet y le paga al motorizado, o el cliente le paga directo al motorizado?</li>
+</ol>
+<h3>Packs y repuestos</h3>
+<ol class="q" start="13">
+<li>Cuando alguien compra un pack de 3, ¿se le entrega uno de una vez y Decopet guarda dos, o depende?</li>
+<li>¿Se cobra delivery en cada entrega de repuesto del pack?</li>
+<li>¿Hoy cómo anotan en Airtable que un cliente pidió un repuesto de su pack? (Quiero ver el proceso real, no rediseñarlo a ciegas.)</li>
+<li>¿Un cliente puede tener dos porches (dos perros) y un solo pack?</li>
+</ol>
+<h3>Inventario y producción</h3>
+<ol class="q" start="17">
+<li>¿Qué productos se tienen en stock y cuáles se producen bajo pedido? ¿Cuánto tarda producir cada uno?</li>
+<li>¿La grama tiene vida útil en inventario? (Afecta cuánto conviene tener listo.)</li>
+</ol>
+<h3>Canales</h3>
+<ol class="q" start="19">
+<li><b>Duwu:</b> cuando venden, ¿quién crea la orden y cómo se enteran? ¿Duwu paga a Decopet o el cliente?</li>
+<li><b>Vidapets:</b> ¿cada cuánto reportan, con qué precio, y cómo se registra la mercancía que está en su tienda?</li>
+<li><b>Cashea Envíos:</b> ¿qué productos califican hoy y quién lo decide en cada orden?</li>
+</ol>
+<h3>Otros</h3>
+<ol class="q" start="22">
+<li>Fotos y videos de clientes: ¿dónde están hoy (WhatsApp, Drive, Airtable)?</li>
+<li>Referidos: ¿existe algún beneficio ya definido, o lo dejamos solo preparado?</li>
+<li>Para el prototipo navegable (Etapa 3): ¿prefieres <b>datos reales en tu Mac</b> (privado, más útil para validar) o datos ficticios como dice el brief? Los ficticios solo tienen sentido si el prototipo se va a mostrar a terceros.</li>
+</ol>
+
+<h2>8. Plan de construcción por etapas</h2>
+<table><tr><th>Etapa</th><th>Qué entrego</th><th>Qué necesito de ti</th></tr>
+<tr><td><b>1. Auditoría</b></td><td>Informe corto: cómo están los datos en Airtable (tablas, duplicados, huecos), qué captura Tina, qué exporta Cashea y Shopify, qué falta. Lista de excepciones reales del proceso.</td><td>Token de Airtable (solo lectura), acceso a Shopify, reporte Cashea de ejemplo, contacto KAI, respuestas de la sección 7.</td></tr>
+<tr><td><b>2. Mapa funcional</b></td><td>Documento con módulos, roles y permisos, estados, campos de cada ficha, reglas, excepciones, relaciones, integraciones (verificadas), métricas con su definición exacta, alertas, automatizaciones e información faltante. Lo aprobamos juntas antes de programar.</td><td>Revisarlo y corregir lo que no coincida con la realidad.</td></tr>
+<tr><td><b>3. Prototipo navegable</b></td><td>La plataforma con las 9 secciones y las dos experiencias (logística / administración), con datos reales o ficticios según decidas. Cada cifra abre sus registros. En tu Mac, privado.</td><td>Usarlo unos días y anotar qué sobra, qué falta y qué confunde.</td></tr>
+<tr><td><b>4. Operación real</b></td><td>Base de datos definitiva, usuarios y contraseñas, migración desde Airtable con validación, publicación en internet con acceso privado, pruebas con la operación diaria, integraciones una por una (primero Tina/Airtable, luego Shopify, BCV automático desde el inicio; Cashea y Meta según lo que permitan).</td><td>Tu OK explícito antes de publicar en internet; saldos iniciales de cuentas; participación del equipo en la prueba.</td></tr>
+</table>
+<p>Decisiones técnicas, en simple: será un <b>sitio web</b> (no una app que se instala), que funciona igual en computadora y celular; una <b>sola base de datos</b>; y, cuando llegue la Etapa 4, se aloja en un servidor con acceso solo con usuario y contraseña. Hasta entonces, todo vive en tu Mac.</p>
+<p><small>Este documento se guarda en tu carpeta <i>Documents › Decopet ERP › docs</i>. No se ha publicado en ningún sitio.</small></p>
+</main></body></html>

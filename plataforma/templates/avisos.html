@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block titulo %}Avisos del taller · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Avisos del taller</h1><div class="sub">{{ pendientes }} sin resolver</div></div></div>
+
+<div class="tabla"><table><tr><th>Cuándo</th><th>Aviso</th><th>Pedido</th><th>Quién</th><th style="width:170px"></th></tr>
+{% for a in avisos %}<tr{% if a.resuelto %} style="opacity:.5"{% endif %}>
+ <td class="mono mini">{{ a.fecha|dia }}</td>
+ <td>{{ a.texto }}</td>
+ <td class="mini">{% if a.produccion_id %}<a href="/produccion?debe={{ a.responsable|urlencode }}">{{ a.pieza }}{% if a.responsable %} · {{ a.responsable }}{% endif %}</a>{% if a.recibido is not none and a.cantidad %}<div class="mini">llegaron {{ a.recibido|int }} de {{ a.cantidad|int }}</div>{% endif %}{% else %}—{% endif %}</td>
+ <td class="mini">{{ a.quien or '—' }}</td>
+ <td style="text-align:right">{% if a.resuelto %}<span class="pago pagada">resuelto {{ a.resuelto_en|dia }}</span>
+  <form method="post" action="/taller/nota/{{ a.id }}/reabrir" style="display:inline"><button class="btn sec chico">Reabrir</button></form>
+ {% else %}<form method="post" action="/taller/nota/{{ a.id }}/resolver"><input type="hidden" name="volver" value="/taller/avisos"><button class="btn chico">Resolver</button></form>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="5" class="vacio">El taller no te ha avisado nada.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}{% block titulo %}Producción · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Producción</h1><div class="sub">Lo que está pedido y todavía no llega: la madera que mandas a hacer y lo que le compras a un proveedor.</div></div><button class="btn" onclick="document.getElementById('f-pr').hidden=false">+ Nuevo pedido</button></div>
+<div id="f-pr" hidden class="tabla" style="padding:18px 22px;margin-bottom:16px"><form method="post" action="/produccion"><div class="g3" style="margin-bottom:4px"><div><label>Responsable</label><input name="responsable" id="pr-quien" list="carpinteros" value="{{ carpinteros[0] if carpinteros }}" oninput="this.dataset.tocado=1;montoPr()"><datalist id="carpinteros">{% for c in carpinteros %}<option value="{{ c }}">{% endfor %}</datalist></div>
+<div><label>Fecha del pedido</label><input type="date" name="fecha_pedido" value="{{ hoy }}"></div><div><label>Fecha de entrega</label><input type="date" name="fecha_esperada"></div><div><label>¿Cuándo lo pagas? <span class="mini">(opcional)</span></label><input type="date" name="fecha_pago"></div></div>
+
+<div id="pr-lineas"></div>
+<p style="margin:2px 0 10px"><button type="button" class="no-link" onclick="agregarLinea()">+ Agregar otro producto</button></p>
+<div class="pr-total"><span>Total del pedido</span><b id="pr-total">$0.00</b><input type="hidden" name="costo" id="pr-costo"></div>
+
+<template id="pr-tpl"><div class="g3 pr-linea">
+ <div><label>Producto</label><select name="pieza" onchange="montoPr()">{% for z in piezas %}<option>{{ z }}</option>{% endfor %}</select>
+  <div class="pr-desc-w" hidden style="margin-top:6px"><label>Qué te está haciendo</label><input name="descripcion" placeholder="ej. comedero doble con patas altas, 40 cm"></div></div>
+ <div><label>Cantidad</label><input type="number" name="cantidad" min="1" required oninput="montoPr()">
+  <label class="chk pr-barn-w" style="margin-top:6px"><input type="checkbox" name="barnizado" value="1" checked onchange="montoPr()"> <span>van barnizadas</span></label></div>
+ <div><label>Monto <span class="mini pr-detalle"></span></label><div style="display:flex;gap:6px;align-items:center"><input type="number" step="0.01" name="costo_linea" oninput="this.dataset.tocado=1;montoPr()"><button type="button" class="no-x-sm pr-quitar" title="Quitar" onclick="this.closest('.pr-linea').remove();montoPr()">×</button></div></div>
+</div></template>
+<label class="chk" style="margin-top:10px"><input type="checkbox" id="pr-ab" onchange="document.getElementById('pr-ab-w').hidden=!this.checked"> <span>¿Ya abonaste algo?</span></label>
+<div class="g3" id="pr-ab-w" hidden><div><label>Cuánto abonaste</label><input type="number" step="0.01" name="abono_monto" placeholder="$"></div><div><label>Forma de pago</label><select name="abono_forma"><option value="" selected>Elegir…</option>{% for fp in FORMAS_PAGO %}<option>{{ fp }}</option>{% endfor %}</select></div><div><label>Fecha del abono</label><input type="date" name="abono_fecha" value="{{ hoy }}"></div></div>
+<label>Nota</label><input name="nota"><p><button class="btn chico">Registrar</button> <button type="button" class="btn sec chico" onclick="document.getElementById('f-pr').hidden=true">Cancelar</button></p></form></div>
+{% if rol=='admin' and por_pagar %}<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));margin-bottom:14px">{% for q in por_pagar %}<a class="tile tile-link {{ 'act' if debe==q.quien }}" href="/produccion?debe={{ q.quien|urlencode }}" style="text-align:left"><b style="color:#b45a1c">{{ q.monto|usd }}</b><span>Le debes a {{ q.quien }}</span><i>{{ q.n }} pedido{{ 's' if q.n!=1 }} con saldo · {{ 'viendo sus pedidos' if debe==q.quien else 'ver y pagarle →' }}</i></a>{% endfor %}</div>{% endif %}
+{% if debe %}<div class="barra-f" style="margin-bottom:10px"><span class="bf-sel act" style="cursor:default">Pedidos con saldo de <b>{{ debe }}</b></span><a class="bf-todas" href="/produccion">✕ ver todo</a></div>{% endif %}
+<div class="chips" {{ 'hidden' if debe }}><a class="chip {{ 'act' if ver=='en_proceso' }}" href="/produccion">En proceso <span class="n">{{ n.get('en_proceso',0) }}</span></a><a class="chip {{ 'act' if ver=='recibido' }}" href="/produccion?ver=recibido">Recibidos <span class="n">{{ n.get('recibido',0) }}</span></a><a class="chip {{ 'act' if ver=='todas' }}" href="/produccion?ver=todas">Todos</a></div>
+<div class="tabla prod-t"><table><tr><th>Pedido</th><th class="num">Cantidad</th><th class="num">Recibido</th><th>Responsable</th>{% if rol=='admin' %}<th class="num">Costo</th>{% endif %}<th style="white-space:nowrap">Fecha del pedido</th><th style="white-space:nowrap">Fecha de entrega</th><th>Estado</th><th></th></tr>
+{% for r in rows %}{% set faltan = r.cantidad - r.recibido %}<tr><td style="min-width:230px"><b style="white-space:nowrap">{{ r.producto }}</b>{% if r.barnizado %} <span class="canal">barnizadas</span>{% endif %}{% if r.descripcion %}<div>{{ r.descripcion }}</div>{% endif %}{% if r.nota %}<div class="mini">{{ r.nota }}</div>{% endif %}{% if rol=='admin' and r.estado!='cancelado' %}<details class="cobro cobro-izq" style="margin-top:4px;display:block"><summary class="no-link" style="font-size:12.5px">Editar</summary><form method="post" action="/produccion/{{ r.id }}/editar" class="cobro-f" style="min-width:300px">
+ {% if r.pieza and r.pieza.startswith('Muestra') %}<label style="margin-top:0">Qué te está haciendo</label><input name="descripcion" value="{{ r.descripcion or '' }}">{% endif %}
+ <div class="g2"><div><label style="margin-top:0">Cantidad</label><input type="number" name="cantidad" value="{{ r.cantidad }}" min="1"></div><div><label style="margin-top:0">Responsable</label><input name="responsable" value="{{ r.responsable or '' }}" list="carpinteros"></div></div>
+ <div class="g2"><div><label>Fecha del pedido</label><input type="date" name="fecha_pedido" value="{{ r.fecha_pedido }}"></div><div><label>Fecha de entrega</label><input type="date" name="fecha_esperada" value="{{ r.fecha_esperada or '' }}"></div></div>
+ <label>Monto</label><input type="number" step="0.01" name="costo" value="{{ r.costo if r.costo is not none else '' }}">{% if r.pieza and r.pieza.startswith('Caja') %}<label class="chk" style="margin-top:6px"><input type="checkbox" name="barnizado" value="1" {{ 'checked' if r.barnizado }}> <span>van barnizadas</span></label>{% endif %}
+ <label>Nota</label><input name="nota" value="{{ r.nota or '' }}">{% if r.abonos %}<label>Abonos</label>{% for a in r.abonos %}<div class="mini">{{ a.fecha|dia }} · {{ a.monto|usd }}{% if a.forma %} · {{ a.forma }}{% endif %} <button class="no-link" type="submit" formaction="/produccion/abono/{{ a.id }}/borrar" style="font-size:11px;color:#c94a2f" onclick="return confirm('¿Borrar este abono?')">borrar</button></div>{% endfor %}{% endif %}<p style="margin:8px 0 0;display:flex;gap:6px;flex-wrap:wrap"><button class="btn chico">Guardar</button>{% if r.recibido %}<button class="btn sec chico" type="submit" formaction="/produccion/{{ r.id }}/deshacer" onclick="return confirm('¿Deshacer lo recibido? Vuelve a en proceso con 0 recibidos.')">Deshacer recibido</button>{% endif %}{% if r.estado=='en_proceso' and r.recibido and r.recibido < r.cantidad %}<button class="btn sec chico" type="submit" formaction="/produccion/{{ r.id }}/cerrar" onclick="return confirm('Llegaron {{ r.recibido }} de {{ r.cantidad }}. ¿Cerrar el pedido con lo que llegó? El costo se ajusta a esa cantidad.')">Cerrar con {{ r.recibido }} recibidos</button>{% endif %}{% if r.estado=='en_proceso' %}<button class="btn pel chico" type="submit" formaction="/produccion/{{ r.id }}/cancelar" onclick="return confirm('¿Cancelar este pedido?')">Cancelar pedido</button>{% endif %}</p></form></details>{% endif %}</td><td class="num">{{ r.cantidad }}</td><td class="num">{{ r.recibido }}</td><td class="mini">{{ r.responsable or '—' }}</td>{% if rol=='admin' %}<td class="num" style="white-space:nowrap">{% if r.costo is not none %}{% set saldo = r.costo - r.abonado %}{% if saldo <= 0.009 %}{{ r.costo|usd }}<div class="mini" style="white-space:nowrap"><span class="pago pagada">pagado</span></div>{% elif r.abonado %}{{ r.costo|usd }}<div class="mini" style="white-space:nowrap">abonado {{ r.abonado|usd }} · <span style="color:#b45a1c">debes {{ saldo|usd }}</span></div>{% else %}<span style="color:#b45a1c">debes {{ saldo|usd }}</span>{% endif %}
+{% if saldo > 0.009 and r.estado!='cancelado' %}<details class="cobro"><summary class="btn chico">Pagar</summary><form method="post" action="/produccion/{{ r.id }}/abonar" class="cobro-f" style="min-width:250px"><label style="margin-top:0">¿Cuánto le pagas?</label><input type="number" step="0.01" name="monto" value="{{ '%.2f'|format(saldo) }}" required data-todo="{{ '%.2f'|format(saldo) }}" class="pr-monto"><div class="mini pr-resto">Viene con el total: <b>{{ saldo|usd }}</b>. Si le pagas menos, queda el resto como saldo.</div><label>Forma de pago</label><select name="forma" required><option value="" selected disabled>Elegir…</option>{% for fp in FORMAS_PAGO %}<option>{{ fp }}</option>{% endfor %}</select><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}"><label>Nota <span class="mini">(opcional)</span></label><input name="nota"><p style="margin:8px 0 0"><button class="btn chico">Registrar pago</button></p></form></details>{% endif %}{% else %}—{% endif %}</td>{% endif %}<td class="mono">{{ r.fecha_pedido|dia }}</td>
+<td>{% if r.fecha_esperada %}<span class="{{ 'ln-cobrar' if r.estado=='en_proceso' and r.fecha_esperada < hoy }}">{{ r.fecha_esperada|dia }}</span>{% else %}—{% endif %}</td>
+<td style="white-space:nowrap">{% if r.estado=='recibido' %}<span class="pago pagada">Recibido</span>{% elif r.estado=='cancelado' %}<span class="pago reembolsada">Cancelado</span>{% elif r.fecha_esperada and r.fecha_esperada < hoy %}<span class="pago rechazado">Atrasado</span>{% else %}<span class="pago por_cobrar">En proceso</span>{% endif %}</td>
+<td style="white-space:nowrap">{% if r.estado=='en_proceso' %}<form method="post" action="/produccion/{{ r.id }}/recibir" style="display:inline-flex;gap:6px;align-items:center"><input type="number" name="cantidad" value="{{ faltan }}" min="1" max="{{ faltan }}" style="width:70px"><button class="btn chico">Recibido</button></form>{% endif %}
+</td></tr>
+{% else %}<tr><td colspan="9" class="vacio">Nada en esta vista.</td></tr>{% endfor %}</table></div>
+<p class="mini" style="margin-top:8px">Se puede recibir por partes (llegan 20 de 30 hoy y 10 mañana).</p>
+<script>const PRECIOS={{ precios|tojson }};
+function agregarLinea(){const t=document.getElementById('pr-tpl');
+ document.getElementById('pr-lineas').appendChild(t.content.cloneNode(true));
+ document.querySelectorAll('.pr-quitar').forEach(b=>b.hidden=document.querySelectorAll('.pr-linea').length<2);
+ montoPr();}
+
+function montoPr(){const q=document.getElementById('pr-quien').value,P=PRECIOS[q]||{};let total=0;
+ document.querySelectorAll('.pr-linea').forEach(fila=>{
+  const z=fila.querySelector('[name=pieza]').value, c=+fila.querySelector('[name=cantidad]').value||0;
+  const esCaja=z.startsWith('Caja'), esMuestra=z.startsWith('Muestra');
+  const bw=fila.querySelector('.pr-barn-w'), bc=bw.querySelector('input'); bw.hidden=!esCaja;
+  const dw=fila.querySelector('.pr-desc-w'); dw.hidden=!esMuestra; dw.querySelector('input').required=esMuestra;
+  const d=fila.querySelector('.pr-detalle'), i=fila.querySelector('[name=costo_linea]');
+  const pu=P[z], barn=(esCaja&&bc.checked)?(P.__barnizado||0):0;
+  if(esMuestra){d.textContent='· depende del producto';}
+  else if(pu==null){d.textContent=c?'· sin precio · escríbelo':'';}
+  else{d.textContent='· '+(c?c+' × ':'')+'$'+pu.toFixed(2)+(barn?' + $'+barn.toFixed(2)+' barnizado':'');
+       if(!i.dataset.tocado)i.value=((pu+barn)*c).toFixed(2);}
+  total+=parseFloat(i.value)||0;});
+ document.getElementById('pr-total').textContent='$'+total.toFixed(2);
+ document.getElementById('pr-costo').value=total.toFixed(2);
+ // si el proveedor cambia, los precios se recalculan salvo los que Cristina escribió a mano
+ document.querySelectorAll('.pr-quitar').forEach(b=>b.hidden=document.querySelectorAll('.pr-linea').length<2);}
+
+agregarLinea();
+document.getElementById('pr-quien').addEventListener('input',()=>{document.querySelectorAll('[name=costo_linea]').forEach(i=>i.dataset.tocado='');montoPr();});
+</script>
+<script>document.addEventListener('input',e=>{if(!e.target.classList.contains('pr-monto'))return;
+ const todo=parseFloat(e.target.dataset.todo),v=parseFloat(e.target.value)||0,n=e.target.parentElement.querySelector('.pr-resto');
+ if(v>=todo-0.009)n.innerHTML='Queda <b>pagado completo</b>.';
+ else n.innerHTML='Le quedarías debiendo <b>$'+(todo-v).toFixed(2)+'</b>.';});</script>
+{% endblock %}

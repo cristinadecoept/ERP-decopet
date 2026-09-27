@@ -1,0 +1,110 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Esqueleto · Plataforma Decopet</title>
+<style>
+:root{--verde:#5A9075;--verde-osc:#3f6d56;--naranja:#E1782E;--tinta:#1c2622;--t2:#6b7570;--t3:#9aa39f;--linea:#ecebe7;--fondo:#fafaf8;--sup:#fff}
+body{margin:0;font-family:"Inter",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--fondo);color:var(--tinta);font-size:14.5px;line-height:1.5}
+main{max-width:1040px;margin:0 auto;padding:36px 32px 80px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--t2);margin-bottom:28px}
+h2{font-size:13px;color:var(--t2);margin:34px 0 12px;font-weight:600;letter-spacing:.02em}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--sup);border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(28,38,34,.04),0 8px 24px -12px rgba(28,38,34,.10)}
+.card h3{margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:8px}.card .quien{font-size:12px;color:var(--t3);margin-bottom:10px}
+.card ul{margin:0;padding:0;list-style:none}.card li{padding:4px 0;border-top:1px solid var(--linea);font-size:13.5px;display:flex;gap:8px;align-items:baseline}.card li:first-child{border-top:0}
+.ok{color:var(--verde-osc);font-weight:700;font-size:12px;flex:none;width:18px}.pend{color:var(--t3);font-weight:700;font-size:12px;flex:none;width:18px}.parcial{color:var(--naranja);font-weight:700;font-size:12px;flex:none;width:18px}
+.tag{font-size:10.5px;padding:1px 7px;border-radius:99px;background:var(--fondo);color:var(--t2);font-weight:600;border:1px solid var(--linea)}.tag.c{background:#eef4f0;color:var(--verde-osc);border-color:#d5e5db}.tag.a{background:#fdf1e7;color:#b45a1c;border-color:#f3d5bd}
+.flujo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--sup);border-radius:16px;padding:16px 20px;box-shadow:0 1px 2px rgba(28,38,34,.04)}
+.flujo span{padding:6px 12px;border-radius:99px;background:var(--fondo);font-weight:600;font-size:13px}.flujo i{color:var(--t3);font-style:normal}
+.datos{background:var(--sup);border-radius:16px;padding:18px 22px;box-shadow:0 1px 2px rgba(28,38,34,.04);font-size:13.5px}
+.datos b{display:inline-block;min-width:110px;color:var(--verde-osc)}.datos div{padding:5px 0;border-top:1px solid var(--linea)}.datos div:first-child{border-top:0}
+.leyenda{font-size:12.5px;color:var(--t2);margin-top:8px}
+.reglas{background:var(--sup);border-radius:16px;padding:6px 22px;box-shadow:0 1px 2px rgba(28,38,34,.04)}.reglas p{margin:0;padding:10px 0;border-top:1px solid var(--linea);font-size:13.5px}.reglas p:first-child{border-top:0}
+.reglas b{color:var(--tinta)}
+</style></head><body><main>
+<h1>Esqueleto de la plataforma Decopet</h1><div class="sub">Lo que ya está definido, lo que está construido, y lo que falta · 18 de septiembre de 2026</div>
+
+<h2>1 · El flujo de un pedido (definido y construido)</h2>
+<div class="flujo"><span>Pendiente</span><i>→</i><span>Entregado</span><i>·</i><span style="background:#f4f2ee;color:var(--t2)">Cancelada</span></div>
+<div class="leyenda">Toda orden entra <b>Pendiente</b> (ya pagada, o efectivo contra entrega, o Cashea con su inicial). "Coordinar" no es un estado: es tener despachador (delivery), agencia + guía (nacional) o distribuidor. Solo se puede marcar Entregado cuando está coordinada. El dinero se describe aparte: Pagado · Contra entrega · Cashea cuotas pendientes · Abonada · Por revisar · Rechazado · Reembolsada.</div>
+
+<h2>2 · Las secciones y lo que contiene cada una</h2>
+<div class="grid">
+ <div class="card"><h3>Hoy <span class="tag c">construida</span></h3><div class="quien">Todos · dinero solo Cristina</div><ul>
+  <li><span class="ok">✓</span>Pagos por revisar · Pendientes · Entregas de hoy · Retrasadas · Incidencias (cada número abre su lista)</li>
+  <li><span class="ok">✓</span>Ventas: venta de hoy · ticket promedio · por cobrar a clientes</li>
+  <li><span class="ok">✓</span>Tabla de entregas de hoy con filtro por tipo y agencia · Retrasadas con el porqué</li>
+  <li><span class="pend">○</span>Repuestos de packs solicitados (Parte 4) · Conversaciones esperando (cuando Tina se conecte)</li></ul></div>
+ <div class="card"><h3>Operaciones <span class="tag c">construida</span></h3><div class="quien">Pantalla de logística</div><ul>
+  <li><span class="ok">✓</span>Lista por tipo de entrega: Pick-up · Delivery Caracas · Delivery fuera · Nacional (Tealca/MRW/Zoom) · Distribuidor</li>
+  <li><span class="ok">✓</span>Colas: Hoy · Otro día · Sin coordinar · Retrasadas · Incidencias</li>
+  <li><span class="ok">✓</span>Por fila: quién, dónde, con quién, qué, cómo pagó, un botón (Coordinar / Entregado)</li>
+  <li><span class="ok">✓</span>Resumen del día por despachador para WhatsApp</li>
+  <li><span class="pend">○</span>Repuestos de packs por entregar (Parte 4)</li></ul></div>
+ <div class="card"><h3>Órdenes <span class="tag c">construida</span></h3><div class="quien">Todos · costos y ganancia solo Cristina</div><ul>
+  <li><span class="ok">✓</span>Lista con filtros (estado, pago, entrega + agencia, canal) y búsqueda</li>
+  <li><span class="ok">✓</span>Panel: cliente y perros, productos con opciones (color, malla, nombre), pagos (mixtos), entrega por tipo, incidencias, historial, resumen para el despachador con GPS</li>
+  <li><span class="ok">✓</span>Nueva orden en 5 bloques · precios y tasa BCV congelados · IVA solo Cashea/factura</li>
+  <li><span class="ok">✓</span>Ganancia y margen (Total − IVA − comisión − costo productos − costo entrega)</li></ul></div>
+ <div class="card"><h3>Clientes <span class="tag a">mínimo</span></h3><div class="quien">Todos · comercial solo Cristina</div><ul>
+  <li><span class="ok">✓</span>Nombre + apellido · teléfono normalizado · cédula · dirección + GPS · perros (raza de lista)</li>
+  <li><span class="ok">✓</span>Notas (entrega / atención / pago / comercial / general) con "la ve logística"</li>
+  <li><span class="pend">○</span>Ficha completa: historial, total gastado, frecuencia, próxima compra estimada, oportunidades como preguntas, fotos y permisos, referidos <b>(Parte 3)</b></li></ul></div>
+ <div class="card"><h3>Packs y repuestos <span class="tag">pendiente</span></h3><div class="quien">Parte 4</div><ul>
+  <li><span class="pend">○</span>Compra del pack ≠ consumo: saldo, solicitud, entrega (no es venta)</li>
+  <li><span class="pend">○</span>Duración de cada repuesto con confianza alta / media / baja</li>
+  <li><span class="pend">○</span>Clientes próximos a agotar · fuera de patrón · recompra 30/60/90/120/180</li>
+  <li><span class="pend">○</span>Necesito ver cómo lo anotan hoy en Airtable</li></ul></div>
+ <div class="card"><h3>Inventario y producción <span class="tag">pendiente</span></h3><div class="quien">Parte 5</div><ul>
+  <li><span class="pend">○</span>Stock de productos terminados (rampas, comedores, repuestos, bowls, platos)</li>
+  <li><span class="pend">○</span>porches: no se almacenan → "cuántos armar hoy" + materiales (grama, cajas, bases)</li>
+  <li><span class="pend">○</span>Malla como producto y como opción descuentan del mismo stock</li>
+  <li><span class="pend">○</span>Mínimos, cobertura en días, cuánto producir y por qué</li></ul></div>
+ <div class="card"><h3>Finanzas <span class="tag">pendiente</span></h3><div class="quien">Solo Cristina · Parte 6</div><ul>
+  <li><span class="pend">○</span>Cuentas: Pago Móvil BVC · BNC · Zelle · Efectivo USD/Bs/EUR · Binance/USDT · PayPal · Venmo · Pipol Pay · personal de Cristina</li>
+  <li><span class="pend">○</span>Cash flow: saldos, entradas, salidas, por cobrar (clientes, Cashea, Vidapets), por liquidar a despachadores</li>
+  <li><span class="pend">○</span>Gastos por categoría · sueldo de Cristina como gasto · retiros aparte</li>
+  <li><span class="pend">○</span>Cashea: inicial 40 % + 3 cuotas quincenales, comisión, IVA, factura, conciliación con su reporte</li>
+  <li><span class="ok">✓</span>Tasa BCV automática con historial y corrección manual</li></ul></div>
+ <div class="card"><h3>Marketing y referidos <span class="tag">pendiente</span></h3><div class="quien">Solo Cristina · Parte 7</div><ul>
+  <li><span class="pend">○</span>Campañas y fuente de cada cliente/orden · inversión Meta · ROAS · ganancia después de publicidad</li>
+  <li><span class="pend">○</span>Fotos/videos de clientes con permiso de publicación</li>
+  <li><span class="pend">○</span>Referidos: declarado → rastreado → validado → recompensado</li></ul></div>
+ <div class="card"><h3>Analítica <span class="tag">pendiente</span></h3><div class="quien">Solo Cristina · Parte 8</div><ul>
+  <li><span class="pend">○</span>Ventas, productos, clientes, zonas, operación, finanzas, marketing, packs</li>
+  <li><span class="pend">○</span>Cada indicador con su fórmula visible y clic a los registros que lo forman</li></ul></div>
+ <div class="card"><h3>Configuración <span class="tag a">parcial</span></h3><div class="quien">Solo Cristina · Parte 9</div><ul>
+  <li><span class="ok">✓</span>Tasa BCV</li>
+  <li><span class="pend">○</span>Catálogo y precios · opciones · categorías de gasto · cuentas · agencias · zonas · razas · despachadores · distribuidores</li>
+  <li><span class="pend">○</span>Usuarios, roles y permisos · nombres de estados</li>
+  <li><span class="pend">○</span>Integraciones: Tina/KAI · Airtable (migración) · Shopify · Cashea · Meta</li></ul></div>
+</div>
+
+<h2>3 · Las piezas de información y cómo se conectan</h2>
+<div class="datos">
+ <div><b>Cliente</b> nombre, apellido, teléfono, cédula, correo, canal habitual → tiene <b style="min-width:0">Perros</b>, <b style="min-width:0">Direcciones</b> (con GPS), <b style="min-width:0">Notas</b> clasificadas, y más adelante Packs, Fotos, Referidos</div>
+ <div><b>Orden</b> nº, canal, tipo (venta / reposición / donación), estado, fechas, tasa BCV, totales, costos → tiene <b style="min-width:0">Líneas</b> (producto + cantidad + color + malla + nombre), <b style="min-width:0">Pagos</b> (uno o varios), <b style="min-width:0">Entrega</b> (tipo, dirección, receptor, despachador / agencia + guía + modalidad / distribuidor), <b style="min-width:0">Incidencias</b>, <b style="min-width:0">Historial</b></div>
+ <div><b>Catálogo</b> productos con precio, precio por par, costo, categoría · opciones (personalización, malla) · reglas (Slow Chow exige color, porche admite malla)</div>
+ <div><b>Pago</b> forma, monto en USD, monto real y moneda, tasa, cuenta destino, referencia, confirmado por quién → alimenta <b style="min-width:0">Cuentas</b> y cash flow</div>
+ <div><b>Pack</b> (Parte 4) cliente, unidades totales, entregadas, saldo → <b style="min-width:0">Solicitudes</b> y <b style="min-width:0">Entregas de repuesto</b> (no son ventas)</div>
+ <div><b>Gasto</b> (Parte 6) fecha, monto, moneda, tasa, categoría, proveedor, cuenta de origen, orden relacionada · <b style="min-width:0">Movimientos</b> entre cuentas, retiros y aportes</div>
+ <div><b>Usuario</b> Cristina (admin) · Logística · Tina (sistema) → firma cada acción del historial</div>
+</div>
+
+<h2>4 · Reglas ya fijadas (no se vuelven a discutir)</h2>
+<div class="reglas">
+ <p><b>Toda orden entra pagada</b> (o contra entrega, o Cashea con inicial). Tina confirma los pagos digitales que coinciden; Cristina solo revisa excepciones.</p>
+ <p><b>Cashea es un canal</b>, no una forma de pago: entra por BNC. Inicial 40 % el día de la compra + 3 cuotas quincenales. IVA se agrega. Se registra la factura.</p>
+ <p><b>Delivery y pick-up se entregan el mismo día</b>; la fecha solo se muestra si el cliente pidió otro día. <b>Nacional</b>: despachar antes de +2 días.</p>
+ <p><b>Despachadores</b>: Juan, Ingrid u "otro". Isaías y Manawa son operación, no despachan. Pick-up no lleva despachador. Decopet cobra el delivery y liquida a los despachadores semanalmente.</p>
+ <p><b>Efectivo</b> = contra entrega: se cobra al entregar, en USD, Bs o EUR, a la caja del despachador. Existen pagos mixtos y abonos (crédito al cliente, saldo a favor).</p>
+ <p><b>Precios, costos y tasa BCV se congelan</b> en cada orden. Los precios viven en el catálogo. Personalización y malla son opciones; cinta no es producto.</p>
+ <p><b>Cliente ≠ receptor.</b> Utilidad ≠ cash flow. Gasto de empresa ≠ retiro de Cristina (su sueldo es gasto). Cada acción guarda quién y cuándo.</p>
+ <p><b>Logística no ve dinero</b> (ni costos, ganancia, comprobantes, cuentas ni cuotas Cashea). Solo Cristina confirma pagos y cancela.</p>
+</div>
+
+<h2>5 · Orden de construcción</h2>
+<div class="reglas">
+ <p><b>Hecho:</b> Hoy · Operaciones · Órdenes · Clientes (mínimo) · Tasa BCV · diseño claro/oscuro.</p>
+ <p><b>Siguiente:</b> Parte 3 Clientes (ficha completa) → Parte 4 Packs → Parte 5 Inventario → Parte 6 Finanzas → Parte 7 Marketing → Parte 8 Analítica → Parte 9 Configuración e integraciones.</p>
+ <p><b>Después:</b> usuarios y contraseñas · migración de Airtable y del Excel · publicación en internet (con tu OK) · conexión con Tina, Shopify, Cashea.</p>
+</div>
+</main></body></html>

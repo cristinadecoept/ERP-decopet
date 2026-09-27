@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% block titulo %}Finanzas · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Finanzas</h1><div class="sub">Cuánto gana Decopet, mes a mes</div></div><div class="cab-btns"><a class="btn sec" href="/finanzas/exportar?anio={{ anio }}">Exportar a Excel</a><form method="get"><select name="anio" onchange="this.form.submit()" style="width:auto;padding:8px 32px 8px 12px;border-radius:10px">{% for a in anios %}<option {{ 'selected' if a==anio }}>{{ a }}</option>{% endfor %}</select></form></div></div>
+<div class="tabla"><table><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Unidades</th><th class="num">Gastos</th><th class="num">Ganancia</th><th class="num">Sueldo Cristina</th><th class="num">Entrada</th><th class="num">Margen</th></tr>
+{% set ns = namespace(f=0,u=0,g=0,s=0,gr=0) %}
+{% macro delta(d, ant) %}{% if d is not none %}<div class="vs {{ 'sube' if d > 0 else ('baja' if d < 0 else '') }}">{{ '+' if d > 0 }}{{ d }} %<span> vs {{ ant }}</span></div>{% endif %}{% endmacro %}
+{% for m in meses %}{% set ns.f = ns.f + m.facturacion %}{% set ns.u = ns.u + m.unidades %}{% set ns.g = ns.g + m.gastos %}{% set ns.s = ns.s + m.sueldo %}{% set ns.gr = ns.gr + m.grandes %}
+<tr><td><b>{{ MESES_N[m.m[5:]|int - 1]|capitalize }}</b>{% if m.historial %} <span class="canal" title="{{ m.nota }}">Excel</span>{% endif %}</td>
+<td class="num">{{ m.facturacion|usd }}{{ delta(m.d_facturacion, m.mes_ant) }}</td>
+<td class="num">{{ m.unidades|int or '—' }}{{ delta(m.d_unidades, m.mes_ant) }}{% if m.n %}<div class="mini">{{ m.n }} orden{{ 'es' if m.n!=1 }}</div>{% endif %}</td>
+<td class="num">{{ m.gastos|usd }}{% if m.grandes %}<div class="mini">{{ m.grandes|usd }} no son de este mes</div>{% endif %}</td>
+<td class="num"><b style="color:{{ 'var(--verde-osc)' if m.ganancia >= 0 else '#c94a2f' }}">{{ m.ganancia|usd }}</b></td>
+<td class="num">{{ m.sueldo|usd if m.sueldo else '—' }}</td>
+<td class="num"><b>{{ m.entrada|usd }}</b>{{ delta(m.d_entrada, m.mes_ant) }}</td>
+<td class="num">{{ ((m.ganancia / m.facturacion * 100)|round|int ~ ' %') if m.facturacion else '—' }}{% if m.grandes and m.facturacion %}<div class="mini">{{ (m.ganancia_comp / m.facturacion * 100)|round|int }} % comparable</div>{% endif %}</td></tr>
+{% else %}<tr><td colspan="8" class="vacio">Sin datos en {{ anio }}.</td></tr>{% endfor %}
+{% if meses %}{% set gan = ns.f - ns.g %}<tr style="background:var(--fondo)"><td><b>Total {{ anio }}</b></td><td class="num"><b>{{ ns.f|usd }}</b></td><td class="num"><b>{{ ns.u|int }}</b></td><td class="num"><b>{{ ns.g|usd }}</b></td><td class="num"><b>{{ gan|usd }}</b></td><td class="num"><b>{{ ns.s|usd }}</b></td><td class="num"><b>{{ (gan - ns.s)|usd }}</b></td><td class="num"><b>{{ ((gan / ns.f * 100)|round|int ~ ' %') if ns.f else '—' }}</b></td></tr>{% endif %}
+</table></div>
+<p class="mini" style="margin-top:8px"><b>Ganancia</b> = facturación − gastos del mes (antes de tu sueldo). <b>Entrada</b> = lo que quedó después de pagarte. Tu sueldo no se cuenta dentro de Gastos, va en su propia columna, para que no se reste dos veces.</p>
+<div class="nota-cli" style="margin-top:10px"><span class="t">De dónde sale cada mes</span>Los meses marcados <span class="canal">Excel</span> son el historial que cargaste a mano. Desde el día que activemos el ERP, cada mes nuevo se llena <b>solo</b>: la facturación y las unidades salen de las órdenes (contando cada venta el día que entró la plata) y los gastos salen de la sección Gastos. No hay que volver a cargar nada a mano.{% if not cashflow_desde %} <b>Todavía no está activo</b> — avísame el día que empiecen a usarlo y lo prendo.{% else %} Activo desde el {{ cashflow_desde|fecha }}.{% endif %}</div>
+
+<h2 class="seccion-t">Cargar o corregir un mes</h2>
+<div class="tabla"><table><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Unidades</th><th class="num">Gastos</th><th class="num">Sueldo</th><th class="num">No es de este mes</th><th>Qué pasó</th><th></th></tr>
+{% for h in historial %}<tr><form method="post" action="/finanzas/mes" id="h-{{ loop.index }}"><input type="hidden" name="mes" value="{{ h.mes }}"></form>
+ <td><b>{{ MESES_N[h.mes[5:]|int - 1]|capitalize }} {{ h.mes[:4] }}</b></td>
+ <td class="num" style="width:120px"><input form="h-{{ loop.index }}" name="facturacion" type="number" step="0.01" value="{{ '%g'|format(h.facturacion or 0) }}" style="text-align:right"></td>
+ <td class="num" style="width:90px"><input form="h-{{ loop.index }}" name="unidades" type="number" value="{{ h.unidades or 0 }}" style="text-align:right"></td>
+ <td class="num" style="width:120px"><input form="h-{{ loop.index }}" name="gastos" type="number" step="0.01" value="{{ '%g'|format(h.gastos or 0) }}" style="text-align:right"></td>
+ <td class="num" style="width:110px"><input form="h-{{ loop.index }}" name="sueldo" type="number" step="0.01" value="{{ '%g'|format(h.sueldo or 0) }}" style="text-align:right"></td>
+ <td class="num" style="width:130px"><input form="h-{{ loop.index }}" name="arrastre" type="number" step="0.01" value="{{ '%g'|format(h.arrastre or 0) }}" placeholder="0" style="text-align:right"></td>
+ <td style="min-width:200px"><input form="h-{{ loop.index }}" name="contexto" value="{{ h.contexto or '' }}" placeholder="terremoto, TDC de meses anteriores…"></td>
+ <td style="white-space:nowrap;text-align:right"><button class="btn chico" form="h-{{ loop.index }}">Guardar</button> <button class="btn pel chico" form="h-{{ loop.index }}" name="borrar" value="1" onclick="return confirm('¿Quitar este mes del historial?')">Quitar</button></td></tr>{% endfor %}
+<tr style="background:var(--fondo)"><form method="post" action="/finanzas/mes" id="h-nuevo"></form>
+ <td><input form="h-nuevo" type="month" name="mes" required></td>
+ <td class="num"><input form="h-nuevo" name="facturacion" type="number" step="0.01" placeholder="$" style="text-align:right"></td>
+ <td class="num"><input form="h-nuevo" name="unidades" type="number" placeholder="0" style="text-align:right"></td>
+ <td class="num"><input form="h-nuevo" name="gastos" type="number" step="0.01" placeholder="$" style="text-align:right"></td>
+ <td class="num"><input form="h-nuevo" name="sueldo" type="number" step="0.01" placeholder="$" style="text-align:right"></td>
+ <td class="num"><input form="h-nuevo" name="arrastre" type="number" step="0.01" placeholder="0" style="text-align:right"></td>
+ <td><input form="h-nuevo" name="contexto" placeholder="qué pasó ese mes"></td>
+ <td style="text-align:right"><button class="btn chico" form="h-nuevo">+ Agregar mes</button></td></tr>
+</table></div>
+<p class="mini" style="margin-top:8px"><b>"No es de este mes"</b> = plata que pagaste ese mes pero que corresponde a otros: tarjetas de crédito de meses anteriores, importaciones que duran un trimestre. No cambia la ganancia real (esa sí la pagaste), pero sí el <b>margen comparable</b>, que es el que sirve para comparar un mes con otro. La ganancia, la entrada y el margen se calculan solos.</p>
+
+{% if por_cat %}<h2 class="seccion-t">Gastos {{ anio }} por categoría</h2><div class="tabla cf-card"><div class="cf-barras">{% set mx = por_cat[0].monto %}{% for c in por_cat %}<div class="cf-fila"><span class="cf-nom">{{ c.categoria }}</span><div class="cf-track"><div class="cf-bar neg" style="width:{{ (c.monto / mx * 100)|round(1) }}%"></div></div><span class="cf-val">{{ c.monto|usd }}</span></div>{% endfor %}</div></div>{% endif %}
+{% endblock %}

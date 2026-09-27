@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block titulo %}Referidos · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Referidos</h1></div></div>
+
+<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));margin-bottom:16px">
+ <div class="tile"><b>{{ r.llegaron }}</b><span>Clientes por recomendación</span><i>{{ r.pct }} % de tus {{ r.total_cl }} clientes</i></div>
+ <div class="tile"><b>{{ r.refieren }}</b><span>Clientes que te refieren</span></div>
+ <div class="tile"><b>{{ r.premiables }}</b><span>Dan premio</span></div>
+ <div class="tile"><b>{{ r.comprado|usd }}</b><span>Han comprado los referidos</span></div>
+</div>
+
+<div class="tarjeta" style="margin-bottom:16px"><h3>Quién te refiere</h3>
+{% if refs %}<table class="lineas"><tr><th>Cliente</th><th class="num" style="padding-right:16px">Ha traído</th><th class="num">Le compraron</th></tr>
+{% for x in refs %}<tr class="fila" onclick="location.href='/clientes/{{ x.id }}'"><td><b>{{ x.quien }}</b></td><td class="num" style="padding-right:16px">{{ x.n }}</td><td class="num">{{ x.trajo|usd }}</td></tr>{% endfor %}</table>
+{% else %}<div class="vacio">Todavía nadie. Al crear un cliente elige «Recomendación de otro cliente» y di quién lo mandó.</div>{% endif %}</div>
+
+<div class="tarjeta"><h3>Quién llegó recomendado</h3>
+{% if llegaron %}<table class="lineas"><tr><th>Cliente</th><th>Lo trajo</th><th>Desde</th><th class="num">Ha comprado</th><th>Premio</th></tr>
+{% for l in llegaron %}<tr class="fila" onclick="location.href='/clientes/{{ l.id }}'"><td><b>{{ l.nombre }}</b></td><td>{{ l.lo_trajo }}</td><td class="mono mini">{{ l.desde|dia }}</td><td class="num">{{ l.gastado|usd }}</td>
+<td>{% if l.aplica %}<span class="pago pagada">sí</span>{% else %}<span class="est cancelada" style="text-decoration:none">no · {{ l.por_que }}</span>{% endif %}</td></tr>{% endfor %}</table>
+<div class="mini" style="margin-top:8px">El premio solo aplica a quien escribe por WhatsApp y compra un Porche.</div>
+{% else %}<div class="vacio">Nadie ha llegado por recomendación todavía.</div>{% endif %}</div>
+{% endblock %}

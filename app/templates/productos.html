@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Productos</h1><p class="muted small">Precio en USD. El stock baja solo con cada pedido; súbelo con "Producción" cuando Isaías y Manawa terminen unidades.</p>
+<div class="tarjeta"><table><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th class="num">Precio</th><th class="num">Stock</th><th class="num">Vendidos 30d</th><th class="num">Vendidos 12m</th><th>Activo</th><th></th><th>Producción</th></tr>
+{% for p in productos %}<tr style="{{ 'opacity:.55' if not p.activo }}"><form method="post" action="/productos/{{ p.id }}"><td class="small">{{ p.sku }}</td><td>{{ p.nombre }}</td><td class="small muted">{{ p.categoria }}</td>
+ <td class="num"><input type="number" step="0.01" name="precio" value="{{ p.precio if p.precio is not none else '' }}" style="width:90px"></td><td class="num"><input type="number" name="stock" value="{{ p.stock }}" style="width:70px"></td>
+ <td class="num">{{ p.vendidos_30|int }}</td><td class="num">{{ p.vendidos_365|int }}</td><td><select name="activo" style="width:70px"><option value="1" {{ 'selected' if p.activo }}>Sí</option><option value="0" {{ 'selected' if not p.activo }}>No</option></select></td>
+ <td><button class="btn sec chico">Guardar</button></td></form>
+ <td><form method="post" action="/productos/{{ p.id }}/produccion" style="display:flex;gap:4px"><input type="number" name="cantidad" placeholder="+ unid." style="width:80px" min="1" required><button class="btn chico">OK</button></form></td></tr>{% endfor %}</table></div>
+{% endblock %}

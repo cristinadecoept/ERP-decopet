@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block titulo %}Analítica · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Analítica</h1></div></div>
+
+<div class="g2" style="align-items:start">
+<div class="tarjeta"><h3>Qué se vende</h3>
+{% if productos %}<table class="lineas"><tr><th>Producto</th><th class="num" style="padding-right:16px">Unidades</th><th class="num" style="padding-right:16px">Facturación</th><th class="num" style="padding-right:16px">Deja</th><th style="padding-left:6px">Última</th></tr>
+{% for p in productos %}<tr><td>{{ p.nombre }}</td>
+ <td class="num" style="padding-right:16px"><span class="dinero">{{ p.u|int }}</span></td>
+ <td class="num" style="padding-right:16px"><b>{{ p.fact|usd }}</b></td>
+ <td class="num" style="padding-right:16px">{% if p.deja is not none %}{{ p.deja|usd }}{% else %}<span class="mini">sin costo</span>{% endif %}</td>
+ <td class="mono mini" style="padding-left:6px">{{ p.ultima|dia }}</td></tr>{% endfor %}
+<tr><td><b>Total</b></td><td class="num" style="padding-right:16px"><b>{{ tot_u|int }}</b></td><td class="num" style="padding-right:16px"><b>{{ tot_f|usd }}</b></td><td></td><td></td></tr></table>
+{% else %}<div class="vacio">Todavía no hay ventas registradas.</div>{% endif %}</div>
+
+<div class="tarjeta"><h3>Lo que no se mueve</h3>
+{% if quietos %}<table class="lineas"><tr><th>Producto</th><th>Última vez que se vendió</th></tr>
+{% for p in quietos %}<tr><td>{{ p.nombre }}</td><td class="mini">{% if p.ultima %}{{ p.ultima|dia }}{% else %}<span class="ln-alerta">nunca</span>{% endif %}</td></tr>{% endfor %}</table>
+{% else %}<div class="vacio">Sin datos.</div>{% endif %}</div>
+</div>
+{% endblock %}

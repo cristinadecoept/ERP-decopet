@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Cashea</h1><p class="muted small">Cada pedido pagado por Cashea aparece aquí. Cuando llegue el reporte mensual, actualiza cuánto te liquidaron y marca el estado de cobro.</p>
+<div class="kpis">{% for r in resumen %}<div class="kpi"><div class="n">{{ r.n }}</div><div class="l">{{ r.estado_cobro }}</div><div class="d muted">{{ r.monto|usd }} · cobrado {{ r.cobrado|usd }}</div></div>{% endfor %}</div>
+<form class="filtros" method="get"><div><label>Estado de cobro</label><select name="estado" onchange="this.form.submit()"><option value="">Todos</option>{% for e in ['pendiente','parcial','liquidado','desconocido'] %}<option value="{{ e }}" {{ 'selected' if estado==e }}>{{ e }}</option>{% endfor %}</select></div></form>
+<div class="tarjeta"><table><tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th class="num">Total</th><th>Ref. Cashea</th><th>Estado cobro</th><th class="num">Cobrado</th><th>Reporte</th><th></th></tr>
+{% for r in rows %}<tr><form method="post" action="/cashea/{{ r.id }}"><td><a href="/pedidos/{{ r.pedido_id }}">{{ r.numero }}</a></td><td>{{ r.fecha|fecha }}</td><td>{{ r.cliente or '—' }}</td><td class="num">{{ r.total|usd }}</td>
+ <td><input name="referencia" value="{{ r.referencia or '' }}" style="width:120px"></td><td><select name="estado_cobro">{% for e in ['pendiente','parcial','liquidado','desconocido'] %}<option {{ 'selected' if r.estado_cobro==e }}>{{ e }}</option>{% endfor %}</select></td>
+ <td class="num"><input type="number" step="0.01" name="monto_cobrado" value="{{ r.monto_cobrado }}" style="width:90px"></td><td><input type="month" name="fecha_reporte" value="{{ r.fecha_reporte or '' }}" style="width:140px"></td><td><button class="btn sec chico">Guardar</button></td></form></tr>{% endfor %}</table></div>
+{% endblock %}

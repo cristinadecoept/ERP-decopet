@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block cuerpo %}
+<div style="display:flex;justify-content:space-between;align-items:center"><h1>Clientes</h1><div><a class="btn sec" href="/clientes/recompra">Recompra de repuestos</a> <a class="btn" href="/clientes/nuevo">+ Nuevo cliente</a></div></div>
+<form class="filtros" method="get"><div><label>Buscar</label><input name="buscar" value="{{ buscar }}" placeholder="nombre, teléfono o correo"></div>
+<div><label>Ver</label><select name="filtro"><option value="">Recientes</option><option value="top" {{ 'selected' if filtro=='top' }}>Los que más compran</option><option value="pro" {{ 'selected' if filtro=='pro' }}>Tienen Porche PRO</option></select></div><div style="flex:0"><button class="btn sec">Buscar</button></div></form>
+<div class="tarjeta"><table><tr><th>Cliente</th><th>Teléfono</th><th>Ciudad / zona</th><th>Porche PRO</th><th class="num">Pedidos</th><th class="num">Total</th><th>Último pedido</th></tr>
+{% for c in clientes %}<tr><td><a href="/clientes/{{ c.id }}">{{ c.nombre }}</a></td><td>{{ c.telefono or '—' }}</td><td>{{ c.ciudad or '' }} {{ c.zona or '' }}</td><td>{{ '✔' if c.tiene_pro else '' }}</td><td class="num">{{ c.pedidos }}</td><td class="num">{{ c.monto|usd }}</td><td>{{ c.ultimo|fecha }}</td></tr>{% endfor %}</table></div>
+{% endblock %}

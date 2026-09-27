@@ -1,0 +1,18 @@
+<div class="pt"><h2>Nuevo cliente</h2></div>
+<form method="post" action="/clientes/nuevo">
+<div class="bloque"><h3>Datos</h3>
+<div class="g2"><div><label>Nombre</label><input name="nombre_pila" required autofocus placeholder="María"></div><div><label>Apellido</label><input name="apellido" required placeholder="Pérez"></div></div>
+<div class="g2"><div><label>Teléfono <span class="obl">*</span></label><input name="telefono" placeholder="0414-1234567" inputmode="tel" required></div><div><label>Cédula / RIF <span class="mini">(obligatoria para envíos nacionales)</span></label><input name="cedula" placeholder="V-12345678"></div></div>
+<label>Correo <span class="obl">*</span></label><input name="correo" inputmode="email" placeholder="nombre@gmail.com" required>
+<div class="g2"><div><label>¿Cómo nos conoció?</label><select name="origen" onchange="this.form.querySelector('.ref-w').hidden=(this.value!='Recomendación de otro cliente')"><option value="">—</option>{% for o in ORIGENES %}<option>{{ o }}</option>{% endfor %}</select></div>
+<div class="ref-w" hidden><label>¿Quién lo recomendó?</label><input list="ref-cl" name="referido_nombre" placeholder="escribe el nombre" oninput="const o=[...document.getElementById('ref-cl').options].find(x=>x.value===this.value);this.form.querySelector('[name=referido_id]').value=o?o.dataset.id:''"><input type="hidden" name="referido_id"></div></div></div>
+<div class="bloque"><h3>Dirección principal</h3>
+<label>Ciudad</label><input name="ciudad" value="Caracas">
+<label>Dirección escrita</label><input name="direccion" placeholder="Res., edificio, apto, referencia"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
+<div class="bloque"><h3>Perros</h3><table class="lineas" id="masc"><tr><th>Nombre</th><th>Raza</th><th>Cumple (día/mes)</th><th style="width:80px">Año</th><th></th></tr></table>
+<p><button type="button" class="btn sec chico" onclick="agregarMascota()">+ Agregar perro</button></p></div>
+<div class="bloque"><h3>Nota (opcional)</h3><textarea name="nota" rows="2" placeholder="ej. Recibe el conserje; avisar al llegar"></textarea>
+<label class="chk" style="margin-top:8px"><input type="checkbox" name="nota_privada" value="1"> Solo la veo yo <span class="mini">(si no la marcas, logística también la ve al despachar)</span></label></div>
+<p><button class="btn bloque">Guardar cliente</button></p></form>
+<script>function agregarMascota(){const tr=document.getElementById('masc').insertRow();tr.innerHTML=`<td><input name="mascota_nombre" placeholder="Toby"></td><td><input name="mascota_raza" list="razas" placeholder="elegir raza…" autocomplete="off"></td><td><input name="mascota_cumple" placeholder="25/09" inputmode="numeric"><input type="hidden" name="mascota_nacimiento" value=""><input type="hidden" name="mascota_peso" value=""></td><td><input name="mascota_anio" placeholder="2021" maxlength="4" inputmode="numeric"></td><td><button type="button" class="btn pel chico" onclick="this.closest('tr').remove()">×</button></td>`;}agregarMascota();</script>
+<datalist id="ref-cl">{% for o in otros %}<option value="{{ o.nombre }}" data-id="{{ o.id }}">{% endfor %}</datalist>

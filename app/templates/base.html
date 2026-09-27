@@ -1,0 +1,16 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block titulo %}Decopet ERP{% endblock %}</title><link rel="stylesheet" href="/static/estilo.css"></head>
+<body>
+<header><a class="logo" href="/">DECOPET</a>
+<nav>{% set ruta = request.url.path %}
+<a href="/" class="{{ 'act' if ruta=='/' }}">Tablero</a>
+<a href="/pedidos" class="{{ 'act' if ruta.startswith('/pedidos') }}">Pedidos</a>
+<a href="/clientes" class="{{ 'act' if ruta.startswith('/clientes') }}">Clientes</a>
+<a href="/productos" class="{{ 'act' if ruta.startswith('/productos') }}">Productos</a>
+<a href="/caja" class="{{ 'act' if ruta.startswith('/caja') }}">Caja</a>
+<a href="/gastos" class="{{ 'act' if ruta.startswith('/gastos') }}">Gastos</a>
+<a href="/cashea" class="{{ 'act' if ruta.startswith('/cashea') }}">Cashea</a>
+<a href="/reportes" class="{{ 'act' if ruta.startswith('/reportes') }}">Reportes</a>
+</nav></header>
+<main>{% block cuerpo %}{% endblock %}</main>
+</body></html>

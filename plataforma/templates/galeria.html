@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block titulo %}Galería · Decopet{% endblock %}{% block cuerpo %}
+{% set TIPOS = [('sin_fondo','Sin fondo'),('fondo_blanco','Fondo blanco'),('montaje','Montaje')] %}
+<div class="fila-titulo"><div><h1>Galería</h1></div>{% if rol=='admin' %}<button class="btn" onclick="abrirPanel()">+ Subir fotos</button>{% endif %}</div>
+
+<div class="barra-f">
+ <label class="bf-sel {{ 'act' if producto }}"><span>Producto</span><select onchange="location.href='/galeria?producto='+this.value+'&tipo={{ tipo }}'"><option value="0">Todos</option>{% for p in prods %}<option value="{{ p.id }}" {{ 'selected' if p.id==producto }}>{{ p.nombre }}{% if p.n %} · {{ p.n }}{% endif %}</option>{% endfor %}</select></label>
+ <a class="bf-todas {{ 'act' if not tipo }}" href="/galeria?producto={{ producto }}">Todas</a>
+ {% for k,v in TIPOS %}<a class="bf-todas {{ 'act' if tipo==k }}" href="/galeria?producto={{ producto }}&tipo={{ k }}">{{ v }}{% if conteos.get(k) %} <span class="bf-n">{{ conteos[k] }}</span>{% endif %}</a>{% endfor %}
+</div>
+
+{% set ns = namespace(i=0) %}
+{% for grupo in grupos %}
+<div class="gal-sec"><div class="gal-sec-t"><b>{{ grupo.nombre }}</b><span class="mini">{{ grupo.fotos|length }} foto{{ 's' if grupo.fotos|length!=1 }}</span>{% if not producto %}<a class="mini" href="/galeria?producto={{ grupo.id }}">ver solo este →</a>{% endif %}</div>
+<div class="gal">{% for f in grupo.fotos %}<div class="gal-item">
+ <a href="#" onclick="verFoto({{ ns.i }});return false"><img src="/fotos/productos/{{ f.archivo }}" alt="" loading="lazy">{% if f.sku.startswith('PACK') %}<span class="cat-num" style="top:auto;bottom:8px;left:8px">×{{ f.sku[4] }}</span>{% endif %}<span class="gal-tag {{ f.tipo }}">{{ dict(TIPOS)[f.tipo] }}{% if f.etiqueta %} · {{ f.etiqueta }}{% endif %}</span></a>
+ <div class="gal-acc"><a class="btn sec chico" href="/fotos/productos/{{ f.archivo }}" download="{{ f.sku }}{% if f.etiqueta %}-{{ f.etiqueta|lower|replace(' ','-') }}{% endif %}-{{ f.tipo }}.{{ f.archivo.rsplit('.',1)[-1] }}">Descargar</a>{% if rol=='admin' %}<form method="post" action="/galeria/{{ f.id }}/borrar" onsubmit="return confirm('¿Quitar esta foto de la galería?')"><button class="btn pel chico">Quitar</button></form>{% endif %}</div></div>{% set ns.i = ns.i + 1 %}{% endfor %}</div></div>
+{% else %}<div class="vacio">No hay fotos {% if tipo %}de este tipo{% endif %}{% if producto %} para este producto{% endif %}.</div>{% endfor %}
+
+<div class="lb" id="lb" hidden onclick="if(event.target===this)cerrarFoto()">
+ <button class="lb-x" onclick="cerrarFoto()">×</button><button class="lb-nav lb-prev" onclick="moverFoto(-1)">‹</button><button class="lb-nav lb-next" onclick="moverFoto(1)">›</button>
+ <div class="lb-c"><img id="lb-img" src="" alt=""><div class="lb-pie"><div><b id="lb-t"></b><div class="mini" id="lb-s"></div></div><a class="btn chico" id="lb-dl" href="#" download>Descargar</a></div></div>
+</div>
+{% endblock %}
+{% block extra %}
+{% if rol=='admin' %}<div class="velo" id="velo" onclick="cerrarPanel()"></div><aside class="panel" id="panel"><button class="cerrar" onclick="cerrarPanel()">×</button><div class="pc">
+<div class="pt"><h2>Subir fotos</h2></div>
+<form method="post" action="/galeria/subir" enctype="multipart/form-data">
+<label>Producto</label><select name="producto_id" required>{% for p in prods %}<option value="{{ p.id }}" {{ 'selected' if p.id==producto }}>{{ p.nombre }}</option>{% endfor %}</select>
+<label>Tipo de foto</label><select name="tipo">{% for k,v in TIPOS %}<option value="{{ k }}" {{ 'selected' if tipo==k }}>{{ v }}</option>{% endfor %}</select>
+<label>Detalle <span class="mini">(opcional: Azul, Rosado, Cerrado…)</span></label><input name="etiqueta">
+<label>Archivos</label><input type="file" name="archivo" multiple accept="image/*" required>
+<p><button class="btn bloque">Subir</button></p></form></div></aside>{% endif %}
+<script>
+const G={{ lista_js|tojson }};
+const FOTOS=G.map(f=>f.archivo),NOMS=G.map(f=>f.producto),SUBS=G.map(f=>({sin_fondo:'Sin fondo',fondo_blanco:'Fondo blanco',montaje:'Montaje'}[f.tipo])+(f.etiqueta?' · '+f.etiqueta:''));
+let cur=0;
+function verFoto(i){cur=i;const lb=document.getElementById('lb');document.getElementById('lb-img').src='/fotos/productos/'+FOTOS[i];document.getElementById('lb-t').textContent=NOMS[i];document.getElementById('lb-s').textContent=SUBS[i];document.getElementById('lb-dl').href='/fotos/productos/'+FOTOS[i];lb.hidden=false;}
+function cerrarFoto(){document.getElementById('lb').hidden=true;}
+function moverFoto(d){verFoto((cur+d+FOTOS.length)%FOTOS.length);}
+document.addEventListener('keydown',e=>{if(document.getElementById('lb').hidden)return;if(e.key==='Escape')cerrarFoto();if(e.key==='ArrowLeft')moverFoto(-1);if(e.key==='ArrowRight')moverFoto(1);});
+function abrirPanel(){document.getElementById('panel').classList.add('on');document.getElementById('velo').classList.add('on');}function cerrarPanel(){document.getElementById('panel').classList.remove('on');document.getElementById('velo').classList.remove('on');}
+</script>
+{% endblock %}

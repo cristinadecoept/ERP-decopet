@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block titulo %}Miembros PRO · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Miembros versión PRO <span class="corona" style="width:22px;height:22px;vertical-align:-1px"></span></h1></div></div>
+<div class="barra-f">
+ <a class="bf-todas {{ 'act' if ver=='todos' }}" href="/miembros?ver=todos">Todos</a>
+ <a class="bf-todas {{ 'act' if ver=='toca' }}" href="/miembros?ver=toca">Toca seguimiento{% if conteos.toca %} <span class="bf-n">{{ conteos.toca }}</span>{% endif %}</a>
+ <label class="bf-sel {{ 'act' if ver in ('aldia','inactivos','sin_historial') }}"><span>Frecuencia</span><select onchange="location.href='/miembros?ver='+this.value"><option value="todos" {{ 'selected' if ver not in ('aldia','inactivos','sin_historial') }}>Todas</option><option value="aldia" {{ 'selected' if ver=='aldia' }}>Al día · {{ conteos.aldia }}</option><option value="inactivos" {{ 'selected' if ver=='inactivos' }}>Inactivos · {{ conteos.inactivos }}</option><option value="sin_historial" {{ 'selected' if ver=='sin_historial' }}>Sin historial · {{ conteos.sin_historial }}</option></select></label>
+</div>
+<div class="tabla"><table><tr><th>Cliente</th><th>Tamaño</th><th>Miembro desde</th><th class="num">Repuestos</th><th>Último repuesto</th><th>Próximo repuesto</th><th>Situación</th></tr>
+{% for m in miembros %}<tr class="fila" onclick="location.href='/clientes/{{ m.id }}'"><td><b>{{ m.nombre }}</b><div class="mini">{{ m.telefono or '' }}{% if m.perros %} · {{ m.perros }}{% endif %}{% if m.ciudad and m.ciudad!='Caracas' %} · {{ m.ciudad }}{% endif %}</div></td>
+<td>{{ m.tamanos or '—' }}</td><td>{{ m.desde|dia if m.desde else '—' }}</td><td class="num">{{ m.repuestos|int }}</td><td>{{ m.ultimo_repuesto|dia if m.ultimo_repuesto else '—' }}<div class="mini">{% if m.dias is not none %}hace {{ m.dias }} días{% endif %}</div></td>
+<td>{% if m.proximo %}<b>{{ m.proximo|dia }}</b>{% set faltan = ((m.proximo|fromiso) - hoy_d).days %}<div class="mini">{% if faltan > 0 %}en {{ faltan }} día{{ 's' if faltan!=1 }}{% elif faltan == 0 %}es hoy{% else %}se pasó hace {{ -faltan }} día{{ 's' if faltan!=-1 }}{% endif %}</div>{% else %}—{% endif %}</td>
+<td><span class="est {{ 'entregada' if m.situacion=='al día' else ('pendiente' if m.situacion=='toca repuesto' else ('' if m.situacion=='sin historial' else 'cancelada')) }}" style="text-decoration:none">{{ m.situacion }}</span></td></tr>
+{% else %}<tr><td colspan="6" class="vacio">Todavía no hay miembros: aparecen solos cuando un cliente compra El Porche Versión PRO.</td></tr>{% endfor %}</table></div>
+{% if truncado %}<p class="mini" style="margin-top:8px">Se muestran los primeros 300; usa la búsqueda.</p>{% endif %}
+<p class="mini" style="margin-top:10px">"Toca repuesto" = más de 35 días sin comprar repuesto; "inactivo" = más de 90. Los días se ajustan luego con el consumo real de cada cliente (Parte 4).</p>
+{% endblock %}

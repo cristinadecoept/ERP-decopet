@@ -1,0 +1,168 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mapa funcional 1 · Órdenes</title>
+<style>
+:root{--verde:#5A9075;--crema:#EFE8E1;--naranja:#E1782E;--coral:#F89980;--gris:#ABBABA;--arena:#E4B18F;--tinta:#22302a}
+body{margin:0;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;background:#fbf9f6;color:var(--tinta);font-size:15px;line-height:1.5}
+.top{background:var(--verde);color:#fff;padding:26px 32px}.top h1{margin:0;font-size:23px}.top p{margin:6px 0 0;opacity:.9}
+main{max-width:1000px;margin:0 auto;padding:22px 32px 60px}
+h2{font-size:19px;margin:34px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--crema);color:#2f5a44}h3{font-size:15px;margin:18px 0 6px;color:#3d6a52}
+table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:13.5px}th{background:var(--crema);text-align:left;padding:6px 8px;font-size:12px;text-transform:uppercase;letter-spacing:.4px}td{padding:6px 8px;border-bottom:1px solid #eee7de;vertical-align:top}
+.nota{background:var(--crema);border-left:4px solid var(--naranja);padding:10px 14px;border-radius:6px;margin:12px 0}
+.est{display:inline-block;border-radius:99px;padding:1px 9px;font-size:12px;font-weight:600;white-space:nowrap;background:#fff;border:1px solid var(--gris)}
+.e-nueva{background:#eef2f1}.e-porconf{background:#fff0e8;color:#b45a1c;border-color:#f3c9ae}.e-pagada{background:#e6f0ea;color:#2f5a44;border-color:#b9d3c0}.e-prep{background:#fff6dd;color:#8a6508;border-color:#f0d78a}.e-lista{background:#f1efe6;color:#5d5433}.e-coord{background:#e8eef7;color:#2b4f80;border-color:#b9c9e6}.e-desp{background:#ece6f7;color:#553d8c;border-color:#c9bce6}.e-entr{background:#5A9075;color:#fff;border-color:#5A9075}.e-seg{background:#dfeee6;color:#2f5a44}.e-canc{background:#eee;color:#666}
+.ok{color:var(--verde);font-weight:600}.no{color:#b3402b;font-weight:600}.adm{color:#b45a1c;font-weight:600}
+.flujo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0}.flujo i{color:var(--gris);font-style:normal}
+.q li{margin:6px 0}.q b{color:var(--naranja)}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:700px){.dos{grid-template-columns:1fr}main{padding:16px}}
+.caja{background:#fff;border:1px solid #e6dfd5;border-radius:10px;padding:12px 16px}small{color:#6b7570}
+.ej{background:#fff;border:1px solid #e6dfd5;border-radius:10px;padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:pre-wrap}
+</style></head><body>
+<div class="top"><h1>Mapa funcional · Parte 1: Órdenes</h1><p>Decopet · 13 de septiembre de 2026 · para revisión de Cristina · privado</p></div>
+<main>
+<p>Una <b>orden</b> es cada venta o entrega nueva. Nunca se reutiliza una orden vieja. Es el registro del que cuelgan el pago, la entrega, los costos, las incidencias y la analítica. Todo lo que está aquí se decide una vez y gobierna el resto del sistema.</p>
+
+<h2>1. Tipos de orden</h2>
+<table><tr><th>Tipo</th><th>Cuándo</th><th>Cuenta como venta</th><th>Mueve inventario</th></tr>
+<tr><td><b>Venta</b></td><td>Lo normal.</td><td class="ok">Sí</td><td>Sí</td></tr>
+<tr><td><b>Reposición</b></td><td>Se reemplaza un producto por falla, error o daño. Ligada a la orden original.</td><td class="no">No (total 0)</td><td>Sí; su costo va al gasto "Posventa".</td></tr>
+<tr><td><b>Donación</b></td><td>Producto regalado (fundaciones, colaboraciones).</td><td class="no">No (total 0)</td><td>Sí; costo al gasto "Donaciones".</td></tr>
+<tr><td><b>Entrega de repuesto de pack</b></td><td>El cliente pide un repuesto que ya pagó dentro de un pack.</td><td class="no">No (solo el delivery, si se cobra)</td><td>Sí; descuenta del saldo del pack.</td></tr>
+</table>
+<p><small>La entrega de repuesto de pack se detalla en la Parte 4. Aquí aparece porque en Operaciones se ve y se coordina igual que una orden.</small></p>
+
+<h2>2. Numeración</h2>
+<p>Número corto y correlativo, fácil de decir por WhatsApp: <b>#10001, #10002…</b> Se asigna al crear la orden y nunca cambia, aunque se cancele o modifique. Las órdenes que vienen de Shopify o Cashea guardan además el número de esa plataforma como referencia externa.</p>
+
+<h2>3. Qué contiene una orden</h2>
+<p>Agrupado por bloques. La columna "Logística" indica si la persona de logística lo ve.</p>
+<h3>A. Identificación</h3>
+<table><tr><th>Campo</th><th>Detalle</th><th>Logística</th></tr>
+<tr><td>Número</td><td>#10001</td><td>✔</td></tr>
+<tr><td>Fecha y hora de creación</td><td>Automática.</td><td>✔</td></tr>
+<tr><td>Creada por</td><td>Usuario, Tina o Shopify.</td><td>✔</td></tr>
+<tr><td>Tipo</td><td>Venta / reposición / donación / repuesto de pack.</td><td>✔</td></tr>
+<tr><td>Canal de origen</td><td>WhatsApp (Tina), Cashea, Shopify, Duwu, Vidapets, Instagram directo, presencial, otro.</td><td>✔</td></tr>
+<tr><td>Conversación relacionada</td><td>Enlace o identificador de la conversación en Tina, si existe.</td><td>✔</td></tr>
+<tr><td>Campaña / fuente de adquisición</td><td>Solo si se conoce (anuncio, referido, orgánico). Nunca se inventa.</td><td>✗</td></tr>
+<tr><td>Referencia externa</td><td>Nº de pedido Shopify / Cashea / Duwu.</td><td>✔</td></tr>
+</table>
+<h3>B. Cliente</h3>
+<table><tr><th>Campo</th><th>Detalle</th><th>Logística</th></tr>
+<tr><td>Cliente</td><td>Ficha real del cliente (quien compra y a quien se le da seguimiento). Obligatorio.</td><td>✔ (nombre y teléfono)</td></tr>
+<tr><td>Notas del cliente que aplican</td><td>Se muestran automáticamente las notas marcadas "mostrar al crear orden" y "mostrar en logística".</td><td>✔ solo las de logística</td></tr>
+</table>
+<h3>C. Productos y montos</h3>
+<table><tr><th>Campo</th><th>Detalle</th><th>Logística</th></tr>
+<tr><td>Líneas de producto</td><td>Producto, variante/tamaño, cantidad, personalización (nombre del perro).</td><td>✔</td></tr>
+<tr><td>Precio unitario</td><td>Se copia del catálogo al crear la orden y <b>queda congelado</b>. Si el catálogo cambia después, la orden no.</td><td>✔</td></tr>
+<tr><td>Descuento</td><td>Por línea o al total; con motivo (promoción, referido, cortesía, error).</td><td>✔ (solo el monto)</td></tr>
+<tr><td>Subtotal</td><td>Productos menos descuentos.</td><td>✔</td></tr>
+<tr><td>IVA</td><td>Solo cuando el canal es Cashea o el cliente pide factura fiscal. <b>Se agrega</b> al precio de lista. Se calcula solo, editable por administración.</td><td>✔</td></tr>
+<tr><td>Delivery / envío cobrado</td><td>Lo que paga el cliente a Decopet por la entrega. Cobro en destino = 0 (lo paga a la agencia). Promoción de envío activa = 0 con etiqueta "promo".</td><td>✔</td></tr>
+<tr><td>Total</td><td>Subtotal + IVA + delivery. En USD de referencia.</td><td>✔</td></tr>
+<tr><td>Tasa BCV del día y equivalente en Bs</td><td>Se guarda la tasa vigente al crear la orden. Informativo para Pago Móvil y Cashea. <b>Nunca se recalcula.</b></td><td>✔</td></tr>
+</table>
+<h3>D. Pago</h3>
+<table><tr><th>Campo</th><th>Detalle</th><th>Logística</th></tr>
+<tr><td>Estado del pago</td><td><span class="est">Sin pago</span> <span class="est">Por confirmar</span> <span class="est">Abonada</span> (pagó una parte; el resto queda como <b>crédito por cobrar</b> al cliente) <span class="est">Pagada</span> <span class="est">Contra entrega</span> <span class="est">Cuenta por cobrar</span> (Cashea, Vidapets) <span class="est">Reembolsada</span></td><td>✔</td></tr>
+<tr><td>Pagos registrados</td><td>Uno o varios (permite abonos): forma de pago, monto en USD, monto real recibido y moneda (Bs, USD, EUR, USDT), tasa usada, cuenta destino, referencia, comprobante (imagen), fecha, <b>confirmado por</b> y cuándo.</td><td>✔ forma de pago y estado; ✗ montos reales, cuentas y comprobantes</td></tr>
+<tr><td>Pre-validación de Tina</td><td>Cuando Tina detecta que el comprobante coincide, marca "verificado por Tina". Sigue siendo "por confirmar" hasta que Cristina confirme.</td><td>✔</td></tr>
+<tr><td>Crédito y saldo a favor</td><td>Una orden abonada puede despacharse (crédito al cliente, autorizado por Cristina). Lo pendiente aparece en "Cuentas por cobrar → clientes" y en la ficha del cliente. Si un cliente paga de más o se cancela a su favor, queda un <b>saldo a favor</b> que se puede usar en una orden futura como forma de pago "Saldo a favor".</td><td>✔ solo "abonada / debe $X"</td></tr>
+<tr><td>Comisión del canal</td><td>% configurado por canal (Cashea, Shopify, Duwu…). Se calcula solo; editable.</td><td>✗</td></tr>
+</table>
+<h3>E. Entrega</h3>
+<table><tr><th>Campo</th><th>Detalle</th><th>Logística</th></tr>
+<tr><td>Tipo de entrega</td><td>Pick-up (Prados del Este) / Delivery Caracas / Envío nacional / Otro.</td><td>✔</td></tr>
+<tr><td>Dirección</td><td>Se elige entre las direcciones del cliente o se agrega una nueva (queda guardada en su ficha). Ciudad, estado, municipio, zona/urbanización, enlace de Maps.</td><td>✔</td></tr>
+<tr><td>Persona que recibe</td><td>Nombre y teléfono, solo si es distinta del cliente (conserje, familiar, receptor en otra ciudad). <b>No sustituye al cliente.</b></td><td>✔</td></tr>
+<tr><td>Despachador</td><td>Juan, Ingrid o motorizado externo. Pick-up no lleva despachador (lo entrega operación).</td><td>✔</td></tr>
+<tr><td>Agencia y número de guía</td><td>MRW / Zoom / Tealca / otra. Guía obligatoria para pasar a "despachada" en envío nacional.</td><td>✔</td></tr>
+<tr><td>Fecha prometida y horario</td><td>Caracas entre 8 am y 5 pm → mismo día (lo confirma Tina). Pick-up → el cliente elige día y hora dentro del horario. Nacional → estimado (fecha de despacho + días de la agencia).</td><td>✔</td></tr>
+<tr><td>Fecha y hora real de entrega</td><td>Al marcar entregada.</td><td>✔</td></tr>
+<tr><td>Promoción de envío aplicada</td><td>Ej. "Cashea Envíos MRW sep-oct 2026". Configurable con vigencia y productos.</td><td>✔</td></tr>
+<tr><td>Notas de entrega</td><td>Texto visible en grande en Operaciones. Ej.: "Recibe el conserje. Avisar cuando el motorizado esté llegando. No entregar después de las 6 pm."</td><td>✔</td></tr>
+</table>
+<h3>F. Interno (solo administración)</h3>
+<table><tr><th>Campo</th><th>Detalle</th></tr>
+<tr><td>Costo de productos</td><td>Se copia del catálogo de costos al momento de la orden (congelado, igual que el precio).</td></tr>
+<tr><td>Costo de entrega</td><td>Lo que Decopet le paga al despachador por esta entrega (se llena al liquidar la semana) o el costo del courier.</td></tr>
+<tr><td>Ganancia y margen</td><td>Total − IVA − comisión del canal − costo de productos − costo de entrega. Se muestra <b>cómo se calculó</b>.</td></tr>
+<tr><td>Historial de cambios</td><td>Cada cambio de estado, monto, dirección o producto: quién, cuándo, valor anterior y nuevo.</td></tr>
+<tr><td>Incidencias y reclamos</td><td>Lista ligada a la orden (ver sección 6).</td></tr>
+</table>
+
+<h2>4. Estados y quién puede moverlos</h2>
+<div class="flujo"><span class="est e-pagada">Confirmada</span><i>→</i><span class="est e-desp">Despachada</span><i>→</i><span class="est e-entr">Entregada</span></div>
+<div class="nota"><b>Simplificado el 13-sep (noche):</b> de 9 pasos a 3. "Nueva" y "En preparación" no existen: ninguna orden entra sin pago confirmado (o efectivo contra entrega). "Pago por revisar" es un estado del <i>pago</i>, no de la orden. "Lista" se funde con En preparación. "Coordinada" es una marca automática (fecha + despachador/agencia) y es requisito para despachar. "Seguimiento" es una tarea del cliente, no un estado.</div>
+<table><tr><th>Paso</th><th>Quién puede hacerlo</th><th>Condición</th><th>Efecto automático</th></tr>
+<tr><td>Crear orden (Nueva)</td><td>Tina · Shopify · Logística · Cristina</td><td>Cliente y al menos un producto.</td><td>Número; precios, costos y tasa congelados; notas del cliente visibles; aviso si tiene pack con saldo ("¿es un repuesto y no una venta?").</td></tr>
+<tr><td>Nueva → Pago por confirmar</td><td>Tina · Cristina</td><td>Comprobante o referencia adjuntos.</td><td>Entra a la cola "Pagos por confirmar". Nada en caja.</td></tr>
+<tr><td>→ Confirmada</td><td><span class="adm">Solo Cristina</span></td><td>Monto y cuenta destino.</td><td>Ingreso en la cuenta = <b>dinero cobrado</b>. Inventario reservado. Cola "Pagadas por coordinar". Cashea/Vidapets → <b>cuenta por cobrar</b>, no cobrado.</td></tr>
+<tr><td>Nueva → En preparación (contra entrega)</td><td>Cristina</td><td>Forma de pago = efectivo.</td><td>Estado de pago "contra entrega". La orden avanza sin dinero en caja.</td></tr>
+<tr><td>→ En preparación</td><td>Logística · Cristina</td><td>—</td><td>Inventario: reservado → en preparación. Para porches: suma a "porches por armar hoy".</td></tr>
+<tr><td>→ Lista</td><td>Logística · Cristina</td><td>—</td><td>Cola "Listos".</td></tr>
+<tr><td>→ Coordinada</td><td>Logística · Cristina</td><td>Fecha prometida + (despachador o agencia) + dirección o pick-up.</td><td>Aparece en "Delivery de hoy" / "Pick-ups de hoy" / "Nacionales". Genera el resumen para el despachador.</td></tr>
+<tr><td>→ Despachada</td><td>Logística · Cristina</td><td>Nacional: guía obligatoria.</td><td>Inventario sale. Cola "Entregas sin confirmar".</td></tr>
+<tr><td>→ Entregada</td><td>Logística · Cristina</td><td>Contra entrega: monto recibido.</td><td>Fecha real; tiempos calculados; efectivo → ingreso en la caja del despachador; porche PRO o pack → programa seguimiento de repuesto; receptor y dirección quedan como "última dirección usada" del cliente.</td></tr>
+<tr><td>→ Seguimiento</td><td>Sistema propone · Cristina/Logística ejecutan</td><td>X días después (configurable, ej. 3).</td><td>Tarea "preguntar cómo le fue"; se registra la respuesta.</td></tr>
+</table>
+<div class="nota"><b>Regla de retroceso:</b> una orden puede volver un paso atrás (por ejemplo de Coordinada a Lista si se cayó la entrega) siempre con motivo y quedando en el historial. Nunca se puede quitar un pago confirmado "hacia atrás": si hubo error, se registra un reembolso o una corrección firmada por Cristina.</div>
+
+<h2>5. Caminos alternativos</h2>
+<table><tr><th>Caso</th><th>Quién</th><th>Qué hace el sistema</th></tr>
+<tr><td><b>Pago rechazado</b></td><td>Cristina</td><td>Vuelve a Nueva con motivo (no coincide, monto incompleto, referencia usada). El intento queda guardado.</td></tr>
+<tr><td><b>Modificada</b></td><td>Cristina (montos/productos) · Logística (dirección, horario, receptor)</td><td>Guarda antes/después. Si ya estaba pagada y cambia el total, marca "diferencia por cobrar" o "diferencia por devolver".</td></tr>
+<tr><td><b>Cancelada</b></td><td>Cristina</td><td>Motivo obligatorio (cliente desistió, sin stock, error nuestro, fraude…). Libera inventario. Si había pago: reembolso (salida de caja con motivo) o saldo a favor del cliente, según el caso; culpa de Decopet → reembolso.</td></tr>
+<tr><td><b>Entrega fallida</b></td><td>Logística</td><td>Motivo (no estaba, no contestó, dirección errada, rechazó). Vuelve a Coordinada → <b>Reprogramada</b>. Si el motorizado cobró el viaje, se registra como costo extra de entrega en la orden.</td></tr>
+<tr><td><b>Devuelta</b></td><td>Cristina</td><td>El producto regresa a inventario como "devuelto / por revisar", no a disponible. Reembolso si aplica.</td></tr>
+<tr><td><b>Reposición</b></td><td>Cristina</td><td>Nueva orden tipo reposición ligada a la original.</td></tr>
+<tr><td><b>Incidencia</b></td><td>Logística · Cristina</td><td>Registro ligado a la orden: tipo (retraso, daño, error de producto, dirección, pago, otro), descripción, responsable, abierta/cerrada, resolución. No cambia el estado de la orden por sí sola.</td></tr>
+<tr><td><b>Reclamo</b></td><td>Cristina</td><td>Igual que incidencia, pero lo origina el cliente y se mide aparte en analítica.</td></tr>
+</table>
+
+<h2>6. Alertas automáticas</h2>
+<table><tr><th>Alerta</th><th>Cuándo se enciende</th></tr>
+<tr><td><b>Retrasada</b></td><td>Fecha prometida pasada y no entregada.</td></tr>
+<tr><td><b>Pago sin confirmar</b></td><td>Más de N horas en "por confirmar" (configurable, ej. 2 h).</td></tr>
+<tr><td><b>Pagada sin coordinar</b></td><td>Pagada hace más de N horas sin fecha prometida.</td></tr>
+<tr><td><b>Sin guía</b></td><td>Envío nacional despachado sin número de guía.</td></tr>
+<tr><td><b>Entrega sin confirmar</b></td><td>Despachada hace más de N horas sin marcar entregada.</td></tr>
+<tr><td><b>Tasa cambió</b></td><td>La tasa BCV del día es distinta a la guardada en una orden en Bs que aún no se pagó. Se avisa y se aplica la política que definas (mantener / actualizar).</td></tr>
+<tr><td><b>¿Repuesto de pack?</b></td><td>Se crea una venta de repuesto a un cliente con pack con saldo.</td></tr>
+</table>
+
+<h2>7. Ejemplo de resumen para el despachador</h2>
+<p>Se genera solo, siempre igual, sin IA. Uno por orden y uno por despachador con todas sus entregas del día.</p>
+<div class="ej">📦 #10234 — María Pérez · 0414-1234567
+• 1 × porche PRO Grande (personalizado: Toby)
+• 1 × Malla
+🚚 Delivery Caracas · hoy 2–5 pm
+📍 La Castellana, Res. Los Pinos, apto 4B — recibe Juan (conserje) 0412-7654321
+💵 Contra entrega: $118 en efectivo
+📝 Avisar cuando el motorizado esté llegando. No entregar después de las 6 pm.</div>
+
+<h2>8. Permisos, resumidos</h2>
+<table><tr><th>Acción</th><th>Cristina</th><th>Logística</th><th>Tina</th></tr>
+<tr><td>Crear orden</td><td>✔</td><td>✔</td><td>✔</td></tr>
+<tr><td>Marcar "pago por confirmar" con comprobante</td><td>✔</td><td>✗</td><td>✔</td></tr>
+<tr><td><b>Confirmar pago</b></td><td>✔</td><td>✗</td><td>✗ (solo pre-valida)</td></tr>
+<tr><td>Cambiar precios, descuentos, IVA</td><td>✔</td><td>✗</td><td>✗</td></tr>
+<tr><td>Preparar, coordinar, asignar, guía, despachar, entregar</td><td>✔</td><td>✔</td><td>✗</td></tr>
+<tr><td>Editar dirección, horario, receptor, notas de entrega</td><td>✔</td><td>✔</td><td>✔ (al crear)</td></tr>
+<tr><td>Reportar incidencia, reprogramar</td><td>✔</td><td>✔</td><td>✗</td></tr>
+<tr><td>Cancelar, reembolsar, devolver, reposición</td><td>✔</td><td>✗</td><td>✗</td></tr>
+<tr><td>Ver costos, ganancia, comisión, comprobantes</td><td>✔</td><td>✗</td><td>—</td></tr>
+</table>
+
+<h2>9. Preguntas de esta parte</h2>
+<ol class="q">
+<li><b>Tina y los pagos:</b> antes me dijiste que Tina confirma cuando el comprobante coincide; hoy, que solo tú confirmas. Propongo: Tina <i>pre-valida</i> y tú confirmas con un clic desde la cola. ¿Correcto, o Tina debe poder confirmar sola en casos claros (Zelle, Pago Móvil que coincide)?</li>
+<li><b>Órdenes manuales por logística:</b> ¿la persona de logística puede crear órdenes (Duwu, alguien que llega a retirar, un pedido que Tina no captó)? Yo digo que sí, pero sin poder confirmar el pago.</li>
+<li><b>Abonos:</b> <span class="ok">respondido</span> — existen; se puede entregar a crédito con un abono, y los sobrantes quedan como saldo a favor del cliente.</li>
+<li><b>Horario de entrega:</b> ¿manejan franjas (mañana / tarde / noche) o una hora aproximada? Cambia cómo se muestra en Operaciones.</li>
+<li><b>Descuentos:</b> ¿qué tipos existen hoy (promoción, cortesía, referido, cliente frecuente)? ¿Quién los autoriza?</li>
+<li><b>Seguimiento:</b> ¿cuántos días después de la entrega quieres que salga la tarea "preguntar cómo le fue"? Propongo 3.</li>
+<li><b>Numeración:</b> ¿te sirve #10001, o Tina ya usa un formato que el cliente conoce?</li>
+</ol>
+<p><small>Siguiente parte: Operaciones (la pantalla de logística), que se construye sobre estos estados y colas.</small></p>
+</main></body></html>

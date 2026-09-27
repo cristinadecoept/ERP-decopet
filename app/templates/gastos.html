@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block cuerpo %}
+<div style="display:flex;justify-content:space-between;align-items:center"><h1>Gastos</h1><form method="get" class="filtros"><div><input type="month" name="mes" value="{{ mes }}" onchange="this.form.submit()"></div></form></div>
+<div class="fila">
+ <div class="tarjeta" style="flex:1 1 320px"><h2>Nuevo gasto</h2><form method="post" action="/gastos">
+  <div class="grid2"><div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}" required></div><div><label>Monto USD</label><input type="number" step="0.01" name="monto_usd" required></div></div>
+  <label>Categoría</label><select name="categoria" id="cat" onchange="sub()">{% for c in categorias %}<option>{{ c }}</option>{% endfor %}</select>
+  <label>Subcategoría</label><select name="subcategoria" id="subcat"></select>
+  <label>Descripción</label><input name="descripcion" placeholder="ej. 40 sacos de grama"><div class="grid2"><div><label>Proveedor / persona</label><input name="proveedor"></div><div><label>Cantidad</label><input type="number" step="0.01" name="cantidad"></div></div>
+  <div class="grid2"><div><label>Pagado desde</label><select name="caja_id"><option value="">—</option>{% for c in cajas %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div><div><label>Moneda real</label><select name="moneda"><option>USD</option><option>VES</option><option>USDT</option><option>EUR</option></select></div></div>
+  <div class="grid2"><div><label>Forma de pago</label><input name="forma_pago" placeholder="Pago móvil, efectivo…"></div><div><label>Ref / factura</label><input name="referencia"></div></div>
+  <p><button class="btn">Guardar gasto</button></p></form></div>
+ <div style="flex:2 1 500px"><div class="tarjeta"><h2>Resumen {{ mes }} — total {{ total|usd }}</h2><table>{% for r in por_cat %}<tr><td>{{ r.categoria }}</td><td style="width:40%"><div class="barra"><i style="width:{{ (r.monto/total*100)|round if total else 0 }}%"></i></div></td><td class="num">{{ r.monto|usd }}</td></tr>{% else %}<tr><td class="muted">Sin gastos este mes.</td></tr>{% endfor %}</table></div>
+  <div class="tarjeta"><table><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Proveedor</th><th>Caja</th><th class="num">Monto</th><th></th></tr>
+  {% for g in gastos %}<tr><td>{{ g.fecha|fecha }}</td><td>{{ g.categoria }}<div class="small muted">{{ g.subcategoria or '' }}</div></td><td>{{ g.descripcion or '' }}</td><td>{{ g.proveedor or '' }}</td><td class="small">{{ g.caja or '' }}</td><td class="num">{{ g.monto_usd|usd }}</td>
+  <td><form method="post" action="/gastos/{{ g.id }}/borrar" class="inline" onsubmit="return confirm('¿Borrar este gasto?')"><button class="btn peligro chico">×</button></form></td></tr>{% endfor %}</table></div></div>
+</div>
+<script>const CATS={{ categorias|tojson }};function sub(){const s=document.getElementById('subcat');s.innerHTML=(CATS[document.getElementById('cat').value]||[]).map(x=>`<option>${x}</option>`).join('');}sub();</script>
+{% endblock %}

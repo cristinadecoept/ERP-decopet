@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block cuerpo %}
+<div style="display:flex;justify-content:space-between;align-items:center"><h1>Pedidos</h1><a class="btn" href="/pedidos/nuevo">+ Nuevo pedido</a></div>
+<form class="filtros" method="get">
+ <div><label>Estado</label><select name="estado"><option value="activos" {{ 'selected' if estado=='activos' }}>En curso</option><option value="todos" {{ 'selected' if estado=='todos' }}>Todos</option>
+  {% for e in ESTADOS %}<option value="{{ e }}" {{ 'selected' if estado==e }}>{{ ESTADO_LABEL[e] }}</option>{% endfor %}</select></div>
+ <div><label>Desde</label><input type="date" name="desde" value="{{ desde }}"></div><div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta }}"></div>
+ <div><label>Buscar</label><input name="buscar" value="{{ buscar }}" placeholder="cliente o número"></div><div style="flex:0"><button class="btn sec">Filtrar</button></div>
+</form>
+<div class="tarjeta"><table><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Canal</th><th>Estado</th><th>Entrega</th><th>Despachador</th><th class="num">Total</th></tr>
+{% for p in pedidos %}<tr><td><a href="/pedidos/{{ p.id }}">{{ p.numero }}</a></td><td>{{ p.fecha|fecha }}</td><td>{{ p.cliente or '—' }}</td><td><span class="tag {{ p.canal }}">{{ p.canal }}</span></td>
+<td><span class="tag {{ p.estado }}">{{ ESTADO_LABEL[p.estado] }}</span></td><td>{{ TIPOS_ENTREGA.get(p.tipo_entrega,'—') }}</td><td>{{ p.despachador or '—' }}</td><td class="num">{{ p.total|usd }}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">No hay pedidos con ese filtro.</td></tr>{% endfor %}</table></div>
+{% endblock %}

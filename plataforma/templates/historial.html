@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block titulo %}Registro de ventas · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Registro de ventas</h1></div>
+<a class="btn sec" href="/historial/exportar?anio={{ anio }}&mes={{ mes }}&semana={{ semana }}&q={{ q|urlencode }}">Exportar a Excel</a></div>
+<form method="get" class="filtros"><select name="anio" onchange="this.form.submit()"><option value="todos" {{ 'selected' if todos }}>Todos los años</option>{% for a in anios %}<option {{ 'selected' if a==anio }}>{{ a }}</option>{% endfor %}</select>
+ <select name="mes" onchange="this.form.querySelector('[name=semana]').value='';this.form.submit()"><option value="">Todo el año</option>{% for m in meses %}<option value="{{ loop.index }}" {{ 'selected' if mes and mes|int==loop.index }}>{{ m|capitalize }}</option>{% endfor %}</select>
+ <select name="semana" onchange="const m=this.form.querySelector('[name=mes]');if(this.value&&!m.value)m.value='{{ mes_actual }}';this.form.submit()"><option value="">{{ 'Todo el mes' if mes else 'Todas las semanas' }}</option>{% for s in [1,2,3,4,5] %}<option value="{{ s }}" {{ 'selected' if semana==s|string }}>Semana {{ s }}</option>{% endfor %}</select>
+ <input name="q" value="{{ q }}" placeholder="Cliente, producto u orden"><button class="btn chico sec" type="submit" style="align-self:center">Buscar</button>{% if q or mes or semana or todos or (anio and anio!=hoy_anio) %}<a class="btn chico pel" href="/historial" style="align-self:center">Limpiar</a>{% endif %}</form>
+<div class="tiles tiles-hist" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:16px">
+ <div class="tile"><b>{{ total|usd }}</b><span>Facturación</span></div>
+ <div class="tile"><b>{{ n_ordenes }}</b><span>Ventas</span></div>
+ <div class="tile"><b class="dinero">{{ unidades|int }}</b><span>Unidades</span></div>
+ <div class="tile"><b>{{ ticket|usd }}</b><span>Ticket promedio</span></div>
+</div>
+
+<div class="tabla"><table><tr><th>Fecha</th><th>Semana</th><th>Mes</th><th>Cliente</th><th>Producto</th><th class="num">Precio</th><th class="num">Cantidad</th><th class="num">Facturación</th><th>Forma de pago</th></tr>
+{% for r in rows %}<tr><td class="mono">{{ r.fecha|dia }}</td><td class="mini">{{ r.semana }}</td><td class="mini">{{ r.mes }}</td><td>{% if r.cliente=='Sin nombre' %}<span class="sin-nombre">Sin nombre</span>{% else %}{{ r.cliente }}{% endif %}</td><td>{{ r.producto }}{% if r.color %} <span class="canal">plato {{ r.color }}</span>{% endif %}{% if r.malla %} <span class="canal">+ malla</span>{% endif %}{% if r.personalizacion %} <span class="mini">✎ {{ r.personalizacion }}</span>{% endif %}</td>
+<td class="num">{{ r.precio|usd }}</td><td class="num">{{ (r.cantidad or 0)|int }}</td><td class="num"><b>{{ r.linea|usd }}</b></td><td class="mini">{% if r.forma=='Sin registro' %}<span class="sin-nombre">Sin registro</span>{% else %}{{ r.forma or '—' }}{% endif %}</td></tr>
+{% else %}<tr><td colspan="9" class="vacio">Sin ventas en este período.</td></tr>{% endfor %}</table></div>
+{% if truncado %}<p class="mini" style="margin-top:8px">Se muestran las últimas 2.000 líneas; usa los filtros o exporta para ver todo.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Nuevo pedido</h1>
+<form method="post" id="f">
+<div class="fila">
+ <div class="tarjeta"><h2>Cliente</h2>
+  <div style="position:relative"><label>Buscar cliente existente</label><input id="buscar" autocomplete="off" placeholder="escribe el nombre o teléfono…" value="{{ cliente.nombre if cliente else '' }}"><div class="sugerencias" id="sug" hidden></div></div>
+  <input type="hidden" name="cliente_id" id="cliente_id" value="{{ cliente.id if cliente else '' }}"><p class="small muted" id="sel">{% if cliente %}Seleccionado: {{ cliente.nombre }}{% else %}Si no aparece, llena los datos de abajo y se crea como cliente nuevo.{% endif %}</p>
+  <div id="nuevo" {{ 'hidden' if cliente }}><div class="grid2"><div><label>Nombre (cliente nuevo)</label><input name="cliente_nombre"></div><div><label>Teléfono</label><input name="cliente_telefono"></div></div>
+  <div class="grid2"><div><label>Ciudad</label><input name="cliente_ciudad" value="Caracas"></div><div><label>Zona</label><input name="cliente_zona"></div></div></div>
+ </div>
+ <div class="tarjeta"><h2>Pedido</h2>
+  <div class="grid3"><div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}"></div>
+  <div><label>Canal</label><select name="canal">{% for c in CANALES %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
+  <div><label>Estado inicial</label><select name="estado"><option value="pendiente_pago">Pendiente de pago</option><option value="pagado">Pagado</option></select></div></div>
+  <div class="grid3"><div><label>Tipo de entrega</label><select name="tipo_entrega"><option value="">—</option>{% for k,v in TIPOS_ENTREGA.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+  <div><label>Agencia</label><input name="agencia" placeholder="Tealca…"></div><div><label>Despachador</label><select name="despachador_id"><option value="">—</option>{% for d in despachadores %}<option value="{{ d.id }}">{{ d.nombre }}</option>{% endfor %}</select></div></div>
+  <label>Ref. Cashea (si aplica)</label><input name="cashea_ref"><label>Notas</label><textarea name="notas" rows="2"></textarea>
+ </div>
+</div>
+<div class="tarjeta"><h2>Productos</h2><table id="items"><tr><th>Producto</th><th style="width:90px">Cant.</th><th style="width:110px">Precio</th><th>Personalización</th><th></th></tr></table>
+ <p><button type="button" class="btn sec chico" onclick="agregar()">+ Agregar producto</button></p>
+ <div class="grid3"><div><label>Delivery (USD)</label><input type="number" step="0.01" name="delivery" id="delivery" value="0" oninput="total()"></div><div><label>Total</label><input id="total" readonly></div></div></div>
+<div class="tarjeta"><h2>Pago (opcional, si ya pagó)</h2><div class="grid3"><div><label>Método</label><select name="pago_metodo"><option value="">— sin pago aún —</option>{% for m in metodos %}<option value="{{ m.id }}">{{ m.nombre }} ({{ m.moneda_recibida }})</option>{% endfor %}</select></div>
+ <div><label>Monto USD</label><input type="number" step="0.01" name="pago_monto" id="pago_monto"></div><div><label>Referencia</label><input name="pago_referencia"></div></div></div>
+<p><button class="btn">Guardar pedido</button> <a href="/pedidos" class="btn sec">Cancelar</a></p>
+</form>
+<script>
+const PRODS = {{ productos|map(attribute='id')|list|tojson }};
+const NOMBRES = {{ productos|map(attribute='nombre')|list|tojson }};
+const PRECIOS = {{ productos|map(attribute='precio')|list|tojson }};
+function agregar(){const t=document.getElementById('items');const tr=t.insertRow();
+ let opts='<option value="">—</option>';PRODS.forEach((id,i)=>opts+=`<option value="${id}" data-p="${PRECIOS[i]??''}">${NOMBRES[i]}</option>`);
+ tr.innerHTML=`<td><select name="item_producto" onchange="this.closest('tr').querySelector('[name=item_precio]').value=this.selectedOptions[0].dataset.p||'';total()">${opts}</select></td>
+ <td><input type="number" name="item_cantidad" value="1" min="1" oninput="total()"></td><td><input type="number" step="0.01" name="item_precio" oninput="total()"></td>
+ <td><input name="item_perso" placeholder="nombre del perro"></td><td><button type="button" class="btn peligro chico" onclick="this.closest('tr').remove();total()">×</button></td>`;}
+function total(){let s=0;document.querySelectorAll('#items tr').forEach(tr=>{const c=tr.querySelector('[name=item_cantidad]'),p=tr.querySelector('[name=item_precio]');if(c&&p)s+=(+c.value||0)*(+p.value||0);});
+ s+=+document.getElementById('delivery').value||0;document.getElementById('total').value='$'+s.toFixed(2);document.getElementById('pago_monto').value=s.toFixed(2);}
+agregar();
+const b=document.getElementById('buscar'),sug=document.getElementById('sug');let timer;
+b.addEventListener('input',()=>{document.getElementById('cliente_id').value='';document.getElementById('nuevo').hidden=false;document.querySelector('[name=cliente_nombre]').value=b.value;
+ clearTimeout(timer);if(b.value.length<2){sug.hidden=true;return;}
+ timer=setTimeout(async()=>{const r=await fetch('/api/clientes?buscar='+encodeURIComponent(b.value));const d=await r.json();
+ sug.innerHTML=d.map(c=>`<div data-id="${c.id}" data-n="${c.nombre}">${c.nombre} <span class="small muted">${c.telefono||''} ${c.zona||''}</span></div>`).join('');sug.hidden=!d.length;},200);});
+sug.addEventListener('click',e=>{const d=e.target.closest('div[data-id]');if(!d)return;document.getElementById('cliente_id').value=d.dataset.id;b.value=d.dataset.n;
+ document.getElementById('sel').innerText='Seleccionado: '+d.dataset.n;document.getElementById('nuevo').hidden=true;document.querySelector('[name=cliente_nombre]').value='';sug.hidden=true;});
+</script>
+{% endblock %}

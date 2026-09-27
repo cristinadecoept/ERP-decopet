@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block titulo %}{{ c.nombre }}{% endblock %}{% block cuerpo %}
+<div style="display:flex;justify-content:space-between;align-items:center"><h1>{{ c.nombre }}</h1><a class="btn" href="/pedidos/nuevo?cliente_id={{ c.id }}">+ Pedido para este cliente</a></div>
+<div class="kpis"><div class="kpi"><div class="n">{{ resumen.n }}</div><div class="l">Pedidos</div></div><div class="kpi"><div class="n">{{ resumen.monto|usd }}</div><div class="l">Total comprado</div></div>
+<div class="kpi"><div class="n">{{ (resumen.monto/resumen.n)|usd if resumen.n else '—' }}</div><div class="l">Ticket promedio</div></div><div class="kpi"><div class="n">{{ resumen.ultimo|fecha }}</div><div class="l">Último pedido</div><div class="d muted">Cliente desde {{ resumen.primero|fecha }}</div></div></div>
+<div class="fila">
+ <div class="tarjeta"><h2>Datos</h2><form method="post" action="/clientes/{{ c.id }}/editar">
+  <div class="grid2"><div><label>Nombre</label><input name="nombre" value="{{ c.nombre }}"></div><div><label>Teléfono</label><input name="telefono" value="{{ c.telefono or '' }}"></div></div>
+  <div class="grid2"><div><label>Correo</label><input name="correo" value="{{ c.correo or '' }}"></div><div><label>Canal de origen</label><select name="canal_origen">{% for x in CANALES %}<option value="{{ x }}" {{ 'selected' if c.canal_origen==x }}>{{ x }}</option>{% endfor %}</select></div></div>
+  <div class="grid2"><div><label>Ciudad</label><input name="ciudad" value="{{ c.ciudad or '' }}"></div><div><label>Zona</label><input name="zona" value="{{ c.zona or '' }}"></div></div>
+  <label>Dirección</label><input name="direccion" value="{{ c.direccion or '' }}"><label>Notas</label><textarea name="notas" rows="2">{{ c.notas or '' }}</textarea>
+  <p><button class="btn sec">Guardar cambios</button></p></form></div>
+ <div class="tarjeta"><h2>Perros</h2>{% for m in mascotas %}<p><b>{{ m.nombre }}</b> · {{ m.raza or 'raza s/d' }} {% if m.fecha_nacimiento %}· nació {{ m.fecha_nacimiento|fecha }}{% endif %} {% if m.tamano %}· {{ m.tamano }}{% endif %}</p>{% else %}<p class="muted">Sin perros registrados.</p>{% endfor %}
+  <form method="post" action="/clientes/{{ c.id }}/mascota"><div class="grid2"><div><label>Nombre</label><input name="nombre" required></div><div><label>Raza</label><input name="raza"></div></div>
+  <div class="grid2"><div><label>Fecha de nacimiento</label><input type="date" name="fecha_nacimiento"></div><div><label>Tamaño</label><select name="tamano"><option value="">—</option><option>mini</option><option>mediano</option><option>grande</option></select></div></div>
+  <p><button class="btn sec chico">+ Agregar perro</button></p></form></div>
+</div>
+<div class="tarjeta"><h2>Historial de pedidos</h2><table><tr><th>Número</th><th>Fecha</th><th>Productos</th><th>Canal</th><th>Estado</th><th class="num">Total</th></tr>
+{% for p in pedidos %}<tr><td><a href="/pedidos/{{ p.id }}">{{ p.numero }}</a></td><td>{{ p.fecha|fecha }}</td><td>{% for i in por_pedido.get(p.id, []) %}{{ i.cantidad|int }}× {{ i.nombre }}{{ ', ' if not loop.last }}{% endfor %}</td><td><span class="tag {{ p.canal }}">{{ p.canal }}</span></td><td><span class="tag {{ p.estado }}">{{ ESTADO_LABEL[p.estado] }}</span></td><td class="num">{{ p.total|usd }}</td></tr>{% endfor %}</table></div>
+{% endblock %}

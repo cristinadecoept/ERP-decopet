@@ -1,0 +1,106 @@
+{% extends "base.html" %}{% block titulo %}Configuración · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Configuración</h1></div></div>
+{% if ok %}<div class="cf-ok">Guardado.</div>{% endif %}
+{% if err == 'tipo' %}<div class="cf-err">Ese archivo no sirve. Tiene que ser PDF, JPG, PNG o WEBP.</div>
+{% elif err == 'grande' %}<div class="cf-err">El archivo pesa más de 20 MB.</div>
+{% elif err == 'doc' %}<div class="cf-err">No elegiste ningún archivo.</div>
+{% elif err %}<div class="cf-err">No se pudo hacer el respaldo. Revisa que iCloud esté conectado.</div>{% endif %}
+
+<div class="tarjeta cf-b">
+ <h3>Respaldo</h3>
+ <div class="cf-cuerpo">
+ {% if respaldos.ultimo %}
+  <p class="cf-d">Última copia: <b>{{ respaldos.ultimo }}</b>{% if respaldos.dias > 2 %} <span class="ln-alerta">· hace {{ respaldos.dias }} días</span>{% elif respaldos.dias == 0 %} · hoy{% endif %} · {{ respaldos.n }} copia{{ 's' if respaldos.n != 1 }} guardada{{ 's' if respaldos.n != 1 }}</p>
+ {% else %}<p class="cf-d ln-alerta">Todavía no hay ninguna copia.</p>{% endif %}
+ <form method="post" action="/configuracion/respaldo"><button class="btn chico">Respaldar ahora</button></form>
+ <p class="mini" style="margin-top:8px">Copia la base de datos a iCloud, fuera del disco de la Mac. Se guardan los últimos 30 días.</p>
+ </div>
+</div>
+
+<div class="tarjeta cf-b">
+ <h3>Reglas del ERP</h3>
+ <div class="cf-cuerpo">
+ <form method="post" action="/configuracion/guardar"><input type="hidden" name="bloque" value="reglas">
+  <div class="g2">
+   <div><label>Seguimiento del repuesto</label>
+    <div class="cf-in"><input name="ciclo" value="{{ ciclo }}" inputmode="numeric" style="width:80px"><span class="mini">días</span></div>
+    <div class="mini">A los cuántos días se le escribe al cliente. Si compra más seguido, se usa su ritmo.</div></div>
+   <div><label>IVA</label>
+    <div class="cf-in"><input name="iva" value="{{ iva }}" inputmode="decimal" style="width:80px"><span class="mini">%</span></div>
+    <div class="mini">El catálogo muestra el precio con IVA al lado, para Cashea y facturas.</div></div>
+  </div>
+  <label style="margin-top:14px;display:block">Viaje a la agencia</label>
+  <div class="cf-ags">{% for ag, m in tarifa_agencia.items() %}
+   <div class="cf-in"><span class="mini" style="min-width:52px">{{ 'cualquier otra' if ag == '*' else ag }}</span>
+    <input name="ag_{{ ag }}" value="{{ '%g'|format(m) }}" inputmode="decimal" style="width:70px"></div>{% endfor %}</div>
+  <div class="mini">Se paga por viaje, no por pedido: lleve 1 o lleve 6, es lo mismo.</div>
+  <p><button class="btn chico">Guardar</button></p>
+ </form>
+ </div>
+</div>
+
+<div class="tarjeta cf-b">
+ <h3>Equipo y sueldos</h3>
+ <div class="cf-cuerpo">
+ <form method="post" action="/configuracion/guardar"><input type="hidden" name="bloque" value="equipo">
+  <table class="lineas"><tr><th>Nombre</th><th class="num" style="width:170px">Sueldo al mes</th></tr>
+  {% for n in equipo %}<tr>
+   <td><input name="nombre" value="{{ n }}"></td>
+   <td class="num"><div class="cf-in" style="justify-content:flex-end"><span class="mini">$</span>
+    <input name="sueldo" value="{{ '%g'|format(sueldos[n]) if sueldos.get(n) else '' }}" inputmode="decimal" placeholder="—" style="width:80px;text-align:right"></div></td>
+  </tr>{% endfor %}
+  <tr><td><input name="nombre" placeholder="agregar a alguien…"></td>
+   <td class="num"><div class="cf-in" style="justify-content:flex-end"><span class="mini">$</span>
+    <input name="sueldo" inputmode="decimal" placeholder="—" style="width:80px;text-align:right"></div></td></tr></table>
+  <p class="mini">Quien tenga sueldo se paga por quincena (la mitad el 15 y la mitad el último día). Deja el sueldo vacío para quien se le pague de otra forma — el contador, un alquiler — y llévalo en <a href="/finanzas/recurrentes">Pagos recurrentes</a>. Para sacar a alguien, borra su nombre.</p>
+  <p><button class="btn chico">Guardar</button></p>
+ </form>
+ </div>
+</div>
+
+<div class="tarjeta cf-b">
+ <h3>Datos de la empresa</h3>
+ <div class="cf-cuerpo">
+ <form method="post" action="/configuracion/guardar"><input type="hidden" name="bloque" value="empresa">
+  <div class="g2">{% for k, etiqueta in EMPRESA_CAMPOS %}
+   <div><label>{{ etiqueta }}</label><input name="{{ k }}" value="{{ empresa.get(k, '') }}"></div>{% endfor %}</div>
+  <p><button class="btn chico">Guardar</button></p>
+ </form>
+
+ <h4 class="cf-h4">Documentos</h4>
+ {% if documentos %}<table class="lineas">{% for d in documentos %}<tr>
+  <td><a href="/configuracion/documento/{{ d.archivo }}" target="_blank" rel="noreferrer">{{ d.etiqueta }}</a></td>
+  <td class="mini mono" style="width:110px">{{ d.subido|dia }}</td>
+  <td class="mini num" style="width:70px">{{ d.kb }} KB</td>
+  <td style="width:34px;text-align:right"><form method="post" action="/configuracion/documento/{{ d.archivo }}/borrar"
+   onsubmit="return confirm('¿Borrar {{ d.etiqueta }}?')"><button class="btn pel chico">×</button></form></td>
+ </tr>{% endfor %}</table>{% else %}<div class="vacio">Todavía no has guardado ninguno.</div>{% endif %}
+
+ <form method="post" action="/configuracion/documento" enctype="multipart/form-data" class="cf-doc">
+  <input name="etiqueta" placeholder="Nombre">
+  <input type="file" name="archivo" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+  <button class="btn chico">Guardar</button>
+ </form>
+ <p class="mini">PDF o foto, hasta 20 MB. Solo los ves tú.</p>
+ </div>
+</div>
+
+<div class="tarjeta cf-b">
+ <h3>Cómo se comporta</h3>
+ <div class="cf-cuerpo">
+ <form method="post" action="/configuracion/guardar"><input type="hidden" name="bloque" value="erp">
+  <label class="cf-check"><input type="checkbox" name="ventas_auto" {{ 'checked' if ventas_auto }}>
+   <span>Las ventas entran solas al Cash flow<div class="mini">Apagado, las registras tú a mano. Encendido, cada pago confirmado entra solo al libro y a su caja.</div></span></label>
+  <div class="g2" style="margin-top:14px">
+   <div><label>El Cash flow cuenta desde</label><input type="date" name="cashflow_desde" value="{{ cashflow_desde }}">
+    <div class="mini">Nada anterior a esta fecha entra a los saldos.</div></div>
+   <div><label>Clave de Resultados</label><input name="clave" type="password" placeholder="dejar en blanco para no cambiarla" autocomplete="new-password">
+    <div class="mini">Protege Resultados, Registro de ventas y el botón del ojo.</div></div>
+  </div>
+  <p><button class="btn chico">Guardar</button></p>
+ </form>
+ </div>
+</div>
+
+<p class="mini">Las categorías de gasto todavía se cambian a mano. Si te falta una, pídemela.</p>
+{% endblock %}

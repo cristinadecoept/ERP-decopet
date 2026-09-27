@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block titulo %}Proveedores · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Proveedores</h1></div><button class="btn" onclick="abrirProv()">+ Nuevo proveedor</button></div>
+
+{% if proveedores %}<div class="prov-grid2">{% for p in proveedores %}<div class="tile prov-card">
+ <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1;min-width:0"><b style="font-size:17px">{{ p.nombre }}</b>{% if p.que_vende %}<div style="margin-top:4px">{% for c in p.que_vende.split(',') %}<span class="canal" style="margin:0 4px 4px 0">{{ c.strip() }}</span>{% endfor %}</div>{% endif %}</div>
+ <button type="button" class="no-link" onclick='abrirProv({{ dict(p)|tojson }})'>Editar</button></div>
+ <div class="prov-cuerpo"><div class="mini" style="margin-top:8px;line-height:1.7">
+ {% if p.contacto %}👤 {{ p.contacto }}<br>{% endif %}
+ {% if p.telefono %}📞 {{ p.telefono }} · <a class="wa-link" href="{{ p.telefono|wa }}" target="_blank">WhatsApp ↗</a><br>{% endif %}
+ {% if p.correo %}✉️ {{ p.correo }}<br>{% endif %}
+ {% if p.ciudad or p.direccion %}📍 {{ [p.direccion, p.ciudad]|select|join(' · ') }}<br>{% endif %}
+ {% if p.forma_pago %}💳 {{ p.forma_pago }}<br>{% endif %}
+ {% if p.notas %}📝 {{ p.notas }}{% endif %}</div>
+ {% if p['items'] %}<table class="lineas prov-items" style="margin-top:10px"><tr><th>Qué me vende</th><th class="num">Precio</th></tr>{% for i in p['items'] %}<tr><td>{{ i.item }}</td><td class="num">{% if i.precio is not none %}<b style="white-space:nowrap">{{ i.precio|usd }}</b>{% if i.unidad %}<span class="mini" style="display:block">{{ i.unidad }}</span>{% endif %}{% else %}<span class="mini">{{ i.unidad or 'sin precio' }}</span>{% endif %}</td></tr>{% endfor %}</table>{% endif %}
+</div><button type="button" class="prov-mas no-link" hidden onclick="verMas(this)">Ver más</button></div>
+{% endfor %}</div>
+{% else %}<div class="vacio">Todavía no hay proveedores. Empieza con "+ Nuevo proveedor": a quién le compras la grama, las cajas, la madera, los bowls…</div>{% endif %}
+{% endblock %}
+{% block extra %}
+<div class="velo" id="velo" onclick="cerrarProv()"></div><aside class="panel" id="panel"><button class="cerrar" onclick="cerrarProv()">×</button><div class="pc">
+<div class="pt"><h2 id="prov-t">Nuevo proveedor</h2></div>
+<form method="post" action="/proveedores/guardar" id="prov-f"><input type="hidden" name="id" id="p-id" value="">
+<label>Nombre <span class="mini">(empresa o persona)</span></label><input name="nombre" id="p-nombre" required>
+<label>Qué le compras <span class="mini">(separa con comas)</span></label><input name="que_vende" id="p-que" list="que-lista" placeholder="Grama, Cajas de cartón…"><datalist id="que-lista">{% for c in cats %}<option value="{{ c }}">{% endfor %}<option value="Madera"><option value="Bowls"><option value="Platos"><option value="Malla"></datalist>
+<div class="g2"><div><label>Contacto</label><input name="contacto" id="p-contacto" placeholder="con quién hablas"></div><div><label>Teléfono</label><input name="telefono" id="p-tel" placeholder="0414-1234567"></div></div>
+<div class="g2"><div><label>Correo</label><input name="correo" id="p-correo"></div><div><label>Ciudad</label><input name="ciudad" id="p-ciudad" list="ciudades"><datalist id="ciudades">{% for c in CIUDADES_VE %}<option value="{{ c }}">{% endfor %}</datalist></div></div>
+<label>Dirección</label><input name="direccion" id="p-dir">
+<label>Cómo le pagas</label><input name="forma_pago" id="p-pago" placeholder="pago móvil, efectivo, transferencia, crédito a 15 días…">
+<label>Qué me vende y a qué precio</label><div id="p-items"></div><button type="button" class="no-link" onclick="addItem()">+ Agregar</button>
+<label>Notas</label><textarea name="notas" id="p-notas" rows="3"></textarea>
+<p style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="flex:1">Guardar</button><button class="btn pel" type="submit" name="borrar" value="1" id="p-borrar" hidden onclick="return confirm('¿Quitar este proveedor?')">Quitar</button></p></form></div></aside>
+<script>
+function abrirProv(p){p=p||{};const s=(k,v)=>{document.getElementById(k).value=v||''};
+ s('p-id',p.id);s('p-nombre',p.nombre);s('p-que',p.que_vende);s('p-contacto',p.contacto);s('p-tel',p.telefono);s('p-correo',p.correo);s('p-ciudad',p.ciudad);s('p-dir',p.direccion);s('p-pago',p.forma_pago);s('p-notas',p.notas);document.getElementById('p-items').innerHTML='';(p.items&&p.items.length?p.items:[{}]).forEach(addItem);
+ document.getElementById('prov-t').textContent=p.id?p.nombre:'Nuevo proveedor';document.getElementById('p-borrar').hidden=!p.id;
+ document.getElementById('panel').classList.add('on');document.getElementById('velo').classList.add('on');if(!p.id)document.getElementById('p-nombre').focus();}
+function addItem(i){i=i||{};const d=document.createElement('div');d.className='prov-fila';d.innerHTML=`<input name="item" placeholder="ej. Caja de cartón grande" value="${(i.item||'').replace(/"/g,'&quot;')}"><input name="item_precio" type="number" step="0.01" placeholder="$" value="${i.precio??''}"><input name="item_unidad" placeholder="unidad" value="${(i.unidad||'').replace(/"/g,'&quot;')}"><button type="button" class="no-link" onclick="this.parentNode.remove()">×</button>`;document.getElementById('p-items').appendChild(d);}
+function verMas(b){const c=b.previousElementSibling,ab=c.classList.toggle('abierto');c.classList.toggle('recortado',!ab);b.textContent=ab?'Ver menos':'Ver más';}
+document.querySelectorAll('.prov-cuerpo').forEach(c=>{if(c.scrollHeight>c.clientHeight+4){c.classList.add('recortado');c.nextElementSibling.hidden=false;}});
+function cerrarProv(){document.getElementById('panel').classList.remove('on');document.getElementById('velo').classList.remove('on');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarProv();});
+</script>
+{% endblock %}

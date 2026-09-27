@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block cuerpo %}
+<div style="display:flex;justify-content:space-between;align-items:center"><h1>Reportes {{ anio }}</h1><form method="get"><select name="anio" onchange="this.form.submit()">{% for a in anios %}<option {{ 'selected' if a==anio }}>{{ a }}</option>{% endfor %}</select></form></div>
+<div class="tarjeta"><h2>Resumen mensual</h2><table><tr><th>Mes</th><th class="num">Pedidos</th><th class="num">Clientes</th><th class="num">Ticket prom.</th><th class="num">Facturación</th><th class="num">Gastos</th><th class="num">Facturación − gastos</th></tr>
+{% for m in meses %}<tr><td>{{ m.mes }}</td><td class="num">{{ m.pedidos }}</td><td class="num">{{ m.clientes }}</td><td class="num">{{ m.ticket|usd }}</td><td class="num"><b>{{ m.fact|usd }}</b></td><td class="num">{{ m.gastos|usd }}</td><td class="num {{ 'down' if m.fact-m.gastos<0 }}">{{ (m.fact-m.gastos)|usd }}</td></tr>{% endfor %}
+<tr><td><b>Total</b></td><td class="num"><b>{{ meses|sum(attribute='pedidos') }}</b></td><td></td><td></td><td class="num"><b>{{ meses|sum(attribute='fact')|usd }}</b></td><td class="num"><b>{{ meses|sum(attribute='gastos')|usd }}</b></td><td></td></tr></table></div>
+<div class="tarjeta"><h2>Unidades vendidas por categoría</h2><table><tr><th>Mes</th>{% for c in cats %}<th class="num">{{ c }}</th>{% endfor %}</tr>
+{% for mes, fila in tabla.items() %}<tr><td>{{ mes }}</td>{% for c in cats %}<td class="num">{{ fila[c].unidades|int if c in fila else '' }}</td>{% endfor %}</tr>{% endfor %}</table></div>
+{% endblock %}

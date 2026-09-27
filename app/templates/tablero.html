@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block cuerpo %}
+{% macro delta(a,b) %}{% if b %}{% set d=(a-b)/b*100 %}<span class="{{ 'up' if d>=0 else 'down' }}">{{ '▲' if d>=0 else '▼' }} {{ '%.0f'|format(d|abs) }}% vs mes anterior</span>{% else %}<span class="muted">sin mes anterior</span>{% endif %}{% endmacro %}
+<h1>{{ d.nombre_mes }}</h1>
+<div class="kpis">
+ <div class="kpi"><div class="n">{{ d.mes.facturacion|usd }}</div><div class="l">Facturación del mes</div><div class="d">{{ delta(d.mes.facturacion, d.mes_anterior.facturacion) }}</div></div>
+ <div class="kpi"><div class="n">{{ d.mes.pedidos }}</div><div class="l">Pedidos</div><div class="d">{{ delta(d.mes.pedidos, d.mes_anterior.pedidos) }}</div></div>
+ <div class="kpi"><div class="n">{{ d.mes.ticket|usd }}</div><div class="l">Ticket promedio</div><div class="d">{{ delta(d.mes.ticket, d.mes_anterior.ticket) }}</div></div>
+ <div class="kpi"><div class="n">{{ d.mes.clientes_nuevos }}</div><div class="l">Clientes nuevos</div><div class="d">{{ d.mes.clientes }} clientes compraron</div></div>
+ <div class="kpi"><div class="n">{{ d.mes.gastos|usd }}</div><div class="l">Gastos del mes</div><div class="d">{{ delta(d.mes.gastos, d.mes_anterior.gastos) }}</div></div>
+ <div class="kpi"><div class="n {{ 'down' if d.mes.ganancia<0 }}">{{ d.mes.ganancia|usd }}</div><div class="l">Facturación − gastos</div><div class="d muted">hoy: {{ d.hoy.pedidos }} pedidos · {{ d.hoy.facturacion|usd }}</div></div>
+</div>
+{% if d.pendientes %}<div class="alerta"><b>Pedidos en curso:</b> {% for r in d.pendientes %}<a href="/pedidos?estado={{ r.estado }}"><span class="tag {{ r.estado }}">{{ ESTADO_LABEL[r.estado] }} · {{ r.n }}</span></a> {% endfor %}</div>{% endif %}
+<div class="fila">
+ <div class="tarjeta"><h2>Últimos 12 meses</h2><table>{% set mx = d.ultimos_12|map(attribute='monto')|max if d.ultimos_12 else 1 %}
+  {% for r in d.ultimos_12 %}<tr><td>{{ r.mes }}</td><td style="width:45%"><div class="barra"><i style="width:{{ (r.monto/mx*100)|round }}%"></i></div></td><td class="num">{{ r.n }} ped.</td><td class="num"><b>{{ r.monto|usd }}</b></td></tr>{% endfor %}</table></div>
+ <div class="tarjeta"><h2>Productos más vendidos (mes)</h2><table><tr><th>Producto</th><th class="num">Unid.</th><th class="num">Monto</th></tr>
+  {% for r in d.top_productos %}<tr><td>{{ r.nombre }}<div class="small muted">{{ r.categoria }}</div></td><td class="num">{{ r.unidades|int }}</td><td class="num">{{ r.monto|usd }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Sin ventas este mes todavía</td></tr>{% endfor %}</table></div>
+</div>
+<div class="fila">
+ <div class="tarjeta"><h2>Clientes que deberían estar pidiendo repuesto</h2><p class="small muted">Tienen Porche PRO y llevan más de un ciclo sin comprar. <a href="/clientes/recompra">Ver todos →</a></p>
+  <table><tr><th>Cliente</th><th class="num">Días sin pedir</th><th class="num">Repuestos</th></tr>
+  {% for r in d.riesgo %}<tr><td><a href="/clientes/{{ r.id }}">{{ r.nombre }}</a>{% if r.telefono %}<div class="small muted">{{ r.telefono }}</div>{% endif %}</td><td class="num"><b>{{ r.dias_sin_pedir }}</b></td><td class="num">{{ r.repuestos_comprados|int }}</td></tr>{% endfor %}</table></div>
+ <div class="tarjeta"><h2>Mejores clientes (histórico)</h2><table><tr><th>Cliente</th><th class="num">Pedidos</th><th class="num">Total</th><th>Último</th></tr>
+  {% for r in d.top_clientes %}<tr><td><a href="/clientes/{{ r.id }}">{{ r.nombre }}</a></td><td class="num">{{ r.n }}</td><td class="num">{{ r.monto|usd }}</td><td>{{ r.ultima|fecha }}</td></tr>{% endfor %}</table></div>
+</div>
+<div class="fila">
+ <div class="tarjeta"><h2>Por canal (mes)</h2><table>{% for r in d.por_canal %}<tr><td><span class="tag {{ r.canal }}">{{ r.canal }}</span></td><td class="num">{{ r.n }}</td><td class="num">{{ r.monto|usd }}</td></tr>{% endfor %}</table></div>
+ <div class="tarjeta"><h2>Cómo entró el dinero (mes)</h2><table>{% for r in d.por_metodo %}<tr><td>{{ r.nombre }} <span class="small muted">{{ r.moneda_recibida }}</span></td><td class="num">{{ r.monto|usd }}</td></tr>{% endfor %}</table></div>
+ <div class="tarjeta"><h2>Gastos por categoría (mes)</h2><table>{% for r in d.gastos_categoria %}<tr><td>{{ r.categoria }}</td><td class="num">{{ r.monto|usd }}</td></tr>{% else %}<tr><td class="muted">Sin gastos cargados. <a href="/gastos">Cargar →</a></td></tr>{% endfor %}</table></div>
+</div>
+{% endblock %}

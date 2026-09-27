@@ -1,0 +1,30 @@
+# El historial de versiones guarda el PROGRAMA, no los datos ni las fotos.
+# Los datos van por su lado, en el respaldo diario a la nube.
+
+# Bases de datos, estén donde estén (incluida data/decopet.db, la importada de Airtable)
+*.db
+*.db-shm
+*.db-wal
+plataforma/data/respaldo-*
+
+# Archivos del negocio: fotos de producto y papeles de la empresa
+plataforma/data/fotos/
+plataforma/data/documentos/
+Branding y Fotos/
+
+# Cosas que se regeneran solas
+.venv/
+__pycache__/
+*.pyc
+*.log
+plataforma/data/servidor.log
+.DS_Store
+
+# Versiones viejas que quedaron a mano: a partir de ahora las guarda el historial
+*.bak
+*.bak2
+*.bak3
+*.bak4
+*-respaldo.html
+*-respaldo.css
+*-v1-respaldo.*

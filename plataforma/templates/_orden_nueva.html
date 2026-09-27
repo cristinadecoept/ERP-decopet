@@ -1,0 +1,169 @@
+<div class="no-cab"><h2>Nueva orden</h2></div>
+<form method="post" action="/ordenes/nueva" id="fn" class="no-form" onsubmit="return validar()">
+<input type="hidden" name="tipo" value="venta"><input type="hidden" name="cliente_id" id="cl-id"><input type="hidden" name="canal" id="canal" value="whatsapp"><input type="hidden" name="factura" id="factura" value="">
+<input type="hidden" name="tipo_entrega" id="te" value=""><input type="hidden" name="dir_modo" id="dir-modo" value="hab">
+
+<!-- 2 · FECHA DE PAGO -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">1</span><b>Fecha de pago</b> <span class="obl" id="f-pago-obl">*</span></div><input type="date" name="fecha_pago" id="f-pago" value="{{ hoy }}" style="max-width:220px">
+<div class="nota-log" id="f-pago-ce" hidden style="margin-top:0">💵 <b>Contra entrega:</b> la fecha de pago se pone sola el día que marques la entrega.</div></section>
+
+<!-- 1 · CLIENTE -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">2</span><b>Cliente</b></div>
+<div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
+<div class="mini" style="margin-top:6px">Si no aparece, <a href="#" onclick="clienteNuevo();return false">crear cliente nuevo</a></div></div>
+<div id="cl-existente" hidden class="no-cliente"><div class="no-avatar" id="cl-ex-ini">C</div><div style="flex:1;min-width:0"><b id="cl-ex-nombre"></b><div class="mini" id="cl-ex-datos"></div><div class="no-perros" id="cl-ex-mascotas"></div></div><button type="button" class="no-link" onclick="limpiarCliente()">Cambiar</button></div>
+<div id="cl-faltan" hidden class="no-sub"><div class="no-sub-h"><span>Faltan datos de este cliente</span></div>
+<div class="g2"><div id="add-tel-w" hidden><label>Teléfono <span class="obl">*</span></label><input name="cl_add_telefono" placeholder="0414-1234567" inputmode="tel"></div><div id="add-cor-w" hidden><label>Correo <span class="obl">*</span></label><input name="cl_add_correo" placeholder="nombre@gmail.com" inputmode="email"></div></div>
+<div id="add-ced-w" hidden><label>Cédula / RIF <span class="obl">*</span></label><input name="cl_add_cedula" placeholder="V-12345678"></div></div>
+<div id="cl-nuevo" hidden class="no-sub"><div class="no-sub-h"><span>Cliente nuevo</span><button type="button" class="no-link" onclick="limpiarCliente()">Cancelar</button></div>
+<div class="g2"><div><label>Nombre</label><input name="cliente_nombre_pila" id="cl-nombre" placeholder="María"></div><div><label>Apellido</label><input name="cliente_apellido" id="cl-apellido" placeholder="Pérez"></div></div>
+<div class="g2"><div><label>Teléfono <span class="obl">*</span></label><input name="cliente_telefono" id="cl-tel" placeholder="0414-1234567" inputmode="tel"></div><div><label>Correo <span class="obl">*</span></label><input name="cliente_correo" placeholder="nombre@gmail.com" inputmode="email"></div></div>
+<div class="g2"><div><label>Cédula / RIF <span class="mini" id="ced-nota">(factura o envío nacional)</span></label><input name="cliente_cedula" id="cl-ced" placeholder="V-12345678"></div><div><label>Ciudad</label><input name="cliente_ciudad" id="cl-ciudad" placeholder="Caracas" list="ciudades"></div></div>
+<div class="g2"><div><label>¿Cómo nos conoció?</label><select name="cliente_origen" onchange="document.getElementById('cl-ref-w').hidden=(this.value!='Recomendación de otro cliente')"><option value="">—</option>{% for o in ORIGENES %}<option>{{ o }}</option>{% endfor %}</select></div>
+<div id="cl-ref-w" hidden><label>¿Quién lo recomendó?</label><input list="cl" name="cliente_referido_nombre" placeholder="escribe el nombre" oninput="const o=[...document.getElementById('cl').options].find(x=>x.value===this.value);document.querySelector('[name=cliente_referido_id]').value=o?o.dataset.id:''"><input type="hidden" name="cliente_referido_id"></div></div>
+<label>Dirección habitual</label><input name="cliente_direccion" id="cl-dir" placeholder="Res. Los Pinos, torre B, apto 4B — referencia" oninput="dirHabitualNueva()"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="cliente_maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
+<div id="masc-lista"></div>
+<button type="button" class="no-link" style="margin-top:8px" onclick="agregarMascota()">+ Agregar mascotas</button>
+</section>
+
+<!-- 3 · CANAL -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">3</span><b>Canal</b></div>
+<div class="no-pills" id="canal-pills">{% for k,v in CANAL.items() if k not in ('otro','shopify') %}<button type="button" class="no-pill {{ 'act' if k=='whatsapp' }}" data-v="{{ k }}" onclick="setCanal('{{ k }}')">{{ v }}</button>{% endfor %}</div>
+<div class="no-nota" id="iva-nota" hidden>Cashea: factura fiscal e IVA 16 % incluidos siempre.</div>
+<label class="chk" id="l-factura" style="margin-top:10px"><input type="checkbox" id="factura-chk" onchange="document.getElementById('factura').value=this.checked?'1':'';calc()"> El cliente pide factura fiscal (agrega IVA 16 %)</label>
+</section>
+
+<!-- 3 · PRODUCTOS -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">4</span><b>Productos</b></div>
+<div id="lin"></div>
+<button type="button" class="no-add" onclick="abrirPicker()">+ Agregar producto</button>
+<div id="picker" hidden class="no-picker">{% set cats = {'porche':'El Porche','repuesto':'Repuestos y packs','comedor':'Comedores','rampa':'Rampas','kit':'Kits','accesorio':'Accesorios'} %}{% for ck,cv in cats.items() %}{% set ps = productos|selectattr('categoria','eq',ck)|list %}{% if ps %}<div class="no-picker-cat">{{ cv }}</div><div class="no-picker-grid">{% for p in ps %}<button type="button" class="no-prod" onclick="agregar({{ productos.index(p) }})"><span>{{ p.nombre }}</span><b>${{ '%.0f'|format(p.precio) }}</b></button>{% endfor %}</div>{% endif %}{% endfor %}</div>
+<div class="no-ajustes"><div><label>Descuento USD</label><input type="number" step="0.01" name="descuento" id="desc" value="0" oninput="calc()"></div><div id="perso-w"><label>Personalización</label><label class="chk no-chk-caja"><input type="checkbox" id="perso-btn" onchange="togPersoOrden()"> <span>Sí</span><b id="perso-mas" hidden style="margin-left:auto;color:var(--verde-osc)">+ ${{ opciones['OPC-PERSO'].precio|int }}</b></label><input type="hidden" name="personalizacion_extra" id="perso-x" value="0"></div></div>
+<div id="perso-nom-w" hidden style="margin-top:2px"><label>Nombre a grabar</label><input name="personalizacion_nombre" id="perso-nom" placeholder="nombre del perro"></div>
+<div id="motivo-w" hidden style="margin-top:2px"><label>Motivo del descuento</label><select name="motivo_descuento"><option value="">—</option><option>Promoción</option><option>Referido</option><option>Cortesía</option><option>Cliente frecuente</option></select></div>
+</section>
+
+<!-- 4 · PAGO -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">5</span><b>Entrega</b></div>
+<div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
+<div id="ent-detalle" hidden>
+<div class="g2" id="cobro-deliv" hidden>{% if tarifas %}<div><label>Zona de delivery</label><select id="zona-sel" name="zona_tarifa" onchange="const o=this.selectedOptions[0];if(o&&o.dataset.t){document.getElementById('deliv').value=o.dataset.t;calc();}"><option value="">— elegir zona —</option>{% for z in tarifas %}<option value="{{ z.zona }}" data-t="{{ z.tarifa }}">{{ z.zona }} · ${{ '%g'|format(z.tarifa) }}</option>{% endfor %}</select></div>{% endif %}<div><label>Delivery USD</label><input type="number" step="0.01" name="delivery" id="deliv" value="0" oninput="calc()"></div></div>
+<div class="g2" id="desp-w" hidden style="margin-top:10px"><div><label>Despachador</label><select name="despachador" id="desp-sel" onchange="document.getElementById('desp-otro').hidden=this.value!=='__otro__'"><option value="">— por asignar —</option>{% for d in DESPACHADORES %}<option>{{ d }}</option>{% endfor %}<option value="__otro__">Otro…</option></select></div><div id="desp-otro" hidden><label>Nombre</label><input name="despachador_otro" placeholder="nombre"></div></div>
+<div id="ag-w" hidden style="margin-top:10px"><label>Agencia</label><select name="agencia" style="max-width:260px"><option value="">— elegir —</option>{% for a in AGENCIAS %}<option>{{ a }}</option>{% endfor %}</select></div>
+
+<div id="oficina-w" hidden style="margin-top:10px"><label>Oficina de la agencia <span class="mini">(ciudad · sucursal)</span></label><input name="oficina_agencia" placeholder="ej. Tealca La Coromoto · Maracaibo"></div>
+<div class="g2" id="nac-extra" hidden><div><label>Modalidad</label><select name="modalidad_envio"><option value="">—</option>{% for k,v in MODALIDAD.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div><div></div></div>
+<div id="dir-bloque">
+<div class="no-sub-h" style="margin-top:8px"><span>Dirección habitual</span></div>
+<div id="dir-hab" class="no-nota"><span id="dir-hab-txt">Elige un cliente para ver su dirección habitual.</span></div>
+<label style="margin-top:10px">Dirección nueva <span class="mini">(solo si quiere recibir en otro lado)</span></label><input name="direccion" id="dir" placeholder="oficina, casa de un familiar… déjalo vacío para usar la habitual" oninput="document.getElementById('dir-modo').value=this.value.trim()?'nueva':'hab';document.getElementById('dir-nueva-x').hidden=!this.value.trim()">
+<div id="dir-nueva-x" hidden><div class="g2"><div><label>Zona / urbanización</label><input name="zona" placeholder="La Castellana"></div><div><label>Ciudad</label><input name="ciudad" id="ciudad" placeholder="Caracas, Valencia…" list="ciudades"><datalist id="ciudades">{% for c in CIUDADES_VE %}<option value="{{ c }}">{% endfor %}</datalist></div></div>
+<label>GPS de la dirección nueva</label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div></div>
+<div class="no-sub-h" style="margin-top:8px"><span id="rec-titulo">¿Quién recibe?</span><span class="segm chico"><a href="#" id="rec-cli" class="act" onclick="recModo('cliente');return false">El cliente</a><a href="#" id="rec-ter" onclick="recModo('tercero');return false">Un tercero</a></span></div>
+<div id="rec-datos" hidden><div class="g2"><div><label>Nombre</label><input name="receptor_nombre"></div><div><label>Teléfono</label><input name="receptor_telefono"></div></div><div class="g2" id="rec-extra" hidden><div><label>Correo</label><input name="receptor_correo" inputmode="email"></div><div><label>Cédula <span class="obl" id="rec-ced-obl" hidden>*</span></label><input name="receptor_cedula" placeholder="V-12345678"></div></div></div>
+<div id="nota-desp-w"><label><span id="nota-desp-txt">Nota para el despachador</span> <span class="mini">(opcional)</span></label><input name="notas_entrega" id="nota-desp-in"></div></div>
+<div class="no-sub-h" style="margin-top:14px"><span>Status</span><span class="segm chico"><a href="#" id="st-pend" class="act" onclick="setStatus('pendiente');return false">Pendiente</a><a href="#" id="st-ent" onclick="setStatus('entregada');return false">Entregado</a></span></div><input type="hidden" name="status" id="status" value="pendiente">
+<div id="fe-w" hidden><label>Fecha de entrega</label><input type="date" name="fecha_entrega" value="{{ hoy }}" style="max-width:220px"></div>
+<span id="fe-nota" hidden></span>
+</section>
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">6</span><b>Pago</b></div>
+<div id="pagos"></div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px"><button type="button" class="no-link" onclick="agregarPago()">+ Otra forma de pago</button><span class="mini" id="p-falta"></span></div>
+<div class="no-saldo"><span>Monto pagado</span><b id="p-pagado">$0.00</b><span>Saldo pendiente</span><b id="p-saldo">$0.00</b></div>
+<div class="nota-log" id="p-efectivo" hidden style="margin-top:10px"></div>
+</section>
+
+<div class="no-pie"><div class="no-tot"><div><span>Subtotal</span><b id="t-sub">$0.00</b></div><div id="r-iva" hidden><span>IVA 16 %</span><b id="t-iva">$0.00</b></div><div id="r-deliv" hidden><span>Delivery</span><b id="t-deliv">$0.00</b></div><div id="r-desc" hidden><span>Descuento</span><b id="t-desc">$0.00</b></div><div class="g"><span>Total</span><b id="t-tot">$0.00</b></div><div class="mini" id="t-bs"></div></div><button class="btn no-crear">Crear orden</button></div>
+</form>
+<script>
+const PR={{ productos|map(attribute='id')|list|tojson }},PN={{ productos|map(attribute='nombre')|list|tojson }},PP={{ productos|map(attribute='precio')|list|tojson }},P2={{ productos|map(attribute='precio_par')|list|tojson }},
+ PC={{ productos|map(attribute='requiere_color')|list|tojson }},PM={{ productos|map(attribute='permite_malla')|list|tojson }},PZ={{ productos|map(attribute='permite_personalizacion')|list|tojson }},PS={{ productos|map(attribute='sku')|list|tojson }},PF={{ productos|map(attribute='foto')|list|tojson }},PFR={{ productos|map(attribute='foto_rosado')|list|tojson }};
+const OP_PERSO={{ opciones['OPC-PERSO'].precio }},OP_MALLA={{ opciones['OPC-MALLA'].precio }};const TASA={{ tasa.valor }};const FORMAS={{ FORMAS_PAGO|tojson }};
+function abrirPicker(){document.getElementById('picker').hidden=!document.getElementById('picker').hidden;}
+function agregar(i){document.getElementById('picker').hidden=true;const d=document.createElement('div');d.className='no-linea';d.dataset.i=i;
+ let ops='';
+ if(PC[i]==1)ops+=`<span class="no-opt-g"><span class="mini">Plato:</span><button type="button" class="no-mini" onclick="setColor(this,'azul')">Azul</button><button type="button" class="no-mini" onclick="setColor(this,'rosado')">Rosado</button><input type="hidden" name="color" value=""></span>`;else ops+='<input type="hidden" name="color" value="">';
+ if(PM[i]==1)ops+=`<label class="chk no-chk-mini"><input type="checkbox" onchange="togChk(this)"> <span>Agregar malla · $${OP_MALLA}</span></label><input type="hidden" name="malla" value="">`;else ops+='<input type="hidden" name="malla" value="">';
+ ops+='<input type="hidden" name="personalizacion" value="">';
+ if((PS[i]||'').startsWith('REP-'))ops+=`<label class="chk no-chk-mini"><input type="checkbox" onchange="togPrepago(this)"> <span>Lo deja pagado · se entrega después</span></label><input type="hidden" name="prepagar" value="0">`;else ops+='<input type="hidden" name="prepagar" value="0">';
+ const U={'PACK3-M':3,'PACK3-G':3,'PACK4-M':4,'PACK4-G':4,'PACK8-M':8,'PACK8-G':8}[PS[i]];
+ if(U){let so='';for(let n=0;n<=U;n++)so+=`<option value="${n}" ${n===1?'selected':''}>${n===0?'ninguno · los pide después':n===U?n+' (todos)':n}</option>`;let dso='';for(let n=0;n<=U;n++)dso+=`<option value="${n}" ${n===0?'selected':''}>${n===0?'ninguno':n===U?n+' (todos)':n+(n===1?' retiro':' retiros')}</option>`;
+  ops+=`<span class="no-opt-g pack-hoy"><b>¿Cuántos se lleva hoy?</b><select name="pack_inicio" style="width:auto;padding:5px 28px 5px 10px;font-size:13px;margin:0;font-weight:600">${so}</select></span><span class="no-opt-g"><span class="mini" title="Deliveries de los próximos retiros que el cliente deja pagados hoy. El delivery de hoy va abajo, en Delivery USD.">Deja pagado el delivery de:</span><select name="pack_deliv" style="width:auto;padding:4px 26px 4px 8px;font-size:12px;margin:0" onchange="delivPack()">${dso}</select></span>`;}else ops+='<input type="hidden" name="pack_inicio" value=""><input type="hidden" name="pack_deliv" value="">';
+ d.innerHTML=`<input type="hidden" name="producto_id" value="${PR[i]}"><div class="no-linea-top">${PF[i]?`<img class="no-linea-foto" src="/fotos/${PF[i]}" alt="">`:''}<div class="no-linea-nom"><b>${PN[i]}</b><span class="mini">$${PP[i].toFixed(2)} c/u</span></div><div class="no-qty"><button type="button" onclick="qty(this,-1)">−</button><input type="number" name="cantidad" value="1" min="1" oninput="calc()"><button type="button" onclick="qty(this,1)">+</button></div><b class="lt">$${PP[i].toFixed(2)}</b><button type="button" class="no-x-sm" onclick="this.closest('.no-linea').remove();calc()">×</button></div><div class="no-opts">${ops}</div>`;
+ document.getElementById('lin').appendChild(d);calc();}
+function delivPack(){calc();}   // los deliveries prepagados de los retiros futuros se suman aparte en el total
+function qty(b,n){const i=b.parentElement.querySelector('input');i.value=Math.max(1,(+i.value||1)+n);calc();}
+function togPrepago(c){const h=c.closest('label').nextElementSibling;h.value=c.checked?'1':'0';c.closest('label').classList.toggle('act',c.checked);calc();}
+function togChk(c){const h=c.closest('label').nextElementSibling;h.value=c.checked?'1':'';c.closest('label').classList.toggle('act',c.checked);calc();}
+function tog(b){const h=b.nextElementSibling;const on=!b.classList.contains('act');b.classList.toggle('act',on);h.value=on?'1':(h.name==='prepagar'?'0':'');calc();}
+function togPersoOrden(){const on=document.getElementById('perso-btn').checked;document.getElementById('perso-x').value=on?OP_PERSO:0;document.getElementById('perso-mas').hidden=!on;document.getElementById('perso-nom-w').hidden=!on;if(on)document.getElementById('perso-nom').focus();else document.getElementById('perso-nom').value='';calc();}
+function setColor(b,c){b.parentElement.querySelectorAll('.no-mini').forEach(x=>x.classList.toggle('act',x===b));b.parentElement.querySelector('[name=color]').value=c;
+ const d=b.closest('.no-linea'),i=+d.dataset.i,img=d.querySelector('.no-linea-foto'),f=(c==='rosado'&&PFR[i])?PFR[i]:PF[i];if(img&&f)img.src='/fotos/'+f;calc();}
+function lineaTotal(d){const i=+d.dataset.i,c=Math.max(1,+d.querySelector('[name=cantidad]').value||1);let base=P2[i]&&c>=2?Math.floor(c/2)*P2[i]+(c%2)*PP[i]:PP[i]*c;
+ if(d.querySelector('[name=malla]').value==='1')base+=OP_MALLA;const p=d.querySelector('[name=personalizacion]');if(p&&p.type!=='hidden'&&p.value.trim())base+=OP_PERSO;return base;}
+function calc(){let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{const v=lineaTotal(d);d.querySelector('.lt').innerText='$'+v.toFixed(2);s+=v;});
+ const px=+document.getElementById('perso-x').value||0;s+=px;document.getElementById('motivo-w').hidden=!(+document.getElementById('desc').value>0);
+ const ds=+document.getElementById('desc').value||0,dl=+document.getElementById('deliv').value||0;const conIva=document.getElementById('canal').value==='cashea'||document.getElementById('factura').value==='1';const iva=conIva?(s-ds)*0.16:0;
+ document.getElementById('r-iva').hidden=!iva;document.getElementById('r-deliv').hidden=!dl;document.getElementById('r-desc').hidden=!ds;
+ document.getElementById('t-sub').innerText='$'+s.toFixed(2);document.getElementById('t-iva').innerText='$'+iva.toFixed(2);document.getElementById('t-deliv').innerText='$'+dl.toFixed(2);document.getElementById('t-desc').innerText='− $'+ds.toFixed(2);
+ const tot=s-ds+iva+dl;document.getElementById('t-tot').innerText='$'+tot.toFixed(2);document.getElementById('t-bs').innerText='≈ Bs '+(tot*TASA).toLocaleString('es-VE',{maximumFractionDigits:0});pagos(tot);}
+function agregarPago(){const d=document.createElement('div');d.className='no-pago';let o='<option value="">forma de pago…</option>';FORMAS.forEach(x=>o+=`<option>${x}</option>`);
+ d.innerHTML=`<select name="pago_forma" onchange="calc()">${o}</select><input type="number" step="0.01" name="pago_monto" placeholder="monto" oninput="this.dataset.tocado=1;calc()"><input name="pago_ref" placeholder="referencia"><button type="button" class="no-x-sm" onclick="this.parentElement.remove();calc()">×</button>`;document.getElementById('pagos').appendChild(d);}
+function pagos(tot){const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');if(filas.length===1&&!m.dataset.tocado)m.value=tot.toFixed(2);s+=+m.value||0;
+  if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
+ document.getElementById('p-pagado').innerText='$'+s.toFixed(2);document.getElementById('p-saldo').innerText='$'+Math.max(tot-s,0).toFixed(2);document.getElementById('p-saldo').style.color=(tot-s)>0.01?'#b45a1c':'var(--verde-osc)';
+ const f=document.getElementById('p-falta');const d=tot-s;f.innerText=Math.abs(d)<0.01?'':(d>0&&d<tot-0.01?'pago parcial':(d>0?'sin pagar todavía':'sobran $'+(-d).toFixed(2)));f.style.color='#b45a1c';
+ const n=document.getElementById('p-efectivo');n.hidden=efe<0.01;   // el efectivo se cobra al entregar, no hoy
+ if(efe>=0.01)n.innerHTML='💵 <b>Contra entrega:</b> los $'+efe.toFixed(2)+' en efectivo se registran cuando marques la entrega, no hoy.';
+ const fp=document.getElementById('f-pago'),ce=efe>=0.01&&s>=tot-0.01;   // todo en efectivo: la fecha de pago la pone la entrega
+ fp.disabled=ce;fp.style.opacity=ce?.45:1;document.getElementById('f-pago-ce').hidden=!ce;document.getElementById('f-pago-obl').hidden=ce;}
+function setCanal(c){document.getElementById('canal').value=c;document.querySelectorAll('#canal-pills .no-pill').forEach(b=>b.classList.toggle('act',b.dataset.v===c));const cash=c==='cashea',chk=document.getElementById('factura-chk');document.getElementById('iva-nota').hidden=true;chk.dataset.lock=cash?'1':'';if(cash){chk.checked=true;document.getElementById('factura').value='1';}else{if(chk.dataset.was==='1'){chk.checked=false;chk.dataset.was='';}document.getElementById('factura').value=chk.checked?'1':'';}if(cash)chk.dataset.was='1';
+ const sinPerso=!['whatsapp','instagram','presencial','web'].includes(c),pb=document.getElementById('perso-btn');if(sinPerso&&pb.checked){pb.checked=false;togPersoOrden();}document.getElementById('perso-w').hidden=sinPerso;   // solo se personaliza por WhatsApp, Instagram, presencial y página web
+ calc();}
+document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.dataset.lock){e.preventDefault();e.target.checked=true;}});
+function setEntrega(k){document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
+ document.getElementById('ent-detalle').hidden=false;const nac=k==='nacional';document.getElementById('nac-extra').hidden=!nac;
+ document.getElementById('dir-bloque').hidden=(k==='pickup'||k==='distribuidor'||k==='nacional');document.getElementById('oficina-w').hidden=!nac;document.getElementById('rec-extra').hidden=!nac;document.getElementById('rec-titulo').innerText=(k==='pickup'||k==='distribuidor')?'¿Quién retira?':'¿Quién recibe?';document.getElementById('nota-desp-w').hidden=(k==='pickup'||k==='distribuidor');document.getElementById('nota-desp-txt').innerText=nac?'Notas para la agencia':'Nota para el despachador';document.getElementById('desp-w').hidden=!(k==='delivery'||k==='delivery_fuera');
+ const cd=(k==='delivery'||k==='delivery_fuera');document.getElementById('cobro-deliv').hidden=!cd;
+ if(!cd&&+document.getElementById('deliv').value){document.getElementById('deliv').value=0;calc();}document.getElementById('ag-w').hidden=!nac;
+ document.getElementById('ced-nota').innerText=nac?'(la pide la agencia)':'(factura o envío nacional)';faltanDatos();
+ if(k==='delivery'&&+document.getElementById('deliv').value===0){document.getElementById('deliv').value=5;calc();}}
+function setStatus(s){document.getElementById('status').value=s;document.getElementById('st-pend').classList.toggle('act',s==='pendiente');document.getElementById('st-ent').classList.toggle('act',s==='entregada');document.getElementById('fe-w').hidden=(s!=='entregada');document.getElementById('fe-nota').hidden=(s==='entregada');}
+function dirModo(m){}
+function dirHabitualNueva(){const d=document.getElementById('cl-dir').value.trim(),c=document.getElementById('cl-ciudad').value.trim();document.getElementById('dir-hab-txt').innerHTML=d?('<b>'+d+'</b>'+(c?' · '+c:'')):'Escribe la dirección habitual en los datos del cliente (arriba).';}
+function recModo(m){document.getElementById('rec-datos').hidden=(m!=='tercero');document.getElementById('rec-cli').classList.toggle('act',m==='cliente');document.getElementById('rec-ter').classList.toggle('act',m==='tercero');if(m==='cliente'){document.querySelector('[name=receptor_nombre]').value='';document.querySelector('[name=receptor_telefono]').value='';}faltanDatos();}
+function agregarMascota(){const d=document.createElement('div');d.className='no-sub';d.style.marginTop='8px';d.innerHTML=`<div class="no-sub-h"><span>Mascota</span><button type="button" class="no-link" onclick="this.closest('.no-sub').remove()">Quitar</button></div><div class="g2"><div><label>Nombre</label><input name="cliente_mascota_nombre" placeholder="Toby"></div><div><label>Raza</label><input name="cliente_mascota_raza" list="razas" autocomplete="off" placeholder="elegir…"></div></div><div class="g2"><div><label>Cumpleaños <span class="mini">(día/mes)</span></label><input name="cliente_mascota_cumple" placeholder="25/09" inputmode="numeric"></div><div><label>Año de nacimiento <span class="mini">(si lo saben)</span></label><input name="cliente_mascota_anio" placeholder="2021" inputmode="numeric" maxlength="4"></div></div><input type="hidden" name="cliente_mascota_nacimiento" value=""><input type="hidden" name="cliente_mascota_peso" value="">`;document.getElementById('masc-lista').appendChild(d);d.querySelector('input').focus();}
+function clienteNuevo(){document.getElementById('cl-faltan').hidden=true;document.getElementById('cl-buscar').hidden=true;document.getElementById('cl-nuevo').hidden=false;document.getElementById('cl-id').value='';document.getElementById('cl-in').value='';dirHabitualNueva();document.getElementById('cl-nombre').focus();}
+function limpiarCliente(){document.getElementById('cl-in').value='';document.getElementById('cl-id').value='';document.getElementById('cl-existente').hidden=true;document.getElementById('cl-faltan').hidden=true;document.getElementById('cl-nuevo').hidden=true;document.getElementById('cl-buscar').hidden=false;['cl-nombre','cl-apellido','cl-tel'].forEach(id=>document.getElementById(id).value='');document.getElementById('cl-in').focus();}
+document.getElementById('cl-in').addEventListener('input',e=>{const op=[...document.getElementById('cl').options].find(o=>o.value===e.target.value);if(!op)return;document.getElementById('cl-id').value=op.dataset.id;
+ document.getElementById('cl-ex-ini').innerText=op.value.trim()[0].toUpperCase();document.getElementById('cl-ex-nombre').innerText=op.value;document.getElementById('cl-ex-datos').innerHTML=(op.dataset.porche?'<span class="porche-tag'+(op.dataset.porche.startsWith('Miembro')?' pro':'')+'">'+op.dataset.porche+'</span> ':'')+[op.dataset.tel,op.dataset.ciudad].filter(Boolean).join(' · ');
+ const ms=document.getElementById('cl-ex-mascotas');ms.innerHTML=op.dataset.perros?op.dataset.perros.split(', ').map(p=>'<span class="no-perro">🐾 '+p+'</span>').join(''):'<span class="mini">sin mascotas registradas</span>';
+ document.getElementById('dir-hab-txt').innerHTML=op.dataset.dir?('<b>'+op.dataset.dir+'</b>'+(op.dataset.ciudad?' · '+op.dataset.ciudad:'')):'Este cliente no tiene dirección habitual guardada: escribe una nueva abajo.';
+ document.getElementById('cl-buscar').hidden=true;document.getElementById('cl-existente').hidden=false;faltanDatos();});
+const sirve=v=>!!(v&&v.trim()&&v.trim().toLowerCase()!=='pendiente');
+function esTercero(){return document.getElementById('rec-ter').classList.contains('act');}
+function faltanDatos(){   // un cliente que ya existe puede no tener correo, teléfono o cédula: se completan aquí
+ const id=document.getElementById('cl-id').value,w=document.getElementById('cl-faltan');
+ const obl=document.getElementById('rec-ced-obl');if(obl)obl.hidden=!(document.getElementById('te').value==='nacional'&&esTercero());
+ if(!id){w.hidden=true;return;}
+ const op=[...document.getElementById('cl').options].find(o=>o.dataset.id===id)||{dataset:{}};
+ const nac=document.getElementById('te').value==='nacional';
+ const ft=!sirve(op.dataset.tel),fc=!sirve(op.dataset.correo),fd=nac&&!esTercero()&&!sirve(op.dataset.ced);
+ document.getElementById('add-tel-w').hidden=!ft;document.getElementById('add-cor-w').hidden=!fc;document.getElementById('add-ced-w').hidden=!fd;
+ w.hidden=!(ft||fc||fd);}
+function validar(){const fp=document.getElementById('f-pago');
+ if(!fp.disabled&&!fp.value){alert('Falta la fecha de pago. Solo se puede dejar vacía si es contra entrega.');fp.focus();return false;}
+ if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if(!document.getElementById('te').value){alert('Elige el tipo de entrega.');return false;}
+ const val=n=>((document.querySelector('[name='+n+']')||{}).value||'').trim(),nuevo=!document.getElementById('cl-id').value,nac=document.getElementById('te').value==='nacional';
+ const pedir=(id,n,msg)=>{const w=document.getElementById(id);if(!w.hidden&&!val(n)){alert(msg);w.querySelector('input').focus();return false;}return true;};
+ if(nuevo){if(!val('cliente_telefono')){alert('El teléfono del cliente es obligatorio.');return false;}
+           if(!val('cliente_correo')){alert('El correo del cliente es obligatorio.');return false;}}
+ else{if(!pedir('add-tel-w','cl_add_telefono','El teléfono del cliente es obligatorio.'))return false;
+      if(!pedir('add-cor-w','cl_add_correo','El correo del cliente es obligatorio.'))return false;}
+ if(nac){if(esTercero()){if(!val('receptor_cedula')){alert('Para un envío nacional hace falta la cédula de quien recibe.');return false;}}
+         else if(nuevo){if(!val('cliente_cedula')){alert('Para un envío nacional hace falta la cédula del cliente.');return false;}}
+         else if(!pedir('add-ced-w','cl_add_cedula','Para un envío nacional hace falta la cédula del cliente.'))return false;}
+ return true;}
+agregarPago();setCanal('whatsapp');
+{% if precliente %}(()=>{const i=document.getElementById('cl-in');i.value={{ precliente|tojson }};i.dispatchEvent(new Event('input'));})();{% endif %}
+</script>
