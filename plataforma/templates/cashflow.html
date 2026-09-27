@@ -1,5 +1,25 @@
 {% extends "base.html" %}{% block titulo %}Cash flow · Decopet{% endblock %}{% block cuerpo %}
-<div class="fila-titulo"><div><h1>Cash flow</h1><div class="sub">Control de caja · cada entrada y salida, y cuánto queda en cada una</div></div><div class="cab-btns"><a class="btn sec" href="/cashflow/exportar?caja={{ caja }}&mes={{ mes }}">Exportar a Excel</a><a class="btn sec" href="/cashflow/cajas">Cajas</a></div></div>
+<div class="fila-titulo"><div><h1>Cash flow</h1><div class="sub">Control de caja · cada entrada y salida, y cuánto queda en cada una</div></div>
+{% if efectivo_pend %}<div class="tarjeta cf-b" id="efectivo" style="margin-bottom:16px">
+ <h3>Cobrado en efectivo</h3>
+ <div class="cf-cuerpo">
+  <p class="cf-d">Esto se cobró en la puerta y todavía no está en el libro. Regístralo como entrada y después márcalo aquí.</p>
+  <form method="post" action="/cashflow/efectivo-registrado">
+   <input type="hidden" name="volver" value="/cashflow#efectivo">
+   <table class="lineas"><tr><th style="width:28px"><input type="checkbox" checked onchange="document.querySelectorAll('#efectivo input[name=pago_id]').forEach(c=>c.checked=this.checked)"></th>
+    <th>Fecha</th><th>Orden</th><th>Cliente</th><th>Quién cobró</th><th class="num">Monto</th></tr>
+   {% for e in efectivo_pend %}<tr>
+    <td><input type="checkbox" name="pago_id" value="{{ e.id }}" checked></td>
+    <td class="mono mini">{{ e.fecha[:10]|dia }}</td><td class="mono">{{ e.numero }}</td>
+    <td>{{ e.cliente }}</td><td class="mini">{{ e.despachador or '—' }}</td>
+    <td class="num"><b>{{ e.monto_usd|usd }}</b></td>
+   </tr>{% endfor %}
+   <tr><td colspan="5" class="num mini">Total</td><td class="num"><b>{{ (efectivo_pend|sum(attribute='monto_usd'))|usd }}</b></td></tr></table>
+   <p style="margin:12px 0 0"><button class="btn chico">Ya lo registré</button></p>
+  </form>
+ </div>
+</div>{% endif %}
+<div class="cab-btns"><a class="btn sec" href="/cashflow/exportar?caja={{ caja }}&mes={{ mes }}">Exportar a Excel</a><a class="btn sec" href="/cashflow/cajas">Cajas</a></div></div>
 
 <div class="cf-acc">
  <button class="cf-b ent" onclick="abrirLinea('entrada')"><span>+</span> Registrar entrada</button>

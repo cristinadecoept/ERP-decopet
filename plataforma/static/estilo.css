@@ -807,3 +807,8 @@ html.oscuro .cf-err{background:#4a201c;color:#ffb3a8}
 html.oscuro .entrar-mal{color:#ff9d93}
 .salir{display:block;margin:10px 0 2px;font-size:12px;opacity:.6}
 .salir:hover{opacity:1}
+/* Arqueo de cajas */
+.arq-pie{display:flex;gap:26px;align-items:end;flex-wrap:wrap;margin-top:16px;padding:16px 18px;background:var(--sup);border-radius:var(--r);box-shadow:var(--sombra)}
+.arq-pie .cf-check{flex:1;min-width:260px}
+.arq-dif{font-weight:600}
+.arq-ok{opacity:.45}

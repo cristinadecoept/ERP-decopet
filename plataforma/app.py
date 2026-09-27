@@ -112,7 +112,7 @@ PERMISOS = {
     "taller": {"taller"},   # Isaías y Manawa: solo su pantalla. Nada de clientes, órdenes ni dinero.
     # El despachador SÍ ve dinero, pero solo el suyo: lo que se le debe por sus entregas.
     # No ve el de la empresa ni el de nadie más. Por eso es un rol aparte de Logística.
-    "despachador": {"entregar", "mis_entregas"},
+    "despachador": {"entregar", "mis_entregas", "incidencia"},
     "invitado": set(),      # nadie conectado: no puede hacer nada hasta entrar
     "sistema": set(),
 }
@@ -180,7 +180,7 @@ def db():
 # Cada rol restringido tiene su lista de lo que puede abrir. Todo lo demás lo devuelve a su pantalla.
 PUERTAS = {
     "taller":      (("/taller", "/inventario", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/taller"),
-    "despachador": (("/mis-entregas", "/static", "/fotos", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
+    "despachador": (("/mis-entregas", "/ordenes/", "/static", "/fotos", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
 }
 TALLER_PERMITIDO = PUERTAS["taller"][0]
 
@@ -234,6 +234,7 @@ COLUMNAS = (
     ("produccion", "cantidad", "INTEGER NOT NULL DEFAULT 1"), ("produccion", "fecha_pago", "TEXT"),
     ("produccion", "recibido", "INTEGER DEFAULT 0"), ("produccion", "tipo_pedido", "TEXT DEFAULT 'produccion'"),
     ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
+    ("pagos", "en_cashflow", "INTEGER NOT NULL DEFAULT 0"),   # ya lo pasó Cristina al libro a mano
     ("usuarios", "usuario", "TEXT"), ("usuarios", "clave_hash", "TEXT"), ("usuarios", "creado_en", "TEXT"),
     ("usuarios", "despachador", "TEXT"),   # a qué despachador corresponde este usuario
     ("repuestos_prepagados", "agencia", "TEXT"),
@@ -513,6 +514,9 @@ def inicio(request: Request, con=Depends(db)):
     for o in activas:
         if (o["fecha_prometida"] or h) <= h: tipos[o["tipo_entrega"] or "otro"] = tipos.get(o["tipo_entrega"] or "otro", 0) + 1
     pagos_pend = pagos_pendientes(con, 1) if rol == "admin" else []   # avisa el día antes, no con una semana
+    efectivo = efectivo_por_registrar(con) if rol == "admin" else []
+    c["efectivo_n"] = len(efectivo)
+    c["efectivo_total"] = round(sum(x["monto_usd"] or 0 for x in efectivo), 2)
     # quincena del equipo: el 15 y el último día del mes, corridos al viernes si caen domingo
     if rol == "admin":
         ant = datetime.date(hoy.year, hoy.month, 1) - datetime.timedelta(days=1)
@@ -819,9 +823,12 @@ def volver(oid, request):
 
 @app.post("/ordenes/{oid}/estado")
 def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), con=Depends(db)):
-    rol = rol_de(request); uid = usuario_id(rol)
+    rol = rol_de(request); uid = usuario_id(rol, request)
     if PERMISO_ESTADO.get(estado) not in PERMISOS[rol]: return volver(oid, request)
     o = cargar_orden(con, oid)
+    yo = quien_es(request)
+    if yo and yo["rol"] == "despachador" and o["despachador"] != yo["despachador"]:
+        return RedirectResponse("/mis-entregas", status_code=303)   # solo sus propias entregas
     if estado in ("entregada", "en_ruta") and not coordinada(o):
         registrar(con, oid, uid, "bloqueado", "Falta coordinar (despachador / agencia / distribuidor) antes de marcar entregado"); con.commit(); return volver(oid, request)
     sets = ["estado=?"]; args = [estado]
@@ -829,12 +836,27 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
         fe = fecha.strip() or datetime.date.today().isoformat()   # se puede registrar una entrega de otro día
         sets.append("fecha_entrega=?"); args.append(fe if fe != datetime.date.today().isoformat() else datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
         if o["estado_pago"] == "contra_entrega":
-            monto = float(monto_recibido or o["monto_contra_entrega"] or (o["total"] - o["pagado"]))
-            con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,cuenta,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?)",
-                        (oid, {"USD": "Efectivo USD", "Bs": "Efectivo Bs", "EUR": "Efectivo EUR"}.get(moneda_recibida, "Efectivo USD"), monto, "Despachador Juan", fe, "confirmado", uid, datetime.datetime.now().strftime("%Y-%m-%d %H:%M")))
-            sets.append("estado_pago='pagada'")
-            registrar(con, oid, uid, "pago", f"Cobrado contra entrega {fmt_usd(monto)} en efectivo el {fe} → Caja {o['despachador'] or 'despachador'}")
-            if not o["fecha_pago"]: sets.append("fecha_pago=?"); args.append(fe)   # contra entrega: el día que se entrega es el día que pagaron
+            falta = round(o["total"] - o["pagado"], 2)
+            monto = float(cifra(monto_recibido)) if str(monto_recibido).strip() else float(o["monto_contra_entrega"] or falta)
+            monto = max(0.0, round(monto, 2))
+            # Todo se paga por adelantado menos el efectivo: lo que se cobra en la puerta
+            # es efectivo, y el despachador no elige caja ni forma.
+            if yo and yo["rol"] == "despachador": moneda_recibida = "USD"
+            if monto:
+                con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,cuenta,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?)",
+                            (oid, {"USD": "Efectivo USD", "Bs": "Efectivo Bs", "EUR": "Efectivo EUR"}.get(moneda_recibida, "Efectivo USD"), monto,
+                             caja_efectivo(con), fe, "confirmado", uid, datetime.datetime.now().strftime("%Y-%m-%d %H:%M")))
+            # la orden queda como lo que de verdad cobró: si trajo menos, queda con saldo, no "pagada"
+            nuevo_estado = estado_pago_de(o["pagado"] + monto, o["total"])
+            sets.append("estado_pago=?"); args.append(nuevo_estado)
+            if monto:
+                falto = round(o["total"] - o["pagado"] - monto, 2)
+                registrar(con, oid, uid, "pago", f"Cobrado contra entrega {fmt_usd(monto)} en efectivo el {fe} → {caja_efectivo(con)}"
+                          + (f" · quedan {fmt_usd(falto)} por cobrar" if falto > 0.009 else ""))
+            else:
+                registrar(con, oid, uid, "pago", f"Entregado sin cobrar: quedan {fmt_usd(falta)} por cobrar")
+            if monto and not o["fecha_pago"] and nuevo_estado == "pagada":
+                sets.append("fecha_pago=?"); args.append(fe)   # el día que se entrega es el día que pagaron
     if estado == "pendiente":
         con.execute("UPDATE pagos SET estado='confirmado', confirmado_por=?, confirmado_en=datetime('now','localtime') WHERE orden_id=? AND estado='por_confirmar'", (uid, oid))
         pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
@@ -1414,6 +1436,39 @@ def solo_admin(request):
     return rol_de(request) == "admin"
 
 
+def efectivo_por_registrar(con):
+    """Lo que se cobró en efectivo en la puerta y todavía no has pasado al Cash flow.
+    Como las ventas no entran solas al libro, sin esto no hay quien te lo recuerde."""
+    if ventas_automaticas(con): return []          # si entran solas, no hay nada que pasar
+    desde = finanzas_desde(con) or "0000-01-01"
+    return [dict(r) for r in con.execute("""SELECT p.id, p.monto_usd, p.fecha, p.forma, p.cuenta,
+                   o.numero, o.despachador, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente
+                   FROM pagos p JOIN ordenes o ON o.id=p.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
+                   WHERE p.estado='confirmado' AND p.en_cashflow=0 AND p.forma LIKE 'Efectivo%'
+                     AND substr(p.fecha,1,10) >= ? AND o.origen_excel=0
+                   ORDER BY p.fecha DESC, p.id DESC""", (desde,))]
+
+
+@app.post("/cashflow/efectivo-registrado")
+async def efectivo_registrado(request: Request, con=Depends(db)):
+    """Marcar que ya lo pasaste al libro. No mueve plata: solo apaga el recordatorio."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    f = await request.form()
+    ids = [int(x) for x in f.getlist("pago_id") if str(x).isdigit()]
+    if ids:
+        con.execute(f"UPDATE pagos SET en_cashflow=1 WHERE id IN ({','.join('?' * len(ids))})", ids)
+        con.commit()
+    return RedirectResponse(f.get("volver") or "/cashflow", status_code=303)
+
+
+def caja_efectivo(con):
+    """Dónde entra la plata cobrada en la puerta: el efectivo general.
+    A propósito NO se busca una caja con el nombre del despachador — las cajas son de
+    Cristina y no tienen relación con quién entrega."""
+    r = con.execute("SELECT nombre FROM cuentas WHERE nombre LIKE 'Efectivo USD%' AND activa=1 ORDER BY orden LIMIT 1").fetchone()
+    return r["nombre"] if r else "Efectivo USD"
+
+
 def saldos(con):
     """Saldo por cuenta = saldo inicial + pagos confirmados − gastos ± movimientos, desde la fecha de corte."""
     out = []
@@ -1511,6 +1566,7 @@ def cashflow(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
                 "Teléfono Decopet": "Movistar", "Teléfono Cristina": "Movistar"}
     provs = [dict(r) for r in con.execute("SELECT id, nombre FROM proveedores ORDER BY nombre")]
     return render(request, "cashflow.html", seccion="cashflow", cuentas=cs, activas=activas,
+                  efectivo_pend=efectivo_por_registrar(con),
                   lineas=lineas[:300], caja=caja, mes=mes, meses=meses, total=total, arcos=arcos, TIPOS_MOV=TIPOS_MOV,
                   cats=cats, cats_ent=cats_ent, provs=provs, a_quien=A_QUIEN, a_quien_ent=A_QUIEN_ENT, de_quien=DE_QUIEN, orden_ent=[k for k in ORDEN_ENT if k in cats_ent])
 
@@ -2712,6 +2768,54 @@ def recurrente_reactivar(request: Request, cid: int, vence: str = Form(...), con
     con.commit(); return RedirectResponse("/finanzas/recurrentes", status_code=303)
 
 
+@app.get("/cashflow/arqueo", response_class=HTMLResponse)
+def arqueo(request: Request, con=Depends(db), ok: str = ""):
+    """Contar la plata de verdad y compararla con lo que dice el ERP.
+    Todo lo demás compara el ERP consigo mismo; esto lo ata al mundo real."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    cs = [c for c in saldos(con) if c["tipo"] == "operativa"]
+    ult = {r["cuenta_id"]: r for r in con.execute("""SELECT a.* FROM arqueos a
+              JOIN (SELECT cuenta_id, MAX(id) m FROM arqueos GROUP BY cuenta_id) x ON x.m=a.id""")}
+    hist = con.execute("""SELECT a.*, c.nombre caja FROM arqueos a JOIN cuentas c ON c.id=a.cuenta_id
+                          ORDER BY a.id DESC LIMIT 40""").fetchall()
+    return render(request, "arqueo.html", seccion="arqueo", cuentas=cs, ult=ult, hist=hist, ok=ok,
+                  hoy_iso=datetime.date.today().isoformat())
+
+
+@app.post("/cashflow/arqueo")
+async def arqueo_guardar(request: Request, con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    f = await request.form()
+    fecha = (f.get("fecha") or datetime.date.today().isoformat()).strip()
+    uid = usuario_id(rol_de(request), request)
+    ajustar = bool(f.get("ajustar"))
+    n = 0
+    for c in saldos(con):
+        v = f.get(f"contado_{c['id']}")
+        if v is None or not str(v).strip(): continue      # solo las cajas que contó
+        contado = cifra(v) or 0.0
+        dif = round(contado - c["saldo"], 2)
+        cur = con.execute("""INSERT INTO arqueos (fecha, cuenta_id, saldo_erp, contado, diferencia, ajustado, nota, usuario_id)
+                             VALUES (?,?,?,?,?,?,?,?)""",
+                          (fecha, c["id"], c["saldo"], contado, dif, 1 if (ajustar and dif) else 0,
+                           (f.get(f"nota_{c['id']}") or "").strip() or None, uid))
+        n += 1
+        # si pide cuadrar, se anota la diferencia como gasto o entrada: el ERP nunca "corrige" en silencio
+        if ajustar and dif:
+            desc = f"Arqueo {fecha} · {c['nombre']}"
+            if dif < 0:
+                con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria,
+                               descripcion, cuenta_id, usuario_id) VALUES (?,?,?,'USD','Ajuste','Faltante',?,?,?)""",
+                            (fecha, abs(dif), abs(dif), desc, c["id"], uid))
+            else:
+                con.execute("""INSERT INTO movimientos (fecha, tipo, monto_usd, monto_real, moneda, cuenta_destino_id,
+                               categoria, subcategoria, notas, usuario_id)
+                               VALUES (?, 'entrada', ?, ?, 'USD', ?, 'Ajustes', 'Corrección de saldo', ?, ?)""",
+                            (fecha, dif, dif, c["id"], desc, uid))
+    con.commit()
+    return RedirectResponse(f"/cashflow/arqueo?ok={n}", status_code=303)
+
+
 @app.get("/finanzas/recurrentes", response_class=HTMLResponse)
 def recurrentes(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
@@ -3700,19 +3804,17 @@ def mis_entregas(request: Request, con=Depends(db)):
                   n_entregadas=sum(1 for h in hist if h["estado"] == "entregada"))
 
 
-@app.post("/mis-entregas/{oid}/entregado")
-def mi_entrega_hecha(request: Request, oid: int, con=Depends(db)):
-    """El despachador marca entregado desde la calle. Actualiza la orden en todo el ERP."""
+@app.post("/mis-entregas/{oid}/incidencia")
+def mi_incidencia(request: Request, oid: int, tipo: str = Form("Otro"), descripcion: str = Form(""), con=Depends(db)):
+    """El despachador cuenta lo que pasó en la puerta. Es quien lo vio."""
     u = quien_es(request)
     if not (u and u["despachador"]): return RedirectResponse("/inicio", status_code=303)
-    o = con.execute("SELECT despachador, estado FROM ordenes WHERE id=?", (oid,)).fetchone()
-    if not o or o["despachador"] != u["despachador"] or o["estado"] == "cancelada":
-        return RedirectResponse("/mis-entregas", status_code=303)   # solo sus propias entregas
-    hoy = datetime.date.today().isoformat()
-    con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=COALESCE(fecha_entrega,?), actualizado_en=datetime('now','localtime') WHERE id=?", (hoy, oid))
-    registrar(con, oid, u["id"], "estado", f"Entregado por {u['despachador']}")
-    con.commit()
-    return RedirectResponse("/mis-entregas", status_code=303)
+    o = con.execute("SELECT despachador FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if not o or o["despachador"] != u["despachador"]: return RedirectResponse("/mis-entregas", status_code=303)
+    con.execute("INSERT INTO incidencias (orden_id,clase,tipo,descripcion,responsable,autor_id) VALUES (?,?,?,?,?,?)",
+                (oid, "incidencia", tipo, descripcion.strip(), u["despachador"], u["id"]))
+    registrar(con, oid, u["id"], "incidencia", f"{tipo}: {descripcion.strip()[:120]}")
+    con.commit(); return RedirectResponse("/mis-entregas", status_code=303)
 
 
 @app.get("/despachadores", response_class=HTMLResponse)

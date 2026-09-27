@@ -262,3 +262,11 @@ CREATE TABLE IF NOT EXISTS sesiones (
   ficha TEXT PRIMARY KEY, usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
   creada_en TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   vence_en TEXT NOT NULL, visto_en TEXT);
+
+-- Arqueo: se cuenta la plata de verdad y se compara con lo que dice el ERP.
+-- Es el único chequeo contra la realidad: los demás comparan el ERP consigo mismo.
+CREATE TABLE IF NOT EXISTS arqueos (
+  id INTEGER PRIMARY KEY, fecha TEXT NOT NULL, cuenta_id INTEGER NOT NULL REFERENCES cuentas(id),
+  saldo_erp REAL NOT NULL, contado REAL NOT NULL, diferencia REAL NOT NULL,
+  ajustado INTEGER NOT NULL DEFAULT 0, nota TEXT, usuario_id INTEGER,
+  creado_en TEXT DEFAULT (datetime('now','localtime')));
