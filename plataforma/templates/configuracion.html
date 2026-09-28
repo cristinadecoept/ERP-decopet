@@ -33,10 +33,10 @@
  <div class="cf-cuerpo">
   <table class="lineas"><tr><th>Nombre</th><th>Correo o usuario</th><th>Qué puede ver</th><th>Clave</th><th></th></tr>
   {% for u in usuarios %}<tr class="{{ '' if u.activo else 'bloqueado' }}">
-   <td><b>{{ u.nombre }}</b>{% if yo and yo.id == u.id %}<span class="mini"> · eres tú</span>{% endif %}</td>
-   <td class="mono">{{ u.usuario or '—' }}</td>
-   <td class="mini">{{ ROLES.get(u.rol, u.rol) }}{% if u.despachador %} · {{ u.despachador }}{% endif %}{% if not u.activo %} · <b>sin acceso</b>{% endif %}</td>
-   <td>{% if u.clave_hash %}<span class="pago pagada">puesta</span>{% else %}<span class="pago por_confirmar">sin clave</span>{% endif %}</td>
+   <td style="width:150px"><b>{{ u.nombre }}</b>{% if yo and yo.id == u.id %}<div class="mini">eres tú</div>{% endif %}</td>
+   <td class="mono" style="width:220px">{{ u.usuario or '—' }}</td>
+   <td style="width:150px">{{ ROL_CORTO.get(u.rol, u.rol) }}{% if u.despachador and u.despachador != u.nombre %}<div class="mini">{{ u.despachador }}</div>{% endif %}{% if not u.activo %}<div class="mini">sin acceso</div>{% endif %}</td>
+   <td style="width:90px">{% if u.clave_hash %}<span class="pago pagada">puesta</span>{% else %}<span class="pago por_confirmar">sin clave</span>{% endif %}</td>
    <td style="text-align:right;width:90px">
     <details class="cobro"><summary class="btn sec chico">Cambiar</summary>
      <form method="post" action="/configuracion/usuario" class="cobro-f" style="min-width:270px">
@@ -61,7 +61,7 @@
     <div><label>Clave</label><input type="password" name="clave" minlength="8" autocomplete="new-password"></div>
     <div style="display:flex;align-items:end"><button class="btn chico">Agregar</button></div>
    </form></details>
-  <p class="mini" style="margin-top:10px">A nadie se le borra: se le quita el acceso y su nombre sigue en el historial. La clave no se puede recuperar, solo cambiar por otra.</p>
+  <p class="cf-d" style="margin:14px 0 0">A nadie se le borra: se le quita el acceso y su nombre sigue en el historial. La clave no se puede recuperar, solo cambiar por otra.</p>
  </div>
 </div>
 
@@ -72,16 +72,16 @@
   <div class="g2">
    <div><label>Seguimiento del repuesto</label>
     <div class="cf-in"><input name="ciclo" value="{{ ciclo }}" inputmode="numeric" style="width:80px"><span class="mini">días</span></div>
-    <div class="mini">A los cuántos días se le escribe al cliente. Si compra más seguido, se usa su ritmo.</div></div>
+    <div class="cf-d" style="margin-top:6px">A los cuántos días se le escribe al cliente. Si compra más seguido, se usa su ritmo.</div></div>
    <div><label>IVA</label>
     <div class="cf-in"><input name="iva" value="{{ iva }}" inputmode="decimal" style="width:80px"><span class="mini">%</span></div>
-    <div class="mini">El catálogo muestra el precio con IVA al lado, para Cashea y facturas.</div></div>
+    <div class="cf-d" style="margin-top:6px">El catálogo muestra el precio con IVA al lado, para Cashea y facturas.</div></div>
   </div>
   <label style="margin-top:14px;display:block">Viaje a la agencia</label>
   <div class="cf-ags">{% for ag, m in tarifa_agencia.items() %}
    <div class="cf-in"><span class="mini" style="min-width:52px">{{ 'cualquier otra' if ag == '*' else ag }}</span>
     <input name="ag_{{ ag }}" value="{{ '%g'|format(m) }}" inputmode="decimal" style="width:70px"></div>{% endfor %}</div>
-  <div class="mini">Se paga por viaje, no por pedido: lleve 1 o lleve 6, es lo mismo.</div>
+  <div class="cf-d" style="margin-top:6px">Se paga por viaje, no por pedido: lleve 1 o lleve 6, es lo mismo.</div>
   <p><button class="btn chico">Guardar</button></p>
  </form>
  </div>
@@ -100,7 +100,7 @@
   <tr><td><input name="nombre" placeholder="agregar a alguien…"></td>
    <td class="num"><div class="cf-in" style="justify-content:flex-end"><span class="mini">$</span>
     <input name="sueldo" inputmode="decimal" placeholder="—" style="width:80px;text-align:right"></div></td></tr></table>
-  <p class="mini">Quien tenga sueldo se paga por quincena (la mitad el 15 y la mitad el último día). Deja el sueldo vacío para quien se le pague de otra forma — el contador, un alquiler — y llévalo en <a href="/finanzas/recurrentes">Pagos recurrentes</a>. Para sacar a alguien, borra su nombre.</p>
+  <p class="cf-d">Quien tenga sueldo se paga por quincena: la mitad el 15 y la mitad el último día. Deja el sueldo vacío para quien se le pague de otra forma — el contador, un alquiler — y llévalo en <a href="/finanzas/recurrentes">Pagos recurrentes</a>. Para sacar a alguien, borra su nombre.</p>
   <p><button class="btn chico">Guardar</button></p>
  </form>
  </div>
@@ -129,7 +129,7 @@
   <input type="file" name="archivo" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
   <button class="btn chico">Guardar</button>
  </form>
- <p class="mini">PDF o foto, hasta 20 MB. Solo los ves tú.</p>
+ <p class="cf-d" style="margin:12px 0 0">PDF o foto, hasta 20 MB. Solo los ves tú.</p>
  </div>
 </div>
 
@@ -141,9 +141,9 @@
    <span>Las ventas entran solas al Cash flow<div class="mini">Apagado, las registras tú a mano. Encendido, cada pago confirmado entra solo al libro y a su caja.</div></span></label>
   <div class="g2" style="margin-top:14px">
    <div><label>El Cash flow cuenta desde</label><input type="date" name="cashflow_desde" value="{{ cashflow_desde }}">
-    <div class="mini">Nada anterior a esta fecha entra a los saldos.</div></div>
+    <div class="cf-d" style="margin-top:6px">Nada anterior a esta fecha entra a los saldos.</div></div>
    <div><label>Clave de Resultados</label><input name="clave" type="password" placeholder="dejar en blanco para no cambiarla" autocomplete="new-password">
-    <div class="mini">Protege Resultados, Registro de ventas y el botón del ojo.</div></div>
+    <div class="cf-d" style="margin-top:6px">Protege Resultados, Registro de ventas y el botón del ojo.</div></div>
   </div>
   <p><button class="btn chico">Guardar</button></p>
  </form>
@@ -153,7 +153,7 @@
 <div class="tarjeta cf-b">
  <h3>Categorías de gasto</h3>
  <div class="cf-cuerpo">
-  <p class="cf-d">Las que salen al registrar un gasto. <span class="mini">Las que ya están en uso no se pueden borrar: se perdería de qué era ese gasto.</span></p>
+  <p class="cf-d">Las que salen al registrar un gasto. Las que ya tienen gastos no se pueden borrar: se perdería de qué era ese gasto.</p>
   <div class="cat-lista">
   {% for cat, subs in cats.items() %}<details class="cat-g">
    <summary><b>{{ cat }}</b><span class="mini">{{ subs|length }}</span>{% if cats_uso_cat.get(cat) %}<span class="cat-uso">{{ cats_uso_cat[cat] }} gasto{{ 's' if cats_uso_cat[cat] != 1 }}</span>{% endif %}</summary>

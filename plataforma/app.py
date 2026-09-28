@@ -1853,7 +1853,7 @@ def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""
                       "SELECT categoria, subcategoria, COUNT(*) FROM gastos GROUP BY categoria, subcategoria")},
                   cats_uso_cat={r[0]: r[1] for r in con.execute(
                       "SELECT categoria, COUNT(*) FROM gastos GROUP BY categoria")},
-                  ROLES=ROLES, yo=quien_es(request),
+                  ROLES=ROLES, ROL_CORTO=ROL_CORTO, yo=quien_es(request),
                   despachadores_l=[r["nombre"] for r in con.execute("SELECT nombre FROM despachadores WHERE activo=1 ORDER BY nombre")],
                   equipo=eq, sueldos=sue, ciclo=CICLO_REPUESTO, iva=round(IVA * 100, 2),
                   clave=val("clave_resultados"), ventas_auto=val("ventas_auto", "0") == "1",
@@ -1926,6 +1926,7 @@ def documento_borrar(request: Request, nombre: str, con=Depends(db)):
 
 ROLES = {"admin": "Administradora · lo ve todo", "logistica": "Logística · órdenes y clientes, sin dinero",
          "taller": "Taller · solo su pantalla", "despachador": "Despachador · solo sus entregas"}
+ROL_CORTO = {"admin": "Administradora", "logistica": "Logística", "taller": "Taller", "despachador": "Despachador"}
 
 
 @app.post("/configuracion/usuario")
