@@ -12,6 +12,7 @@ for f in $archivos; do
       echo "  ✗ $f  — es una base de datos"; malo=1 ;;
     plataforma/data/*|data/*)
       echo "  ✗ $f  — está en la carpeta de datos"; malo=1 ;;
+    plataforma/static/*) : ;;   # los logos y los iconos del programa sí van
     *.jpg|*.jpeg|*.png|*.heic|*.HEIC|*.pdf)
       echo "  ✗ $f  — es una foto o un documento"; malo=1 ;;
     servidor/destino|.env|.env.*|*.pem|*.key|*id_ed25519*|*id_rsa*)
