@@ -96,9 +96,11 @@ PROVEEDORES_VISIBLES_TALLER = ("Walter",)   # al taller solo le hace falta saber
 
 
 def proveedor_visible(rol, nombre):
-    """Los proveedores son contactos comerciales de Cristina: el taller solo ve a Walter, con quien trata a diario."""
-    if rol != "taller": return nombre
-    return nombre if (nombre or "") in PROVEEDORES_VISIBLES_TALLER else None
+    """Los proveedores son contactos comerciales de Cristina y solo los ve ella.
+    El taller ve únicamente a Walter, con quien trata a diario; Logística, a nadie."""
+    if rol == "admin": return nombre
+    if rol == "taller": return nombre if (nombre or "") in PROVEEDORES_VISIBLES_TALLER else None
+    return None
 
 
 ORIGENES = ["Instagram", "Recomendación de otro cliente", "Página web / Google", "Cashea", "Nos vio en la calle",
