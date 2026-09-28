@@ -30,3 +30,19 @@ plataforma/data/servidor.log
 *-v1-respaldo.*
 RESPALDOS
 servidor/destino
+
+# --- Nada que sea un dato del negocio o un secreto sale de esta Mac ---
+.env
+.env.*
+*.pem
+*.key
+id_ed25519*
+id_rsa*
+*.sqlite
+*.sqlite3
+*.csv
+*.xlsx
+*.heic
+*.HEIC
+plataforma/data/
+data/
