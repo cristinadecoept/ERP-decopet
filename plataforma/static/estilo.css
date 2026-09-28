@@ -825,3 +825,9 @@ html.oscuro .cat-p{background:rgba(255,255,255,.1)}
 .cat-p button:hover{opacity:1}
 .cat-f{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .cat-f input{min-width:150px}
+details.tarjeta.arq-w{display:block}
+.arq-w > summary{cursor:pointer;display:flex;align-items:baseline;gap:10px;list-style:none}
+.arq-w > summary::-webkit-details-marker{display:none}
+.arq-w > summary::before{content:"▸";opacity:.5;margin-right:2px}
+.arq-w[open] > summary::before{content:"▾"}
+.arq-w > summary b{font-size:15px}

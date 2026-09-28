@@ -1669,6 +1669,11 @@ def cashflow(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
     provs = [dict(r) for r in con.execute("SELECT id, nombre FROM proveedores ORDER BY nombre")]
     return render(request, "cashflow.html", seccion="cashflow", cuentas=cs, activas=activas,
                   efectivo_pend=efectivo_por_registrar(con),
+                  arq_ult={r["cuenta_id"]: r for r in con.execute("""SELECT a.* FROM arqueos a
+                      JOIN (SELECT cuenta_id, MAX(id) m FROM arqueos GROUP BY cuenta_id) x ON x.m=a.id""")},
+                  arq_hist=con.execute("""SELECT a.*, c.nombre caja FROM arqueos a JOIN cuentas c ON c.id=a.cuenta_id
+                      ORDER BY a.id DESC LIMIT 20""").fetchall(),
+                  arq=request.query_params.get("arq", ""),
                   lineas=lineas[:300], caja=caja, mes=mes, meses=meses, total=total, arcos=arcos, TIPOS_MOV=TIPOS_MOV,
                   cats=cats, cats_ent=cats_ent, provs=provs, a_quien=A_QUIEN, a_quien_ent=A_QUIEN_ENT, de_quien=DE_QUIEN, orden_ent=[k for k in ORDEN_ENT if k in cats_ent])
 
@@ -3064,20 +3069,6 @@ def recurrente_reactivar(request: Request, cid: int, vence: str = Form(...), con
     con.commit(); return RedirectResponse("/finanzas/recurrentes", status_code=303)
 
 
-@app.get("/cashflow/arqueo", response_class=HTMLResponse)
-def arqueo(request: Request, con=Depends(db), ok: str = ""):
-    """Contar la plata de verdad y compararla con lo que dice el ERP.
-    Todo lo demás compara el ERP consigo mismo; esto lo ata al mundo real."""
-    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    cs = [c for c in saldos(con) if c["tipo"] == "operativa"]
-    ult = {r["cuenta_id"]: r for r in con.execute("""SELECT a.* FROM arqueos a
-              JOIN (SELECT cuenta_id, MAX(id) m FROM arqueos GROUP BY cuenta_id) x ON x.m=a.id""")}
-    hist = con.execute("""SELECT a.*, c.nombre caja FROM arqueos a JOIN cuentas c ON c.id=a.cuenta_id
-                          ORDER BY a.id DESC LIMIT 40""").fetchall()
-    return render(request, "arqueo.html", seccion="arqueo", cuentas=cs, ult=ult, hist=hist, ok=ok,
-                  hoy_iso=datetime.date.today().isoformat())
-
-
 @app.post("/cashflow/arqueo")
 async def arqueo_guardar(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
@@ -3109,7 +3100,7 @@ async def arqueo_guardar(request: Request, con=Depends(db)):
                                VALUES (?, 'entrada', ?, ?, 'USD', ?, 'Ajustes', 'Corrección de saldo', ?, ?)""",
                             (fecha, dif, dif, c["id"], desc, uid))
     con.commit()
-    return RedirectResponse(f"/cashflow/arqueo?ok={n}", status_code=303)
+    return RedirectResponse(f"/cashflow?arq={n}#arqueo", status_code=303)
 
 
 @app.get("/finanzas/recurrentes", response_class=HTMLResponse)
