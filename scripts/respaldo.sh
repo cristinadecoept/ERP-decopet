@@ -8,7 +8,8 @@ SELLO="$(date +%Y-%m-%d-%H%M)"
 TMP="$(mktemp -d)/decopet-$SELLO.db"
 
 # el modo backup de sqlite copia sin corromper aunque el ERP esté escribiendo
-sqlite3 "$RAIZ/plataforma/data/plataforma.db" ".backup '$TMP'"
+DATOS="${DECOPET_DATOS:-$RAIZ/plataforma/data}"
+sqlite3 "$DATOS/plataforma.db" ".backup '$TMP'"
 
 # la base importada de Airtable (5.285 clientes, 7.794 pedidos) también hay que guardarla
 TMP2=""
@@ -27,19 +28,24 @@ tar -czf "$TMPC" -C "$RAIZ" \
 # las fotos de producto y los papeles de la empresa. Pesan y casi no cambian,
 # así que solo se vuelven a empaquetar cuando hay algo nuevo.
 TMPA=""
-ARCH="$RAIZ/plataforma/data/fotos $RAIZ/plataforma/data/documentos"
-if [ -d "$RAIZ/plataforma/data/fotos" ] || [ -d "$RAIZ/plataforma/data/documentos" ]; then
+ARCH="$DATOS/fotos $DATOS/documentos"
+if [ -d "$DATOS/fotos" ] || [ -d "$DATOS/documentos" ]; then
   TMPA="$(dirname "$TMP")/decopet-archivos-$SELLO.tgz"
-  tar -czf "$TMPA" -C "$RAIZ/plataforma/data" fotos documentos 2>/dev/null || true
+  tar -czf "$TMPA" -C "$DATOS" fotos documentos 2>/dev/null || true
 fi
 
 DESTINOS=(); VISTOS=()
+# En un servidor no hay iCloud ni Drive: se le dice dónde con DECOPET_RESPALDOS.
+if [ -n "$DECOPET_RESPALDOS" ]; then
+  mkdir -p "$DECOPET_RESPALDOS"
+  DESTINOS+=("$DECOPET_RESPALDOS")
+fi
 for base in "$HOME/Library/CloudStorage"/GoogleDrive-*/"Mi unidad" \
             "$HOME/Library/CloudStorage"/GoogleDrive-*/"My Drive" \
             "$HOME/Library/CloudStorage"/iCloudDrive*; do
   # macOS deja contenedores de nube viejos que existen pero no dejan escribir: se descartan
   [ -d "$base" ] && [ -w "$base" ] || continue
-  id="$(stat -f "%d:%i" "$base" 2>/dev/null)" || continue
+  id="$(stat -f "%d:%i" "$base" 2>/dev/null || stat -c "%d:%i" "$base" 2>/dev/null)" || continue
   repetida=0
   for y in "${VISTOS[@]:-}"; do [ "$y" = "$id" ] && repetida=1; done
   [ $repetida -eq 1 ] && continue

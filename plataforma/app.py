@@ -1,5 +1,6 @@
 """Plataforma Decopet — pantallas. Parte 1: Órdenes."""
 import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, hashlib
+
 from pathlib import Path
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
@@ -8,11 +9,18 @@ from fastapi.templating import Jinja2Templates
 from plataforma import bcv
 
 BASE = Path(__file__).resolve().parent
-DB = BASE / "data" / "plataforma.db"
+# Dónde viven los datos. En la Mac es la carpeta de siempre; en un servidor se le dice
+# con DECOPET_DATOS, para que el programa y los datos no estén en el mismo sitio.
+DATOS = Path(os.environ.get("DECOPET_DATOS") or (BASE / "data"))
+DATOS.mkdir(parents=True, exist_ok=True)
+DB = DATOS / "plataforma.db"
+DOCS_DIR = DATOS / "documentos"
+FOTOS_DIR = DATOS / "fotos"
+for _d in (DOCS_DIR, FOTOS_DIR): _d.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Decopet")
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 (BASE / "data" / "fotos").mkdir(parents=True, exist_ok=True)
-app.mount("/fotos", StaticFiles(directory=BASE / "data" / "fotos"), name="fotos")
+app.mount("/fotos", StaticFiles(directory=FOTOS_DIR), name="fotos")
 tpl = Jinja2Templates(directory=BASE / "templates")
 
 ESTADOS = ["pendiente", "en_ruta", "entregada", "cancelada"]
@@ -1868,10 +1876,19 @@ def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""
                   respaldos=lista_respaldos(), ok=ok, err=err)
 
 
+def carpetas_respaldo():
+    """Dónde se dejan las copias. En la Mac, las nubes que estén instaladas.
+    En un servidor, la carpeta que diga DECOPET_RESPALDOS."""
+    fijo = os.environ.get("DECOPET_RESPALDOS")
+    if fijo:
+        p_ = Path(fijo); p_.mkdir(parents=True, exist_ok=True); return [p_]
+    nube = Path(os.path.expanduser("~/Library/CloudStorage"))
+    return [c for c in sorted(nube.glob("*/Decopet respaldos")) if c.is_dir()] if nube.is_dir() else []
+
+
 def lista_respaldos():
-    """Los respaldos que hay en iCloud: cuántos son y cuándo fue el último."""
-    d = Path(os.path.expanduser("~/Library/CloudStorage")).glob("iCloudDrive*/Decopet respaldos")
-    for carpeta in d:
+    """Cuántas copias hay y cuándo fue la última."""
+    for carpeta in carpetas_respaldo():
         f = sorted(carpeta.glob("decopet-2*.db"), key=lambda x: x.stat().st_mtime, reverse=True)
         if f:
             t = datetime.datetime.fromtimestamp(f[0].stat().st_mtime)
@@ -1881,7 +1898,7 @@ def lista_respaldos():
     return {"n": 0, "ultimo": None, "dias": None, "carpeta": None}
 
 
-DOCS = BASE / "data" / "documentos"
+DOCS = DOCS_DIR
 TIPOS_DOC = {"pdf": "application/pdf", "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 
 

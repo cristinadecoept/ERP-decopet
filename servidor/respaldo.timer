@@ -1,0 +1,11 @@
+# Corre el respaldo dos veces al día. En el servidor sí funciona un temporizador
+# (en la Mac no, porque macOS no deja leer dentro de Documentos).
+[Unit]
+Description=Respaldo del ERP Decopet
+
+[Timer]
+OnCalendar=*-*-* 06,18:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,20 @@
+# Hace que el ERP arranque solo con el servidor y se levante si se cae.
+# Se copia a /etc/systemd/system/decopet.service
+[Unit]
+Description=ERP Decopet
+After=network.target
+
+[Service]
+Type=simple
+User=decopet
+WorkingDirectory=/home/decopet/erp
+Environment="DECOPET_DATOS=/home/decopet/datos"
+Environment="DECOPET_RESPALDOS=/home/decopet/respaldos"
+ExecStart=/home/decopet/erp/.venv/bin/uvicorn plataforma.app:app --host 127.0.0.1 --port 8765 --proxy-headers --forwarded-allow-ips='127.0.0.1'
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/decopet/datos/servidor.log
+StandardError=append:/home/decopet/datos/servidor.log
+
+[Install]
+WantedBy=multi-user.target
