@@ -109,39 +109,62 @@ que editar un registro parcial no borre los campos ausentes.
 
 `publicar.sh` las corre antes de desplegar y aborta si alguna falla.
 
-## Despliegue
+## Dónde vive hoy
 
-**Servidor:** Hetzner CPX21 (3 vCPU / 4 GB / 80 GB), Ubuntu 24.04, Ashburn.
+**Hoy el ERP corre en la Mac de la dueña. No está publicado en ningún lado.**
 
-**Red — esto es lo más importante del diseño:**
+- `uvicorn` en `127.0.0.1:8765`, arrancado a mano con `nohup`
+- **No arranca solo**: si reinicia la Mac, hay que levantarlo de nuevo
+- Solo escucha en localhost. No es accesible desde otra máquina de la red
+  ni desde internet. No hay dominio apuntando a nada.
+- La base de datos es un archivo: `plataforma/data/plataforma.db`
+- git local, sin remoto (decisión de privacidad de la dueña)
+- **Respaldos: `scripts/respaldo.sh` existe y funciona, pero se corre a mano.**
+  No hay cron ni launchd. Hoy copia a iCloud; Google Drive todavía no está
+  instalado en la Mac.
+
+Funciona y se usa, pero es una instalación de una sola máquina, sin
+automatismos y sin alta disponibilidad. Eso es lo que estamos por cambiar.
+
+## A dónde va — ya programado, nada desplegado todavía
+
+Todo lo de abajo está escrito y probado en el repo, pero **no existe aún**: no
+hay servidor contratado ni dominio apuntando. Es el plan, no el estado.
+
+**Servidor previsto:** Hetzner CPX21 (3 vCPU / 4 GB / 80 GB), Ubuntu 24.04, Ashburn.
+
+**Red — lo más importante del diseño:**
 
 ```
 internet → Cloudflare Access → Cloudflare Tunnel → 127.0.0.1:8765
 ```
 
-El servidor **no expone ningún puerto web**. `cloudflared` establece una conexión
-saliente; no hay nada escuchando en 80/443. `ufw` deniega todo el tráfico entrante
-excepto SSH. SSH es solo por llave (`PasswordAuthentication no`, `PermitRootLogin no`),
-con fail2ban.
+El servidor no expondría ningún puerto web. `cloudflared` abre una conexión
+saliente; nada escuchando en 80/443. `ufw` deniega todo el entrante salvo SSH.
+SSH solo por llave (`PasswordAuthentication no`, `PermitRootLogin no`) +
+fail2ban + unattended-upgrades.
 
-Delante va **Cloudflare Access** con política por correo. Un visitante no
+Delante, **Cloudflare Access** con política por correo: un visitante no
 autenticado nunca llega a ver la pantalla de login de la app.
 
 No hay Caddy ni nginx. Las cabeceras de seguridad (`X-Frame-Options`, `nosniff`,
 `X-Robots-Tag`, `Referrer-Policy`, `Cache-Control: no-store`) y el límite de
-subida (25 MB, por `Content-Length`) los pone el propio middleware.
+subida (25 MB, por `Content-Length`) los pone el middleware — **eso sí está
+activo ya**, en la Mac.
 
-**Proceso:** systemd (`decopet.service`), uvicorn en 127.0.0.1:8765 con
+**Proceso:** systemd, uvicorn en 127.0.0.1:8765 con
 `--proxy-headers --forwarded-allow-ips=127.0.0.1`, `Restart=always`.
 
 **Datos fuera del código:** `DECOPET_DATOS` y `DECOPET_RESPALDOS`. El programa es
-desechable; los datos no.
+desechable; los datos no. Ya probado arrancando una segunda instancia con los
+datos en otra carpeta.
 
-**Despliegue:** `git push` a un repo bare en el servidor + `systemctl restart`.
-Lo hace `servidor/publicar.sh` desde la Mac. Exige árbol limpio y pruebas en verde.
+**Despliegue previsto:** `git push` a un repo bare en el servidor +
+`systemctl restart`, vía `servidor/publicar.sh`. Exige árbol limpio y pruebas
+en verde.
 
-**Respaldos:** timer de systemd diario. Respalda 4 cosas: DB en uso, DB histórica
-de Airtable, programa + git, y fotos/documentos. Más los snapshots de Hetzner.
+**Respaldos previstos:** timer de systemd diario. DB en uso, DB histórica de
+Airtable, programa + git, y fotos/documentos. Más los snapshots de Hetzner.
 
 ## Datos
 
