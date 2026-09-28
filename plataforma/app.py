@@ -3,7 +3,7 @@ import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, ha
 
 from pathlib import Path
 from fastapi import FastAPI, Request, Form, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plataforma import bcv
@@ -195,7 +195,18 @@ PUERTAS = {
 TALLER_PERMITIDO = PUERTAS["taller"][0]
 
 
-ABIERTO = ("/entrar", "/static", "/favicon", "/salir")   # lo único que se puede abrir sin haber entrado
+ABIERTO = ("/entrar", "/static", "/favicon", "/salir", "/robots.txt")   # lo único que se puede abrir sin haber entrado
+
+MAX_SUBIDA = 25 * 1024 * 1024        # nadie necesita subir más de 25 MB de una vez
+
+# Instrucciones para el navegador y para los buscadores. Van en cada respuesta.
+ESCUDOS = {
+    "X-Robots-Tag": "noindex, nofollow",      # que ningún buscador lo guarde
+    "X-Content-Type-Options": "nosniff",      # que no adivine el tipo de un archivo
+    "X-Frame-Options": "DENY",                # que nadie meta el ERP dentro de otra página
+    "Referrer-Policy": "same-origin",         # que no cuente a dónde vas
+    "Cache-Control": "no-store",              # que no deje páginas guardadas en el disco
+}
 
 
 def viene_de_fuera(request):
@@ -215,15 +226,27 @@ async def puerta(request: Request, call_next):
       · sin haber entrado, solo la pantalla de entrada
       · el taller y los despachadores, solo lo suyo"""
     ruta = request.url.path
+
+    def con_escudos(r):
+        for k, v in ESCUDOS.items(): r.headers[k] = v
+        return r
+
+    if ruta == "/robots.txt":
+        return con_escudos(PlainTextResponse("User-agent: *\nDisallow: /\n"))
     if viene_de_fuera(request):
-        return JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403)
+        return con_escudos(JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403))
+    try:
+        if int(request.headers.get("content-length") or 0) > MAX_SUBIDA:
+            return con_escudos(JSONResponse({"error": "Eso pesa demasiado"}, status_code=413))
+    except ValueError:
+        return con_escudos(JSONResponse({"error": "Orden mal formada"}, status_code=400))
     if not ruta.startswith(ABIERTO):
         if hay_claves() and not quien_es(request):
-            return RedirectResponse("/entrar", status_code=303)
+            return con_escudos(RedirectResponse("/entrar", status_code=303))
         permitido, casa = PUERTAS.get(rol_de(request), (None, None))
         if permitido and not ruta.startswith(permitido):
-            return RedirectResponse(casa, status_code=303)
-    return await call_next(request)
+            return con_escudos(RedirectResponse(casa, status_code=303))
+    return con_escudos(await call_next(request))
 
 
 # Columnas que se fueron agregando con el tiempo y no están en modelo.sql.
