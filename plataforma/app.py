@@ -408,6 +408,13 @@ def rol_de(request: Request):
     return u["rol"]
 
 
+def uid_de(request):
+    """Quién está haciendo esto. Si hay sesión, es esa persona — no el rol genérico.
+    Así el historial dice "Isaías" y no "Taller"."""
+    u = quien_es(request)
+    return u["id"] if u else uid_de(request)
+
+
 def usuario_id(rol, request=None):
     if request is not None:
         u = quien_es(request)
@@ -863,7 +870,7 @@ def volver(oid, request):
 
 @app.post("/ordenes/{oid}/estado")
 def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), con=Depends(db)):
-    rol = rol_de(request); uid = usuario_id(rol, request)
+    rol = rol_de(request); uid = uid_de(request)
     if PERMISO_ESTADO.get(estado) not in PERMISOS[rol]: return volver(oid, request)
     o = cargar_orden(con, oid)
     yo = quien_es(request)
@@ -914,7 +921,7 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
 
 @app.post("/ordenes/{oid}/pago/confirmar")
 def confirmar_pago(request: Request, oid: int, con=Depends(db)):
-    rol = rol_de(request); uid = usuario_id(rol)
+    rol = rol_de(request); uid = uid_de(request)
     if "confirmar_pago" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE pagos SET estado='confirmado', confirmado_por=?, confirmado_en=datetime('now','localtime') WHERE orden_id=? AND estado='por_confirmar'", (uid, oid))
     o = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()
@@ -925,7 +932,7 @@ def confirmar_pago(request: Request, oid: int, con=Depends(db)):
 
 @app.post("/ordenes/{oid}/pago/rechazar")
 def rechazar_pago(request: Request, oid: int, motivo: str = Form(""), con=Depends(db)):
-    rol = rol_de(request); uid = usuario_id(rol)
+    rol = rol_de(request); uid = uid_de(request)
     if "rechazar_pago" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE pagos SET estado='rechazado' WHERE orden_id=? AND estado='por_confirmar'", (oid,))
     con.execute("UPDATE ordenes SET estado_pago='rechazado' WHERE id=?", (oid,))
@@ -937,7 +944,7 @@ def contra_entrega(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request)
     if "contra_entrega" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE ordenes SET estado_pago='contra_entrega' WHERE id=? AND estado_pago IN ('sin_pago','rechazado','por_confirmar')", (oid,))
-    registrar(con, oid, usuario_id(rol), "estado", "Autorizada salida contra entrega (efectivo) → Confirmada"); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "estado", "Autorizada salida contra entrega (efectivo) → Confirmada"); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/pago")
@@ -950,7 +957,7 @@ async def registrar_pago(request: Request, oid: int, con=Depends(db)):
     con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado) VALUES (?,?,?,?,?,?,?,?,?,'por_confirmar')",
                 (oid, forma, monto, float(f.get("monto_real") or (monto * tasa if en_bs else monto)), "VES" if en_bs else "USD", tasa if en_bs else None, f.get("cuenta") or FORMA_CUENTA.get(forma), f.get("referencia"), datetime.datetime.now().strftime("%Y-%m-%d %H:%M")))
     con.execute("UPDATE ordenes SET estado_pago='por_confirmar' WHERE id=? AND estado_pago IN ('sin_pago','rechazado')", (oid,))
-    registrar(con, oid, usuario_id(rol), "pago", f"Pago reportado: {forma} {fmt_usd(monto)} ref {f.get('referencia') or '—'}"); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "pago", f"Pago reportado: {forma} {fmt_usd(monto)} ref {f.get('referencia') or '—'}"); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/factura")
@@ -958,7 +965,7 @@ def factura_toggle(request: Request, oid: int, hecha: str = Form("0"), requiere:
     """Marcar la factura hecha guarda su número y su fecha: así queda constancia de que se hizo, no solo un visto."""
     rol = rol_de(request)
     if "ver_dinero" not in PERMISOS[rol]: return volver(oid, request)
-    uid = usuario_id(rol)
+    uid = uid_de(request)
     if requiere: con.execute("UPDATE ordenes SET requiere_factura=? WHERE id=?", (1 if requiere == "1" else 0, oid))
     elif hecha == "1":
         num = (numero or "").strip() or None
@@ -980,7 +987,7 @@ def orden_cobro_extra(request: Request, oid: int, concepto: str = Form(""), conc
     c = (concepto_otro.strip() if concepto == "Otro" else concepto.strip()) or "Cobro adicional"
     m = cifra(monto)
     if m > 0 and forma.strip():
-        cobro_extra(con, oid, c, m, forma.strip(), (fecha or "").strip() or None, usuario_id(rol), referencia)
+        cobro_extra(con, oid, c, m, forma.strip(), (fecha or "").strip() or None, uid_de(request), referencia)
         con.commit()
     return volver(oid, request)
 
@@ -988,7 +995,7 @@ def orden_cobro_extra(request: Request, oid: int, concepto: str = Form(""), conc
 @app.post("/ordenes/{oid}/cobrar")
 async def cobrar_saldo(request: Request, oid: int, con=Depends(db)):
     """Cristina registra un cobro y lo deja confirmado de una (sin pasar por 'por revisar')."""
-    rol = rol_de(request); f = await request.form(); uid = usuario_id(rol)
+    rol = rol_de(request); f = await request.form(); uid = uid_de(request)
     if "confirmar_pago" not in PERMISOS[rol]: return volver(oid, request)
     o = con.execute("SELECT total, cliente_id FROM ordenes WHERE id=?", (oid,)).fetchone()
     monto = float(cifra(f.get("monto_usd")) or 0); forma = f.get("forma") or "Efectivo USD"
@@ -1039,7 +1046,7 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     cambios = [f"{c}: '{o[c] or ''}' → '{f.get(c) or ''}'" for c in campos if (o[c] or "") != (f.get(c) or "")]
     con.execute(f"UPDATE ordenes SET {', '.join(c + '=?' for c in campos)} WHERE id=?", [f.get(c) or None for c in campos] + [oid])
     fijar_pago_despachador(con, oid)
-    if cambios: registrar(con, oid, usuario_id(rol), "entrega", "; ".join(cambios))
+    if cambios: registrar(con, oid, uid_de(request), "entrega", "; ".join(cambios))
     con.commit(); return volver(oid, request)
 
 
@@ -1050,7 +1057,7 @@ def revertir_estado(request: Request, oid: int, con=Depends(db)):
     if "entregar" not in PERMISOS[rol]: return volver(oid, request)
     o = con.execute("SELECT estado FROM ordenes WHERE id=?", (oid,)).fetchone()
     con.execute("UPDATE ordenes SET estado='pendiente', fecha_entrega=NULL, actualizado_en=datetime('now','localtime') WHERE id=?", (oid,))
-    registrar(con, oid, usuario_id(rol), "estado", f"Vuelve a Pendiente (estaba {E_LABEL.get(o['estado'], o['estado'])})"); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "estado", f"Vuelve a Pendiente (estaba {E_LABEL.get(o['estado'], o['estado'])})"); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/eliminar")
@@ -1074,7 +1081,7 @@ def poner_guia(request: Request, oid: int, guia: str = Form(""), agencia: str = 
     rol = rol_de(request)
     if "coordinar" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE ordenes SET guia=COALESCE(NULLIF(?,''),guia), agencia=COALESCE(NULLIF(?,''),agencia) WHERE id=?", (guia.strip(), agencia.strip(), oid))
-    registrar(con, oid, usuario_id(rol), "guia", f"Guía {guia.strip() or '—'}" + (f" · {agencia}" if agencia else "")); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "guia", f"Guía {guia.strip() or '—'}" + (f" · {agencia}" if agencia else "")); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/despachador")
@@ -1083,7 +1090,7 @@ def asignar_despachador(request: Request, oid: int, despachador: str = Form(""),
     if "coordinar" not in PERMISOS[rol]: return volver(oid, request)
     if despachador == "__otro__": despachador = despachador_otro.strip()
     con.execute("UPDATE ordenes SET despachador=? WHERE id=?", (despachador or None, oid)); fijar_pago_despachador(con, oid)
-    registrar(con, oid, usuario_id(rol), "despachador", f"Asignado: {despachador or '—'}"); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "despachador", f"Asignado: {despachador or '—'}"); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/incidencia")
@@ -1091,16 +1098,16 @@ def nueva_incidencia(request: Request, oid: int, tipo: str = Form(...), descripc
     rol = rol_de(request)
     if "incidencia" not in PERMISOS[rol]: return volver(oid, request)
     o = con.execute("SELECT despachador FROM ordenes WHERE id=?", (oid,)).fetchone()
-    con.execute("INSERT INTO incidencias (orden_id,clase,tipo,descripcion,responsable,autor_id) VALUES (?,?,?,?,?,?)", (oid, clase, tipo, descripcion, o["despachador"], usuario_id(rol)))
+    con.execute("INSERT INTO incidencias (orden_id,clase,tipo,descripcion,responsable,autor_id) VALUES (?,?,?,?,?,?)", (oid, clase, tipo, descripcion, o["despachador"], uid_de(request)))
     if tipo == "entrega_fallida":
         con.execute("UPDATE ordenes SET estado='pendiente', despachador=NULL WHERE id=?", (oid,))
-    registrar(con, oid, usuario_id(rol), clase, f"{tipo}: {descripcion}"); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), clase, f"{tipo}: {descripcion}"); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/incidencia/{iid}/cerrar")
 def cerrar_incidencia(request: Request, oid: int, iid: int, resolucion: str = Form(""), con=Depends(db)):
     con.execute("UPDATE incidencias SET estado='cerrada', resolucion=?, cerrado_en=datetime('now','localtime') WHERE id=?", (resolucion, iid))
-    registrar(con, oid, usuario_id(rol_de(request)), "incidencia_cerrada", resolucion); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "incidencia_cerrada", resolucion); con.commit(); return volver(oid, request)
 
 
 CICLO_REPUESTO = 21   # regla Decopet: se hace seguimiento cada 21 días; si el cliente compra más seguido, se usa su ritmo
@@ -1178,7 +1185,7 @@ def _sirve(v):
 
 @app.post("/ordenes/nueva")
 async def crear_orden(request: Request, con=Depends(db)):
-    rol = rol_de(request); f = await request.form(); uid = usuario_id(rol)
+    rol = rol_de(request); f = await request.form(); uid = uid_de(request)
     cid = f.get("cliente_id") or None; cliente_recien_creado = False
     nac = f.get("tipo_entrega") == "nacional"
     if not cid and (f.get("cliente_nombre_pila") or "").strip():
@@ -1559,7 +1566,7 @@ def credito_manual(request: Request, cid: int, monto: str = Form("0"), motivo: s
     """Anotar o descontar un saldo a favor a mano."""
     if "confirmar_pago" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     m = cifra(monto) or 0
-    if m: mover_credito(con, cid, m, motivo.strip() or ("Saldo a favor" if m > 0 else "Usado"), None, usuario_id(rol_de(request), request))
+    if m: mover_credito(con, cid, m, motivo.strip() or ("Saldo a favor" if m > 0 else "Usado"), None, uid_de(request))
     con.commit(); return RedirectResponse(volver_a or f"/clientes/{cid}", status_code=303)
 
 
@@ -1677,7 +1684,7 @@ def cashflow(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
 async def cashflow_linea(request: Request, con=Depends(db)):
     """Una línea del libro. Todo se registra en dólares: la caja es solo la forma de pago."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    f = await request.form(); uid = usuario_id(rol_de(request))
+    f = await request.form(); uid = uid_de(request)
     fecha = f.get("fecha") or datetime.date.today().isoformat()
     caja = int(f["caja_id"]); monto = cifra(f.get("monto"))
     if monto <= 0: return RedirectResponse("/cashflow", status_code=303)
@@ -2191,10 +2198,10 @@ def cashea_cuota(request: Request, oid: int, monto: float = Form(...), fecha: st
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     f = fecha or datetime.date.today().isoformat(); tasa = tasa_hoy(con)["valor"]
     con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,'confirmado',?,?)",
-                (oid, "BNC", monto, round(monto * (tasa or 0), 2), "VES", tasa, FORMA_CUENTA["BNC"], referencia or "Cuota Cashea", f + " 12:00", usuario_id(rol_de(request)), f + " 12:00"))
+                (oid, "BNC", monto, round(monto * (tasa or 0), 2), "VES", tasa, FORMA_CUENTA["BNC"], referencia or "Cuota Cashea", f + " 12:00", uid_de(request), f + " 12:00"))
     o = con.execute("SELECT total, (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=ordenes.id AND p.estado='confirmado') cobrado FROM ordenes WHERE id=?", (oid,)).fetchone()
     if o["cobrado"] >= o["total"] - 0.01: con.execute("UPDATE ordenes SET estado_pago='pagada' WHERE id=?", (oid,))
-    registrar(con, oid, usuario_id(rol_de(request)), "pago", f"Cuota Cashea liquidada {fmt_usd(monto)} → BNC"); con.commit()
+    registrar(con, oid, uid_de(request), "pago", f"Cuota Cashea liquidada {fmt_usd(monto)} → BNC"); con.commit()
     return RedirectResponse("/finanzas/cashea", status_code=303)
 
 
@@ -2236,7 +2243,7 @@ async def gasto_crear(request: Request, con=Depends(db)):
     con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, tasa, categoria, subcategoria, descripcion, proveedor, cuenta_id, recurrente, notas, usuario_id, compra_grande)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (f.get("fecha") or datetime.date.today().isoformat(), monto_usd, monto_real, moneda, tasa if moneda == "VES" else None, f["categoria"], f.get("subcategoria") or None,
-                 f.get("descripcion") or None, f.get("proveedor") or None, int(f["cuenta_id"]) if f.get("cuenta_id") else None, 1 if f.get("recurrente") else 0, f.get("notas") or None, usuario_id(rol_de(request)),
+                 f.get("descripcion") or None, f.get("proveedor") or None, int(f["cuenta_id"]) if f.get("cuenta_id") else None, 1 if f.get("recurrente") else 0, f.get("notas") or None, uid_de(request),
                  1 if f.get("compra_grande") else 0))
     con.commit(); return RedirectResponse(f"/finanzas/gastos?mes={(f.get('fecha') or datetime.date.today().isoformat())[:7]}", status_code=303)
 
@@ -2308,7 +2315,24 @@ def revision(request: Request, con=Depends(db)):
             or ("registras las ventas a mano: el ERP no mete ninguna, así que no puede duplicar" if not ventas_automaticas(con)
                 else "las ventas cobradas entran solas desde las órdenes; no hay ninguna repetida a mano"))
 
-    # 6 · el respaldo — mismo dato que muestra Configuración, para que no haya dos verdades
+    # 6 · una entrega sin fecha rompe el seguimiento: no se sabe desde cuándo contar
+    sin_fecha = [f"#{r['numero']}" for r in con.execute("""SELECT numero FROM ordenes
+                   WHERE estado='entregada' AND (fecha_entrega IS NULL OR TRIM(fecha_entrega)='') AND origen_excel=0""")]
+    chequeo("Cada entrega tiene su fecha", not sin_fecha, ", ".join(sin_fecha[:8]) or "todas la tienen")
+
+    # 7 · un producto en negativo significa que salió algo que no estaba cargado
+    neg = [r["nombre"] for r in con.execute("""SELECT p.nombre FROM productos p WHERE p.activo=1
+             AND COALESCE((SELECT SUM(m.cantidad) FROM mov_inventario m WHERE m.producto_id=p.id),0) < 0""")]
+    chequeo("Ningún producto quedó en negativo", not neg,
+            ", ".join(neg[:6]) + " · salió algo que no estaba cargado" if neg else "todo en cero o más")
+
+    # 8 · alguien marcado como activo pero sin clave no puede entrar, aunque parezca que sí
+    sin_clave = [r["nombre"] for r in con.execute("""SELECT nombre FROM usuarios
+                   WHERE activo=1 AND rol!='sistema' AND (clave_hash IS NULL OR clave_hash='')""")]
+    chequeo("Todos los que pueden entrar tienen clave", not sin_clave,
+            ", ".join(sin_clave[:6]) + " · no pueden entrar todavía" if sin_clave else "todos con clave")
+
+    # 9 · el respaldo — mismo dato que muestra Configuración, para que no haya dos verdades
     r_ = lista_respaldos()
     if r_["ultimo"]:
         chequeo("Hay un respaldo fuera de la Mac", r_["dias"] <= 2,
@@ -2642,7 +2666,7 @@ async def movimiento_crear(request: Request, con=Depends(db)):
     concepto = (f.get("concepto") or "").strip() or ("Swap" if tipo == "transferencia" else "Ajuste")
     con.execute("INSERT INTO movimientos (fecha, tipo, cuenta_origen_id, cuenta_destino_id, monto_usd, monto_real, moneda, tasa, concepto, despachador, usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (f.get("fecha") or datetime.date.today().isoformat(), tipo, origen, destino, monto_usd, monto_real, moneda, tasa if moneda == "VES" else None,
-                 concepto + (f" · {f['nota'].strip()}" if (f.get("nota") or "").strip() else ""), None, usuario_id(rol_de(request))))
+                 concepto + (f" · {f['nota'].strip()}" if (f.get("nota") or "").strip() else ""), None, uid_de(request)))
     con.commit(); return RedirectResponse("/cashflow", status_code=303)
 
 
@@ -2839,7 +2863,7 @@ def inventario_mov(request: Request, producto_id: int = Form(...), tipo: str = F
                    nota: str = Form(""), fecha: str = Form(""), color: str = Form(""), con=Depends(db)):
     q = abs(cantidad) if tipo == "entrada" else (-abs(cantidad) if tipo == "salida" else cantidad)
     con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
-                (producto_id, fecha or datetime.date.today().isoformat(), tipo, q, nota or None, (color or "").lower() or None, usuario_id(rol_de(request))))
+                (producto_id, fecha or datetime.date.today().isoformat(), tipo, q, nota or None, (color or "").lower() or None, uid_de(request)))
     con.commit(); return RedirectResponse("/inventario", status_code=303)
 
 
@@ -3019,7 +3043,7 @@ def equipo_falta(request: Request, nombre: str = Form(...), fecha: str = Form(""
     """No vino: se le anota el día para descontárselo de la quincena."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     con.execute("INSERT OR IGNORE INTO faltas (nombre, fecha, nota, usuario_id) VALUES (?,?,?,?)",
-                (nombre, fecha or datetime.date.today().isoformat(), nota.strip() or None, usuario_id(rol_de(request))))
+                (nombre, fecha or datetime.date.today().isoformat(), nota.strip() or None, uid_de(request)))
     con.commit(); return RedirectResponse("/equipo", status_code=303)
 
 
@@ -3093,7 +3117,7 @@ def recurrente_pagar(request: Request, cid: int, vence: str = Form(...), monto: 
     cur = con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, tasa, categoria, subcategoria, descripcion, proveedor, cuenta_id,
                          cantidad, unidad, recurrente, usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)""",
                       ((fecha or "").strip() or datetime.date.today().isoformat(), monto_usd, monto, c["moneda"], tasa if c["moneda"] == "VES" else None, c["categoria"] or "Otros gastos", c["subcategoria"], desc, c["proveedor"],
-                       int(cuenta_id) if cuenta_id else c["cuenta_id"], cant, c["unidad"], usuario_id(rol_de(request))))
+                       int(cuenta_id) if cuenta_id else c["cuenta_id"], cant, c["unidad"], uid_de(request)))
     con.execute("INSERT OR IGNORE INTO compromisos_pagos (compromiso_id, vence, gasto_id) VALUES (?,?,?)", (cid, vence, cur.lastrowid)); con.commit()
     return RedirectResponse(volver, status_code=303)
 
@@ -3183,7 +3207,7 @@ async def produccion_crear(request: Request, con=Depends(db)):
     quien = (f.get("responsable") or "").strip() or None
     fped = f.get("fecha_pedido") or datetime.date.today().isoformat()
     fesp = f.get("fecha_esperada") or None
-    uid = usuario_id(rol_de(request))
+    uid = uid_de(request)
     descs = f.getlist("descripcion"); barns = f.getlist("barnizado")
     lineas, i_barn = [], 0
     for idx, (pieza, cant, costo_l) in enumerate(zip(f.getlist("pieza"), f.getlist("cantidad"), f.getlist("costo_linea"))):
@@ -3226,7 +3250,7 @@ def produccion_recibir(request: Request, pid: int, cantidad: int = Form(...), co
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)   # Taller es de Cristina
     r = con.execute("SELECT * FROM produccion WHERE id=?", (pid,)).fetchone()
     if r:
-        hoy = datetime.date.today().isoformat(); uid = usuario_id(rol_de(request))
+        hoy = datetime.date.today().isoformat(); uid = uid_de(request)
         terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
         if terminado and r["producto_id"]:   # comedores y rampas llegan listos; las cajas de madera y las muestras no son producto terminado
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)", (r["producto_id"], hoy, "entrada", cantidad, f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else ""), uid))
@@ -3273,7 +3297,7 @@ def produccion_abonar(request: Request, pid: int, monto: str = Form(...), forma:
     if not solo_admin(request): return RedirectResponse("/produccion", status_code=303)
     m = cifra(monto)
     if m > 0:
-        pagar_produccion(con, pid, m, forma, fecha or datetime.date.today().isoformat(), nota, usuario_id(rol_de(request)))
+        pagar_produccion(con, pid, m, forma, fecha or datetime.date.today().isoformat(), nota, uid_de(request))
         con.commit()
     return RedirectResponse("/produccion?ver=todas", status_code=303)
 
@@ -3482,7 +3506,7 @@ def seguimiento_hecho(request: Request, clave: str = Form(...), cliente_id: int 
             if r: con.execute("UPDATE repuestos_prepagados SET fecha_programada=?, notas=? WHERE id=?", (hasta, nota or None, r["id"]))
     prev = con.execute("SELECT intentos FROM seguimientos WHERE clave=?", (clave,)).fetchone()
     con.execute("INSERT OR REPLACE INTO seguimientos (cliente_id, tipo, clave, resultado, nota, posponer_hasta, usuario_id, intentos) VALUES (?,?,?,?,?,?,?,?)",
-                (cliente_id, tipo, clave, resultado, nota or None, hasta, usuario_id(rol_de(request)), (prev["intentos"] if prev else 0) + 1))
+                (cliente_id, tipo, clave, resultado, nota or None, hasta, uid_de(request), (prev["intentos"] if prev else 0) + 1))
     con.commit(); return RedirectResponse(volver, status_code=303)
 
 
@@ -3535,7 +3559,7 @@ def prepagado_programar(request: Request, rid: int, fecha: str = Form(""), tipo_
                 (fecha or None, tipo_entrega or None, despachador or None, agencia or None, notas or None, dl, pag, env, rid))
     if pag == 1 and dl > 0 and not (r and r["delivery_pagado"]) and r and r["orden_id"]:   # lo paga ahora: entra dentro de su orden
         f_pago = (delivery_forma or "").strip() or None
-        cobro_extra(con, r["orden_id"], "Delivery repuesto", dl, f_pago, datetime.date.today().isoformat(), usuario_id(rol_de(request)))
+        cobro_extra(con, r["orden_id"], "Delivery repuesto", dl, f_pago, datetime.date.today().isoformat(), uid_de(request))
         con.execute("UPDATE repuestos_prepagados SET delivery_forma=? WHERE id=?", (f_pago, rid))
     con.commit(); return RedirectResponse(volver or "/prepagados", status_code=303)
 
@@ -3553,20 +3577,20 @@ def prepagado_campo(request: Request, rid: int, despachador: str = Form(""), age
 @app.post("/prepagados/{rid}/entregar")
 def prepagado_entregar(request: Request, rid: int, tipo_entrega: str = Form(""), despachador: str = Form(""), delivery_cobrado: str = Form(""), delivery_forma: str = Form(""), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
     con.execute("UPDATE repuestos_prepagados SET entregado_en=?, tipo_entrega=COALESCE(NULLIF(?,''),tipo_entrega), despachador=COALESCE(NULLIF(?,''),despachador), usuario_id=? WHERE id=?",
-                (fecha.strip() or datetime.date.today().isoformat(), tipo_entrega, despachador, usuario_id(rol_de(request)), rid))
+                (fecha.strip() or datetime.date.today().isoformat(), tipo_entrega, despachador, uid_de(request), rid))
     r = con.execute("SELECT orden_id, delivery, delivery_pagado FROM repuestos_prepagados WHERE id=?", (rid,)).fetchone()
     if delivery_cobrado == "1" and r and not r["delivery_pagado"]:   # el despachador cobró el delivery al entregar
         con.execute("UPDATE repuestos_prepagados SET delivery_pagado=1, delivery_forma=? WHERE id=?", (delivery_forma or None, rid))
         if (r["delivery"] or 0) > 0 and r["orden_id"]:   # ese cobro entra dentro de la orden del cliente
             cobro_extra(con, r["orden_id"], "Delivery repuesto", r["delivery"], delivery_forma or None,
-                        fecha.strip() or datetime.date.today().isoformat(), usuario_id(rol_de(request)))
+                        fecha.strip() or datetime.date.today().isoformat(), uid_de(request))
     con.commit(); return RedirectResponse(volver or "/prepagados", status_code=303)
 
 
 @app.post("/prepagados/nuevo")
 def prepagado_nuevo(request: Request, cliente_id: int = Form(...), tamano: str = Form("Grande"), pagado_en: str = Form(""), monto: str = Form(""), notas: str = Form(""), con=Depends(db)):
     """Registrar a mano un repuesto que el cliente dejó pagado (por ejemplo, del histórico)."""
-    con.execute("INSERT INTO repuestos_prepagados (cliente_id,tamano,pagado_en,monto,notas,usuario_id) VALUES (?,?,?,?,?,?)", (cliente_id, tamano, pagado_en or datetime.date.today().isoformat(), float(monto.replace(",", ".")) if monto.strip() else None, notas or None, usuario_id(rol_de(request))))
+    con.execute("INSERT INTO repuestos_prepagados (cliente_id,tamano,pagado_en,monto,notas,usuario_id) VALUES (?,?,?,?,?,?)", (cliente_id, tamano, pagado_en or datetime.date.today().isoformat(), float(monto.replace(",", ".")) if monto.strip() else None, notas or None, uid_de(request)))
     con.commit(); return RedirectResponse("/prepagados", status_code=303)
 
 
@@ -3626,7 +3650,7 @@ def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entre
     if pagado == 2:
         con.execute("UPDATE packs SET delivery_programado=?, delivery_pagado=1 WHERE id=?", (dl_prep, pid))
     if pagado == 1 and k and k["orden_id"]:   # el delivery ya lo pagó: entra a la orden del pack de una
-        uid = usuario_id(rol_de(request)); forma = pago_forma or "Pago Móvil"
+        uid = uid_de(request); forma = pago_forma or "Pago Móvil"
         con.execute("UPDATE ordenes SET delivery=COALESCE(delivery,0)+?, total=COALESCE(total,0)+?, actualizado_en=datetime('now','localtime') WHERE id=?", (dl, dl, k["orden_id"]))
         con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,cuenta,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,'USD',?,?,'confirmado',?,datetime('now','localtime'))",
                     (k["orden_id"], forma, dl, dl, FORMA_CUENTA.get(forma), datetime.date.today().isoformat(), uid))
@@ -3642,7 +3666,7 @@ def pack_entregar(request: Request, pid: int, fecha: str = Form(""), cuantos: st
     n_retiros = max(1, min(int(cuantos) if cuantos.isdigit() else 1, saldo))   # puede llevarse varios de una vez
     for i in range(n_retiros):
         con.execute("INSERT INTO entregas_repuesto (pack_id, fecha, tipo_entrega, despachador, delivery_cobrado, notas, usuario_id) VALUES (?,?,?,?,?,?,?)",
-                (pid, fecha or datetime.date.today().isoformat(), tipo_entrega or k["tipo_programado"] or None, despachador or k["despachador_programado"] or None, float(delivery_cobrado or 0) if i == 0 else 0.0, notas or None, usuario_id(rol_de(request))))
+                (pid, fecha or datetime.date.today().isoformat(), tipo_entrega or k["tipo_programado"] or None, despachador or k["despachador_programado"] or None, float(delivery_cobrado or 0) if i == 0 else 0.0, notas or None, uid_de(request)))
     con.execute("UPDATE packs SET fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, retiro_programado=NULL, delivery_programado=NULL, delivery_pagado=NULL, estado=CASE WHEN entregadas_inicio + (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) >= unidades THEN 'completo' ELSE estado END WHERE id=?", (pid,))
     dc = float(delivery_cobrado or 0)
     if k["delivery_pagado"]: dc = 0.0   # ya se cobró al programar (o venía prepagado con el pack)
@@ -3652,8 +3676,8 @@ def pack_entregar(request: Request, pid: int, fecha: str = Form(""), cuantos: st
         con.execute("UPDATE ordenes SET delivery=COALESCE(delivery,0)+?, total=COALESCE(total,0)+?, actualizado_en=datetime('now','localtime') WHERE id=?", (dc, dc, k["orden_id"]))
         forma = pago_forma or "Efectivo USD"
         con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,cuenta,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,'USD',?,?,'confirmado',?,datetime('now','localtime'))",
-                    (k["orden_id"], forma, dc, dc, FORMA_CUENTA.get(forma), fecha or datetime.date.today().isoformat(), usuario_id(rol_de(request))))
-        registrar(con, k["orden_id"], usuario_id(rol_de(request)), "pack", f"Retiro de repuesto · delivery {fmt_usd(dc)} ({forma})")
+                    (k["orden_id"], forma, dc, dc, FORMA_CUENTA.get(forma), fecha or datetime.date.today().isoformat(), uid_de(request)))
+        registrar(con, k["orden_id"], uid_de(request), "pack", f"Retiro de repuesto · delivery {fmt_usd(dc)} ({forma})")
     con.commit(); return RedirectResponse("/prepagados", status_code=303)
 
 
@@ -3749,7 +3773,7 @@ async def cliente_crear(request: Request, con=Depends(db)):
                     (cid, "Principal", f["direccion"], f.get("zona") or None, f.get("municipio") or None, f.get("ciudad") or None, f.get("estado_geo") or None, f.get("maps") or None))
     if f.get("nota"):
         con.execute("INSERT INTO notas_cliente (cliente_id,tipo,texto,mostrar_en_orden,mostrar_logistica,autor_id) VALUES (?,?,?,?,?,?)",
-                    (cid, "general", f["nota"], 1, 0 if f.get("nota_privada") else 1, usuario_id(rol_de(request))))
+                    (cid, "general", f["nota"], 1, 0 if f.get("nota_privada") else 1, uid_de(request)))
     guardar_mascotas(con, cid, f)
     con.commit()
     return RedirectResponse(f"/clientes?abrir={cid}", status_code=303)
@@ -3990,7 +4014,7 @@ async def cliente_nota(request: Request, cid: int, con=Depends(db)):
         con.execute("DELETE FROM notas_cliente WHERE id=? AND cliente_id=?", (f["borrar"], cid))
     elif f.get("texto", "").strip():
         con.execute("INSERT INTO notas_cliente (cliente_id,tipo,texto,mostrar_en_orden,mostrar_logistica,autor_id) VALUES (?,?,?,?,?,?)",
-                    (cid, "general", f["texto"].strip(), 1, 0 if f.get("privada") else 1, usuario_id(rol_de(request))))
+                    (cid, "general", f["texto"].strip(), 1, 0 if f.get("privada") else 1, uid_de(request)))
     con.commit(); return RedirectResponse(f"/clientes/{cid}", 303)
 
 
@@ -4044,6 +4068,9 @@ def mis_entregas(request: Request, con=Depends(db)):
                           ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
     mes = hoy.strftime("%Y-%m")
     pagos = con.execute("SELECT fecha, monto, entregas FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC LIMIT 12", (nombre,)).fetchall()
+    for f in ruta:
+        o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
+        f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
     return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, r=r, ruta=ruta,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist, pagos=pagos, hoy_iso=hoy.isoformat(),
@@ -4166,7 +4193,7 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
         if vids:
             qv = ",".join("?" * len(vids))
             monto += con.execute(f"SELECT COALESCE(SUM(monto),0) FROM viajes_agencia WHERE id IN ({qv}) AND despachador=? AND pagado=0", (*vids, d["nombre"])).fetchone()[0]
-        uid = usuario_id(rol_de(request)); fecha = f.get("fecha") or datetime.date.today().isoformat()
+        uid = uid_de(request); fecha = f.get("fecha") or datetime.date.today().isoformat()
         nota = (f.get("nota") or "").strip() or None
         cur = con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, usuario_id) VALUES (?,?,?,?,?,?)",
                           (d["nombre"], fecha, monto, len(ids) + len(vids), nota, uid))
@@ -4202,7 +4229,7 @@ async def viaje_crear(request: Request, con=Depends(db)):
     agencia = (f.get("agencia") or "").strip() or next((r["agencia"] for r in filas if r["agencia"]), "")
     monto = cifra(f.get("monto")) if (f.get("monto") or "").strip() else tarifa_agencia(con, agencia)
     fecha = f.get("fecha") or datetime.date.today().isoformat()
-    uid = usuario_id(rol_de(request))
+    uid = uid_de(request)
     cur = con.execute("""INSERT INTO viajes_agencia (fecha, despachador, agencia, monto, pedidos, nota, usuario_id)
                          VALUES (?,?,?,?,?,?,?)""", (fecha, desp, agencia or None, monto, len(filas), (f.get("nota") or "").strip() or None, uid))
     vid = cur.lastrowid
@@ -4421,7 +4448,7 @@ def taller_entregado(request: Request, oid: int, con=Depends(db)):
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     o = con.execute("SELECT tipo_entrega, estado FROM ordenes WHERE id=?", (oid,)).fetchone()
     if o and o["tipo_entrega"] == "pickup" and o["estado"] in ("pendiente", "en_ruta"):
-        hoy = datetime.date.today().isoformat(); uid = usuario_id(rol_de(request))
+        hoy = datetime.date.today().isoformat(); uid = uid_de(request)
         con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=?, actualizado_en=datetime('now','localtime') WHERE id=?", (hoy, oid))
         registrar(con, oid, uid, "estado", "Entregado en pick-up (taller)")
         con.commit()
@@ -4434,7 +4461,7 @@ def taller_pack_entregado(request: Request, pid: int, con=Depends(db)):
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     k = next((k for k in cargar_packs(con) if k["id"] == pid), None)
     if k and k["saldo"] > 0:
-        hoy = datetime.date.today().isoformat(); uid = usuario_id(rol_de(request))
+        hoy = datetime.date.today().isoformat(); uid = uid_de(request)
         for _ in range(min(k["retiro_programado"] or 1, k["saldo"])):
             con.execute("""INSERT INTO entregas_repuesto (pack_id, fecha, tipo_entrega, delivery_cobrado, notas, usuario_id)
                            VALUES (?,?, 'pickup', 0, 'retirado en el taller', ?)""", (pid, hoy, uid))
@@ -4451,7 +4478,7 @@ def taller_prepagado_entregado(request: Request, rid: int, con=Depends(db)):
     """Un repuesto que ya estaba pagado y el cliente vino a buscar."""
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     con.execute("""UPDATE repuestos_prepagados SET entregado_en=?, tipo_entrega='pickup', usuario_id=?
-                   WHERE id=? AND entregado_en IS NULL""", (datetime.date.today().isoformat(), usuario_id(rol_de(request)), rid))
+                   WHERE id=? AND entregado_en IS NULL""", (datetime.date.today().isoformat(), uid_de(request), rid))
     con.commit()
     return RedirectResponse("/taller", status_code=303)
 
@@ -4462,7 +4489,7 @@ def taller_nota(request: Request, texto: str = Form(""), con=Depends(db)):
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     if texto.strip():
         con.execute("INSERT INTO notas_taller (fecha, texto, usuario_id) VALUES (?,?,?)",
-                    (datetime.date.today().isoformat(), texto.strip()[:400], usuario_id(rol_de(request))))
+                    (datetime.date.today().isoformat(), texto.strip()[:400], uid_de(request)))
         con.commit()
     return RedirectResponse("/taller", status_code=303)
 
@@ -4509,7 +4536,7 @@ def taller_armar(request: Request, producto_id: int = Form(...), cantidad: str =
     n = int(cifra(cantidad)) if cantidad.strip() else 0
     p = con.execute("SELECT id, nombre FROM productos WHERE id=? AND activo=1", (producto_id,)).fetchone()
     if p and n > 0:
-        hoy = datetime.date.today().isoformat(); uid = usuario_id(rol_de(request))
+        hoy = datetime.date.today().isoformat(); uid = uid_de(request)
         for r in con.execute("SELECT insumo_id, cantidad FROM receta WHERE producto_id=?", (producto_id,)):
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
                         (r["insumo_id"], hoy, "salida", -int(r["cantidad"] * n), f"para armar {n}× {p['nombre']}", uid))
@@ -4526,7 +4553,7 @@ def taller_llegada(request: Request, pid: int, cantidad: str = Form("0"), nota: 
     r = con.execute("SELECT * FROM produccion WHERE id=?", (pid,)).fetchone()
     n = int(cifra(cantidad)) if cantidad.strip() else 0
     if r and n > 0:
-        hoy = datetime.date.today().isoformat(); uid = usuario_id(rol_de(request))
+        hoy = datetime.date.today().isoformat(); uid = uid_de(request)
         terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
         if terminado and r["producto_id"]:
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",

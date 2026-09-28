@@ -16,7 +16,10 @@
  <td>{{ f.direccion or '—' }}{% if f.maps %} <a href="{{ f.maps }}" target="_blank" rel="noreferrer" class="mini">mapa ↗</a>{% endif %}</td>
  <td class="mini">{{ f.que_lleva }}</td>
  <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}</td>
- <td style="text-align:right;width:190px">{% if f.id %}
+ <td style="text-align:right;width:250px">{% if f.id %}
+  {% if not f.en_ruta %}<form method="post" action="/ordenes/{{ f.id }}/estado" style="display:inline">
+   <input type="hidden" name="estado" value="en_ruta"><button class="btn sec chico">Voy saliendo</button></form>
+  {% else %}<span class="pago por_cobrar">en ruta</span>{% endif %}
   <details class="cobro"><summary class="btn chico">Entregado</summary>
    <form method="post" action="/ordenes/{{ f.id }}/estado" class="cobro-f" style="min-width:230px">
     <input type="hidden" name="estado" value="entregada">
