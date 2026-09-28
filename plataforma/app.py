@@ -1669,11 +1669,6 @@ def cashflow(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
     provs = [dict(r) for r in con.execute("SELECT id, nombre FROM proveedores ORDER BY nombre")]
     return render(request, "cashflow.html", seccion="cashflow", cuentas=cs, activas=activas,
                   efectivo_pend=efectivo_por_registrar(con),
-                  arq_ult={r["cuenta_id"]: r for r in con.execute("""SELECT a.* FROM arqueos a
-                      JOIN (SELECT cuenta_id, MAX(id) m FROM arqueos GROUP BY cuenta_id) x ON x.m=a.id""")},
-                  arq_hist=con.execute("""SELECT a.*, c.nombre caja FROM arqueos a JOIN cuentas c ON c.id=a.cuenta_id
-                      ORDER BY a.id DESC LIMIT 20""").fetchall(),
-                  arq=request.query_params.get("arq", ""),
                   lineas=lineas[:300], caja=caja, mes=mes, meses=meses, total=total, arcos=arcos, TIPOS_MOV=TIPOS_MOV,
                   cats=cats, cats_ent=cats_ent, provs=provs, a_quien=A_QUIEN, a_quien_ent=A_QUIEN_ENT, de_quien=DE_QUIEN, orden_ent=[k for k in ORDEN_ENT if k in cats_ent])
 
@@ -2532,13 +2527,6 @@ def exportar_todo(request: Request, con=Depends(db)):
         [(u["nombre"], u["usuario"], ROLES.get(u["rol"], u["rol"]), "Sí" if u["activo"] else "No")
          for u in con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY rol, nombre")]))
 
-    hojas.append(("Arqueos",
-        [("Fecha", 13, "f"), ("Caja", 22, ""), ("Decía el ERP", 13, "$"), ("Conté", 13, "$"),
-         ("Diferencia", 13, "$"), ("Nota", 30, "")],
-        [(F(a_["fecha"]), a_["caja"], a_["saldo_erp"], a_["contado"], a_["diferencia"], a_["nota"])
-         for a_ in con.execute("""SELECT a.*, c.nombre caja FROM arqueos a JOIN cuentas c ON c.id=a.cuenta_id
-             ORDER BY a.fecha DESC, a.id DESC""")]))
-
     hojas.append(("Repuestos pendientes",
         [("Cliente", 24, ""), ("Tipo", 14, ""), ("Tamaño", 12, ""), ("Faltan", 9, "n"), ("Desde", 13, "f")],
         [(k["cliente"], "Pack", k["tamano"], k["saldo"], F(k["creado_en"])) for k in cargar_packs(con) if k["saldo"] > 0]
@@ -3067,40 +3055,6 @@ def recurrente_reactivar(request: Request, cid: int, vence: str = Form(...), con
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     con.execute("DELETE FROM compromisos_pagos WHERE compromiso_id=? AND vence=? AND gasto_id IS NULL", (cid, vence))
     con.commit(); return RedirectResponse("/finanzas/recurrentes", status_code=303)
-
-
-@app.post("/cashflow/arqueo")
-async def arqueo_guardar(request: Request, con=Depends(db)):
-    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    f = await request.form()
-    fecha = (f.get("fecha") or datetime.date.today().isoformat()).strip()
-    uid = usuario_id(rol_de(request), request)
-    ajustar = bool(f.get("ajustar"))
-    n = 0
-    for c in saldos(con):
-        v = f.get(f"contado_{c['id']}")
-        if v is None or not str(v).strip(): continue      # solo las cajas que contó
-        contado = cifra(v) or 0.0
-        dif = round(contado - c["saldo"], 2)
-        cur = con.execute("""INSERT INTO arqueos (fecha, cuenta_id, saldo_erp, contado, diferencia, ajustado, nota, usuario_id)
-                             VALUES (?,?,?,?,?,?,?,?)""",
-                          (fecha, c["id"], c["saldo"], contado, dif, 1 if (ajustar and dif) else 0,
-                           (f.get(f"nota_{c['id']}") or "").strip() or None, uid))
-        n += 1
-        # si pide cuadrar, se anota la diferencia como gasto o entrada: el ERP nunca "corrige" en silencio
-        if ajustar and dif:
-            desc = f"Arqueo {fecha} · {c['nombre']}"
-            if dif < 0:
-                con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria,
-                               descripcion, cuenta_id, usuario_id) VALUES (?,?,?,'USD','Ajuste','Faltante',?,?,?)""",
-                            (fecha, abs(dif), abs(dif), desc, c["id"], uid))
-            else:
-                con.execute("""INSERT INTO movimientos (fecha, tipo, monto_usd, monto_real, moneda, cuenta_destino_id,
-                               categoria, subcategoria, notas, usuario_id)
-                               VALUES (?, 'entrada', ?, ?, 'USD', ?, 'Ajustes', 'Corrección de saldo', ?, ?)""",
-                            (fecha, dif, dif, c["id"], desc, uid))
-    con.commit()
-    return RedirectResponse(f"/cashflow?arq={n}#arqueo", status_code=303)
 
 
 @app.get("/finanzas/recurrentes", response_class=HTMLResponse)

@@ -1,43 +1,6 @@
 {% extends "base.html" %}{% block titulo %}Cash flow · Decopet{% endblock %}{% block cuerpo %}
 <div class="fila-titulo"><div><h1>Cash flow</h1><div class="sub">Control de caja · cada entrada y salida, y cuánto queda en cada una</div></div>
 
-{% if arq %}<div class="cf-ok">Arqueo guardado · {{ arq }} caja{{ 's' if arq != '1' }}.</div>{% endif %}
-<details class="tarjeta cf-b arq-w" id="arqueo" {{ 'open' if arq }} style="margin-bottom:16px">
- <summary><b>Contar la plata</b><span class="mini">compara lo que hay de verdad con lo que dice el ERP</span></summary>
- <div class="cf-cuerpo" style="margin-top:14px">
-  <form method="post" action="/cashflow/arqueo">
-  <table class="lineas"><tr><th>Caja</th><th class="num">Dice el ERP</th><th class="num" style="width:150px">Conté</th><th class="num" style="width:110px">Diferencia</th><th class="mini">Último conteo</th></tr>
-  {% for c in cuentas %}{% if c.tipo == 'operativa' %}{% set u = arq_ult.get(c.id) %}<tr>
-   <td><b>{{ c.nombre }}</b>{% if c.moneda != 'USD' %}<div class="mini">{{ c.moneda }}</div>{% endif %}</td>
-   <td class="num"><b>{{ c.saldo|usd }}</b></td>
-   <td class="num"><input name="contado_{{ c.id }}" inputmode="decimal" placeholder="—" data-erp="{{ c.saldo }}" oninput="dif(this)" style="width:105px;text-align:right"></td>
-   <td class="num mono arq-dif" data-id="{{ c.id }}"></td>
-   <td class="mini">{% if u %}{{ u.fecha|dia }}{% if u.diferencia %} · <span class="ln-alerta">{{ u.diferencia|usd }}</span>{% else %} · cuadró{% endif %}{% else %}nunca{% endif %}</td>
-  </tr>{% endif %}{% endfor %}</table>
-  <div class="arq-pie">
-   <div><label>¿Qué día contaste?</label><input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}"></div>
-   <label class="cf-check"><input type="checkbox" name="ajustar"><span>Cuadrar las cajas con lo que conté
-    <div class="mini">Anota la diferencia como faltante o corrección. El ERP nunca cambia un saldo en silencio.</div></span></label>
-   <button class="btn chico">Guardar conteo</button>
-  </div></form>
-
-  {% if arq_hist %}<h4 class="cf-h4">Conteos anteriores</h4>
-  <table class="lineas"><tr><th>Fecha</th><th>Caja</th><th class="num">Decía el ERP</th><th class="num">Contaste</th><th class="num">Diferencia</th></tr>
-  {% for h in arq_hist %}<tr>
-   <td class="mono mini">{{ h.fecha|dia }}</td><td>{{ h.caja }}</td>
-   <td class="num mini">{{ h.saldo_erp|usd }}</td><td class="num">{{ h.contado|usd }}</td>
-   <td class="num">{% if h.diferencia %}<b class="ln-alerta">{{ h.diferencia|usd }}</b>{% if h.ajustado %}<div class="mini">cuadrado</div>{% endif %}{% else %}<span class="pago pagada">cuadró</span>{% endif %}</td>
-  </tr>{% endfor %}</table>{% endif %}
- </div>
- <script>function dif(i){
-  const e=parseFloat(i.dataset.erp)||0, c=parseFloat((i.value||'').replace(',','.'));
-  const t=document.querySelector('.arq-dif[data-id="'+i.name.split('_')[1]+'"]');
-  if(isNaN(c)){t.textContent='';t.className='num mono arq-dif';return;}
-  const d=Math.round((c-e)*100)/100;
-  t.textContent=(d>0?'+':'')+'$'+d.toFixed(2);
-  t.className='num mono arq-dif'+(d?' ln-alerta':' arq-ok');
- }</script>
-</details>
 {% if efectivo_pend %}<div class="tarjeta cf-b" id="efectivo" style="margin-bottom:16px">
  <h3>Cobrado en efectivo</h3>
  <div class="cf-cuerpo">
