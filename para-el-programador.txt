@@ -1,0 +1,135 @@
+ERP DECOPET — RESUMEN TÉCNICO
+
+Qué es: ERP interno de Decopet Mascotas C.A. Reemplaza un Airtable.
+Cubre órdenes, clientes, inventario, producción, despachos, cobranza,
+flujo de caja, nómina y gastos recurrentes.
+Uso real: 8 usuarios, ~7 órdenes/día, ~2.600 órdenes al año.
+
+TECNOLOGÍA
+- Python 3.9 + FastAPI 0.128, servido con Uvicorn
+- SQLite (sqlite3 de la stdlib, SQL a mano, sin ORM)
+- Jinja2, renderizado en el servidor
+- HTML y CSS propio, JS mínimo inline
+- Sin framework de front, sin build step, sin npm, sin Docker, sin Redis
+
+Es deliberado: cero infraestructura opcional. La dueña no es técnica y el
+sistema tiene que poder arreglarse leyendo un archivo.
+
+TAMAÑO
+- app.py: 4.663 líneas, 142 rutas, toda la lógica
+- 44 plantillas Jinja2
+- 41 tablas
+- 21 pruebas
+- 16 commits (repo local, sin remoto, por privacidad)
+
+ESTRUCTURA
+plataforma/app.py        toda la lógica
+plataforma/modelo.sql    esquema
+plataforma/templates/    44 plantillas
+plataforma/data/         DB, fotos, documentos (fuera de git)
+servidor/                instalar.sh, publicar.sh, unidades systemd
+scripts/respaldo.sh
+pruebas.py
+requirements.txt
+
+MIGRACIONES
+No hay Alembic. preparar_base() corre modelo.sql (idempotente) y luego
+aplica una tabla de constantes COLUMNAS con ~54 tuplas (tabla, columna,
+tipo) vía ALTER TABLE ADD COLUMN si faltan. Corre en cada arranque.
+Hay una prueba que reconstruye la base desde cero y verifica que quede
+idéntica a la que está en uso.
+
+AUTENTICACIÓN
+- Claves: pbkdf2_hmac sha256, 200.000 iteraciones, sal de 16 bytes,
+  se guarda sal$hash, comparación con secrets.compare_digest
+- Sesiones: tabla propia, token aleatorio, 12 h, cookie httponly + samesite=strict
+- Fuerza bruta: 8 fallos por usuario/IP en 15 min y se bloquea
+- CSRF: validación de Origin/Referer en el middleware para POST/PUT/DELETE
+
+AUTORIZACIÓN
+Un único middleware llamado "puerta" que gatea todo. Dos capas:
+  PERMISOS = {rol: acciones permitidas}
+  PUERTAS  = {rol: prefijos de ruta permitidos, home}
+Roles: admin, logistica, taller, despachador, sistema, invitado.
+
+Las restricciones son requisitos de negocio reales, no cosmética:
+- taller: no ve dinero, ni ventas, ni datos de clientes. Solo nombre de
+  pila y qué se llevan. Ve un único proveedor.
+- logistica: no ve dinero ni nombres de proveedores.
+- despachador: SÍ ve dinero, pero solo el suyo — lo que se le debe por
+  sus entregas. Nunca el de la empresa ni el de otro despachador.
+Está en el middleware, no en las plantillas: una ruta nueva queda
+cubierta por defecto.
+
+Auditoría: se registra la persona, no el rol. El historial dice "Isaías".
+
+PRUEBAS
+pruebas.py — 21 pruebas, sin pytest, sin dependencias. Cada una arma su
+propia DB temporal. Se corre con: ./.venv/bin/python pruebas.py
+Cubren sobre todo reglas de plata: fechas de quincena, saldo a favor de
+clientes, deuda a despachadores, cuadre de cajas, parseo de números con
+coma y punto, y que editar un registro parcial no borre campos ausentes.
+publicar.sh las corre antes de desplegar y aborta si alguna falla.
+
+DESPLIEGUE
+Servidor: Hetzner CPX21 (3 vCPU / 4 GB / 80 GB), Ubuntu 24.04, Ashburn.
+
+Red — lo más importante del diseño:
+  internet -> Cloudflare Access -> Cloudflare Tunnel -> 127.0.0.1:8765
+
+El servidor no expone ningún puerto web. cloudflared abre una conexión
+saliente; no hay nada escuchando en 80/443. ufw deniega todo el entrante
+salvo SSH. SSH solo por llave (PasswordAuthentication no, PermitRootLogin
+no) + fail2ban + unattended-upgrades.
+
+Delante va Cloudflare Access con política por correo: un visitante no
+autenticado nunca llega a ver la pantalla de login de la app.
+
+No hay Caddy ni nginx. Las cabeceras de seguridad (X-Frame-Options,
+nosniff, X-Robots-Tag, Referrer-Policy, Cache-Control: no-store) y el
+límite de subida (25 MB por Content-Length) los pone el middleware.
+
+Proceso: systemd, uvicorn en 127.0.0.1:8765 con --proxy-headers
+--forwarded-allow-ips=127.0.0.1, Restart=always.
+
+Datos fuera del código: DECOPET_DATOS y DECOPET_RESPALDOS. El programa es
+desechable, los datos no.
+
+Despliegue: git push a un repo bare en el servidor + systemctl restart,
+vía servidor/publicar.sh. Exige árbol limpio y pruebas en verde.
+
+Respaldos: timer de systemd diario. Respalda DB en uso, DB histórica de
+Airtable, programa + git, y fotos/documentos. Más snapshots de Hetzner.
+
+DATOS
+- DB en uso: ~250 KB (recién vaciada para arrancar limpio)
+- Histórico de Airtable: 2,8 MB, 5.285 clientes, 7.794 pedidos
+- Fotos de producto: 83 MB, 118 archivos
+- Proyección a 3 años: ~4 GB todo incluido
+
+PENDIENTE
+1. Shopify. Decidir entre polling cada 2 min (no expone nada) o webhook
+   con excepción de ruta en Access + verificación HMAC. Inclinación:
+   polling, por volumen y por simplicidad.
+2. Bot Tina (proveedor KAI). Entra hacia el ERP, necesita autenticación
+   máquina-a-máquina. Plan: service token de Cloudflare Access
+   (CF-Access-Client-Id / CF-Access-Client-Secret) + usuario propio con
+   permisos acotados. BLOQUEADO hasta confirmar con KAI si su bot puede
+   enviar cabeceras HTTP personalizadas. Si no puede, hay que caer a
+   bypass de ruta + firma.
+3. Migración de NS de shopdecopet.com de Google a Cloudflare, requisito
+   para el túnel. Registros actuales ya inventariados. Riesgo real: MX
+   (Google Workspace) y SPF.
+4. DMARC no existe hoy. Agregar al migrar.
+5. Faltan claves para 9 usuarios. Falta migrar el histórico de ventas.
+
+ANTES DE TOCAR, CONVIENE SABER
+- El español de los comentarios y los nombres es intencional. La dueña lee
+  el código. No renombrar a inglés.
+- Menos texto en la UI, no más. Hay una preferencia fuerte y repetida por
+  quitar subtítulos explicativos.
+- Las reglas de visibilidad por rol no son negociables y vienen de
+  decisiones de negocio concretas. Preguntar antes de "simplificar" eso.
+- El repositorio es local, sin remoto, por decisión de privacidad.
+- No proponer Docker / Postgres / React sin una razón fuerte. La
+  restricción de que lo pueda operar una persona no técnica es dura.
