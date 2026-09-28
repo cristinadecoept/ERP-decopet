@@ -1,0 +1,72 @@
+CONTEXTO — ERP DECOPET
+
+Te paso dónde está parado esto hoy, para que no te hagas una idea
+equivocada leyendo el resumen técnico.
+
+EL PROYECTO
+Es un ERP interno que reemplaza un Airtable. Lo veníamos construyendo por
+partes y ya está funcionando: órdenes, clientes, inventario, producción,
+despachos, cobranza, flujo de caja, nómina y gastos recurrentes. Lo usan 8
+personas con permisos distintos (dueña, operaciones, taller, despachadores).
+
+No es un prototipo. Se usa a diario y tiene la operación real adentro.
+Pero es una instalación de una sola máquina.
+
+DÓNDE CORRE HOY
+En la Mac de Cristina, y nada más.
+
+- uvicorn escuchando en 127.0.0.1:8765
+- Arrancado a mano con nohup. No arranca solo: si la Mac se reinicia, el
+  ERP queda caído hasta que alguien lo levante.
+- Solo localhost. No se llega desde otra máquina de la red ni desde
+  internet. No hay dominio, no hay servidor, no hay nada publicado.
+- La base es un archivo SQLite en plataforma/data/plataforma.db
+- El repo es local, sin remoto. Es decisión de privacidad de la dueña, no
+  un olvido.
+
+LO QUE ESTÁ FLOJO HOY, Y LO SABEMOS
+1. No hay respaldo automático. El script (scripts/respaldo.sh) existe y
+   funciona, pero solo corre si alguien lo ejecuta a mano. No hay cron ni
+   launchd. Es el riesgo más grande que hay ahorita.
+2. Los respaldos van a iCloud. Estaba planeado que fueran a Google Drive
+   pero Drive no está instalado en la Mac.
+3. El ERP no se levanta solo tras un reinicio.
+4. 9 de los 10 usuarios todavía no tienen clave puesta, así que el equipo
+   aún no puede entrar. (No es un hueco de seguridad: sin clave, no se
+   puede entrar con ese usuario.)
+5. Falta migrar el histórico de ventas desde Airtable (5.285 clientes,
+   7.794 pedidos). La base en uso está recién vaciada a propósito, para
+   arrancar limpio.
+
+LO QUE YA ESTÁ PROGRAMADO PERO NO DESPLEGADO
+Está escrito y probado en el repo, pero no existe todavía: no hay servidor
+contratado ni dominio apuntando.
+
+- Servidor previsto: Hetzner CPX21, Ubuntu 24.04, Ashburn
+- Sin puertos web expuestos: Cloudflare Tunnel (cloudflared hace conexión
+  saliente), ufw denegando todo el entrante salvo SSH por llave, fail2ban
+- Cloudflare Access por delante, con política por correo
+- systemd para el proceso y para el respaldo diario
+- Despliegue por git push a repo bare + systemctl restart (servidor/publicar.sh),
+  que corre las 21 pruebas y aborta si alguna falla
+
+Lo que sí está activo ya en la Mac: autenticación con pbkdf2 (200k
+iteraciones), sesiones en base, bloqueo por intentos fallidos, validación
+CSRF por Origin/Referer, cabeceras de seguridad y límite de subida.
+
+LO QUE BLOQUEA
+- Contratar el servidor y apuntar el dominio (lo hace la dueña)
+- Migrar los NS de shopdecopet.com de Google a Cloudflare. Es requisito
+  del túnel y toca el correo (Google Workspace) y la tienda (Shopify).
+  Los registros actuales ya están inventariados.
+- Confirmar con el proveedor del bot (KAI) si puede enviar cabeceras HTTP
+  personalizadas. De eso depende si el bot entra con service token de
+  Cloudflare Access o si hay que hacerle bypass de ruta con firma HMAC.
+
+DONDE SERVIRÍA AYUDA
+Sobre todo un segundo par de ojos en la parte de seguridad antes de salir
+en vivo, y en la migración del histórico de Airtable.
+
+Un pedido: los cambios grandes de arquitectura, después de que esté en
+vivo. Estamos a dos pasos de salir y moverlo ahora es la forma más fácil
+de que se retrase.
