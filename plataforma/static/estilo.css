@@ -812,3 +812,16 @@ html.oscuro .entrar-mal{color:#ff9d93}
 .arq-pie .cf-check{flex:1;min-width:260px}
 .arq-dif{font-weight:600}
 .arq-ok{opacity:.45}
+
+/* Categorías de gasto */
+.cat-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:2px 20px}
+.cat-g summary{cursor:pointer;padding:7px 0;display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--linea)}
+.cat-g summary b{font-size:14px}
+.cat-uso{margin-left:auto;font-size:11.5px;opacity:.55}
+.cat-subs{padding:10px 0 14px}
+.cat-p{display:inline-block;margin:0 5px 5px 0;padding:2px 4px 2px 9px;border-radius:999px;background:rgba(0,0,0,.06);font-size:12.5px}
+html.oscuro .cat-p{background:rgba(255,255,255,.1)}
+.cat-p button{border:0;background:none;cursor:pointer;color:inherit;opacity:.5;font-size:13px;padding:0 3px}
+.cat-p button:hover{opacity:1}
+.cat-f{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.cat-f input{min-width:150px}

@@ -278,3 +278,7 @@ CREATE TABLE IF NOT EXISTS credito_cliente (
   fecha TEXT NOT NULL, monto REAL NOT NULL, motivo TEXT,
   orden_id INTEGER REFERENCES ordenes(id), usuario_id INTEGER,
   creado_en TEXT DEFAULT (datetime('now','localtime')));
+
+-- Intentos de entrar fallidos: para frenar a un robot que pruebe claves sin parar.
+CREATE TABLE IF NOT EXISTS intentos (
+  id INTEGER PRIMARY KEY, usuario TEXT, ip TEXT, cuando TEXT NOT NULL DEFAULT (datetime('now','localtime')));

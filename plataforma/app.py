@@ -188,6 +188,16 @@ TALLER_PERMITIDO = PUERTAS["taller"][0]
 ABIERTO = ("/entrar", "/static", "/favicon", "/salir")   # lo único que se puede abrir sin haber entrado
 
 
+def viene_de_fuera(request):
+    """Una orden que llega desde otra página web. Así funciona el engaño de hacerte hacer clic
+    en un sitio cualquiera para que tu navegador, ya con tu sesión abierta, haga algo aquí."""
+    if request.method not in ("POST", "PUT", "DELETE"): return False
+    origen = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not origen: return False                      # sin dato no se puede juzgar; el navegador siempre lo manda
+    from urllib.parse import urlparse
+    return urlparse(origen).netloc != (request.headers.get("host") or "")
+
+
 @app.middleware("http")
 async def puerta(request: Request, call_next):
     """La puerta del ERP. Se comprueba aquí y no página por página, para que valga
@@ -195,6 +205,8 @@ async def puerta(request: Request, call_next):
       · sin haber entrado, solo la pantalla de entrada
       · el taller y los despachadores, solo lo suyo"""
     ruta = request.url.path
+    if viene_de_fuera(request):
+        return JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403)
     if not ruta.startswith(ABIERTO):
         if hay_claves() and not quien_es(request):
             return RedirectResponse("/entrar", status_code=303)
@@ -329,6 +341,25 @@ def clave_correcta(clave, guardado):
 
 
 DURACION_SESION = 12 * 60 * 60     # 12 horas: una jornada
+MAX_INTENTOS, VENTANA_INTENTOS = 8, 15     # 8 intentos fallidos en 15 minutos y se cierra
+
+
+def frenado(con, usuario, ip):
+    """¿Ya probó demasiadas veces? Frena al robot que prueba claves una tras otra."""
+    con.execute("DELETE FROM intentos WHERE cuando < datetime('now','localtime','-1 hour')")
+    n = con.execute("""SELECT COUNT(*) FROM intentos
+                       WHERE (usuario=? OR ip=?) AND cuando >= datetime('now','localtime',?)""",
+                    (usuario, ip, f"-{VENTANA_INTENTOS} minutes")).fetchone()[0]
+    return n >= MAX_INTENTOS
+
+
+def anotar_intento(con, usuario, ip):
+    con.execute("INSERT INTO intentos (usuario, ip) VALUES (?,?)", (usuario, ip)); con.commit()
+
+
+def cookie_segura(request):
+    """Solo por HTTPS cuando el ERP esté publicado. En tu Mac no aplica."""
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
 
 
 def abrir_sesion(con, uid):
@@ -409,13 +440,18 @@ def entrar(request: Request, mal: str = "", con=Depends(db)):
 
 @app.post("/entrar")
 def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form(""), con=Depends(db)):
-    u = con.execute("SELECT * FROM usuarios WHERE lower(TRIM(usuario))=? AND activo=1",
-                    (usuario.strip().lower(),)).fetchone()
+    ip = (request.client.host if request.client else "") or ""
+    quien = usuario.strip().lower()
+    if frenado(con, quien, ip): return RedirectResponse("/entrar?mal=frenado", status_code=303)
+    u = con.execute("SELECT * FROM usuarios WHERE lower(TRIM(usuario))=? AND activo=1", (quien,)).fetchone()
     if not (u and clave_correcta(clave, u["clave_hash"])):
+        anotar_intento(con, quien, ip)
         return RedirectResponse("/entrar?mal=1", status_code=303)
+    con.execute("DELETE FROM intentos WHERE usuario=? OR ip=?", (quien, ip))   # entró bien: borrón y cuenta nueva
     casa = PUERTAS.get(u["rol"], (None, "/inicio"))[1]
     r = RedirectResponse(casa, status_code=303)
-    r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True, samesite="lax")
+    r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True,
+                 samesite="strict", secure=cookie_segura(request))
     r.delete_cookie("ver_como"); r.delete_cookie("rol")
     return r
 
@@ -424,12 +460,13 @@ def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form("")
 def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), con=Depends(db)):
     """La primera vez, Cristina pone su propia clave. Nadie más la ve nunca, ni queda escrita."""
     if hay_claves(con): return RedirectResponse("/entrar", status_code=303)
-    if len(clave.strip()) < 6 or clave != clave2:
-        return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 6 else "distinta"), status_code=303)
+    if len(clave.strip()) < 8 or clave != clave2:
+        return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 8 else "distinta"), status_code=303)
     u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
     con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), u["id"])); con.commit()
     r = RedirectResponse("/inicio", status_code=303)
-    r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True, samesite="lax")
+    r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True,
+                 samesite="strict", secure=cookie_segura(request))
     r.delete_cookie("rol")
     return r
 
@@ -1789,8 +1826,10 @@ def resultados_abierto(request: Request, con):
     return not (r and r[0]) or request.cookies.get("res_ok") == (r[0] if r else "")
 
 
-EMPRESA_CAMPOS = [("razon_social", "Razón social"), ("rif", "RIF"), ("direccion_fiscal", "Domicilio fiscal"),
-                  ("registro", "Registro mercantil"), ("constitucion", "Fecha de constitución"),
+EMPRESA_CAMPOS = [("razon_social", "Razón social"), ("rif", "RIF"),
+                  ("correo", "Correo de la empresa"), ("telefono", "Teléfono de la empresa"),
+                  ("direccion_fiscal", "Domicilio fiscal"), ("registro", "Registro mercantil"),
+                  ("constitucion", "Fecha de constitución"),
                   ("contador", "Contador"), ("contador_tel", "Teléfono del contador")]
 
 
@@ -1807,6 +1846,11 @@ def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""
                   empresa=cfg_json(con, "empresa", {}) or {}, EMPRESA_CAMPOS=EMPRESA_CAMPOS,
                   documentos=cfg_json(con, "documentos", []) or [],
                   usuarios=con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY activo DESC, rol, nombre").fetchall(),
+                  cats=cfg_json(con, "categorias_gasto", {}) or {},
+                  cats_uso={f"{r[0]}|{r[1] or ''}": r[2] for r in con.execute(
+                      "SELECT categoria, subcategoria, COUNT(*) FROM gastos GROUP BY categoria, subcategoria")},
+                  cats_uso_cat={r[0]: r[1] for r in con.execute(
+                      "SELECT categoria, COUNT(*) FROM gastos GROUP BY categoria")},
                   ROLES=ROLES, yo=quien_es(request),
                   despachadores_l=[r["nombre"] for r in con.execute("SELECT nombre FROM despachadores WHERE activo=1 ORDER BY nombre")],
                   equipo=eq, sueldos=sue, ciclo=CICLO_REPUESTO, iva=round(IVA * 100, 2),
@@ -1897,7 +1941,7 @@ def usuario_guardar(request: Request, id: int = Form(0), nombre: str = Form(""),
     if not (nombre.strip() and u): return RedirectResponse("/configuracion?err=usuario", status_code=303)
     otro = con.execute("SELECT id FROM usuarios WHERE lower(TRIM(usuario))=? AND id!=?", (u, id or 0)).fetchone()
     if otro: return RedirectResponse("/configuracion?err=repetido", status_code=303)
-    if clave.strip() and len(clave.strip()) < 6: return RedirectResponse("/configuracion?err=corta", status_code=303)
+    if clave.strip() and len(clave.strip()) < 8: return RedirectResponse("/configuracion?err=corta", status_code=303)
     if id:
         con.execute("UPDATE usuarios SET nombre=?, usuario=?, rol=?, despachador=?, activo=? WHERE id=?",
                     (nombre.strip(), u, rol, despachador.strip() or None, 1 if activo else 0, id))
@@ -1910,6 +1954,45 @@ def usuario_guardar(request: Request, id: int = Form(0), nombre: str = Form(""),
         con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), id))
         con.execute("DELETE FROM sesiones WHERE usuario_id=? AND ficha!=?", (id, request.cookies.get("sesion") or ""))
     con.commit(); return RedirectResponse("/configuracion?ok=usuario", status_code=303)
+
+
+@app.post("/configuracion/categoria")
+def categoria_guardar(request: Request, categoria: str = Form(""), sub: str = Form(""),
+                      renombrar: str = Form(""), borrar: str = Form(""), con=Depends(db)):
+    """Agregar, renombrar o quitar categorías y subcategorías de gasto.
+    Nunca se borra una que esté en uso: se perdería de qué era ese gasto."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    cats = cfg_json(con, "categorias_gasto", {}) or {}
+    cat, sb, nuevo_n = categoria.strip(), sub.strip(), renombrar.strip()
+
+    def en_uso(c, s_=None):
+        if s_:
+            return con.execute("SELECT 1 FROM gastos WHERE categoria=? AND subcategoria=? LIMIT 1", (c, s_)).fetchone() \
+                or con.execute("SELECT 1 FROM compromisos WHERE categoria=? AND subcategoria=? LIMIT 1", (c, s_)).fetchone()
+        return con.execute("SELECT 1 FROM gastos WHERE categoria=? LIMIT 1", (c,)).fetchone() \
+            or con.execute("SELECT 1 FROM compromisos WHERE categoria=? LIMIT 1", (c,)).fetchone()
+
+    if not cat: return RedirectResponse("/configuracion?err=cat", status_code=303)
+    if borrar:
+        if en_uso(cat, sb or None): return RedirectResponse("/configuracion?err=enuso", status_code=303)
+        if sb: cats[cat] = [x for x in cats.get(cat, []) if x != sb]
+        else: cats.pop(cat, None)
+    elif nuevo_n:
+        if sb:                                        # renombrar una subcategoría
+            cats[cat] = [nuevo_n if x == sb else x for x in cats.get(cat, [])]
+            con.execute("UPDATE gastos SET subcategoria=? WHERE categoria=? AND subcategoria=?", (nuevo_n, cat, sb))
+            con.execute("UPDATE compromisos SET subcategoria=? WHERE categoria=? AND subcategoria=?", (nuevo_n, cat, sb))
+        else:                                         # renombrar la categoría entera
+            if nuevo_n != cat and cat in cats:
+                cats = {(nuevo_n if k == cat else k): v for k, v in cats.items()}
+                con.execute("UPDATE gastos SET categoria=? WHERE categoria=?", (nuevo_n, cat))
+                con.execute("UPDATE compromisos SET categoria=? WHERE categoria=?", (nuevo_n, cat))
+    else:
+        cats.setdefault(cat, [])
+        if sb and sb not in cats[cat]: cats[cat].append(sb)
+    con.execute("INSERT INTO config (clave, valor) VALUES ('categorias_gasto', ?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor",
+                (json.dumps(cats, ensure_ascii=False),))
+    con.commit(); return RedirectResponse("/configuracion?ok=cat", status_code=303)
 
 
 @app.post("/configuracion/respaldo")

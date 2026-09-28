@@ -6,9 +6,9 @@
    <h1>Ponle una clave a tu ERP</h1>
    <p class="mini">Hasta ahora cualquiera que abriera esta dirección entraba como administradora. Elige tu clave: no queda escrita en ningún lado y nadie más la ve, ni yo.</p>
    <form method="post" action="/entrar/primera-vez">
-    <label>Tu clave</label><input type="password" name="clave" required minlength="6" autofocus autocomplete="new-password">
-    <label>Escríbela otra vez</label><input type="password" name="clave2" required minlength="6" autocomplete="new-password">
-    {% if mal == 'corta' %}<div class="entrar-mal">Tiene que tener al menos 6 caracteres.</div>{% endif %}
+    <label>Tu clave</label><input type="password" name="clave" required minlength="8" autofocus autocomplete="new-password">
+    <label>Escríbela otra vez</label><input type="password" name="clave2" required minlength="8" autocomplete="new-password">
+    {% if mal == 'corta' %}<div class="entrar-mal">Tiene que tener al menos 8 caracteres.</div>{% endif %}
     {% if mal == 'distinta' %}<div class="entrar-mal">Las dos no coinciden.</div>{% endif %}
     <button class="btn">Guardar y entrar</button>
    </form>
@@ -17,7 +17,7 @@
    <form method="post" action="/entrar">
     <label>Correo o usuario</label><input name="usuario" required autofocus autocomplete="username" inputmode="email">
     <label>Clave</label><input type="password" name="clave" required autocomplete="current-password">
-    {% if mal %}<div class="entrar-mal">Ese usuario o esa clave no son.</div>{% endif %}
+    {% if mal == 'frenado' %}<div class="entrar-mal">Demasiados intentos. Espera 15 minutos.</div>{% elif mal %}<div class="entrar-mal">Ese usuario o esa clave no son.</div>{% endif %}
     <button class="btn">Entrar</button>
    </form>
   {% endif %}
