@@ -898,6 +898,8 @@ def resumen_despacho(o):
     elif o["estado_pago"] == "sin_pago": L.append(f"💵 Por cobrar {fmt_usd(o['total'])}")
     else: L.append("✅ Pagado, no cobrar nada")
     if o["notas_entrega"]: L.append(f"📝 {o['notas_entrega']}")
+    for n in o.get("notas_cliente") or []:   # lo que siempre hay que saber de este cliente
+        if n["mostrar_logistica"] and n["texto"] != o["notas_entrega"]: L.append(f"📌 {n['texto']}")
     return "\n".join(L)
 
 
@@ -907,7 +909,9 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
     opciones = {r["sku"]: r for r in con.execute("SELECT * FROM productos WHERE tipo='opcion'")}
     clientes = con.execute("""SELECT c.*, (SELECT direccion || COALESCE(' · ' || zona,'') FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
                               (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
-                              (SELECT ROUND(COALESCE(SUM(k.monto),0),2) FROM credito_cliente k WHERE k.cliente_id=c.id) credito FROM clientes c ORDER BY nombre""").fetchall()
+                              (SELECT ROUND(COALESCE(SUM(k.monto),0),2) FROM credito_cliente k WHERE k.cliente_id=c.id) credito,
+                              (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
+                              FROM clientes c ORDER BY nombre""").fetchall()
     pre = con.execute("SELECT nombre FROM clientes WHERE id=?", (cliente,)).fetchone() if cliente else None
     return render(request, "_orden_nueva.html", productos=productos, opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", tarifas=con.execute("SELECT zona, tarifa FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
 
@@ -1442,7 +1446,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     for o in con_saldo:
         if o["id"] not in {a["id"] for a in activas}: activas.append(o)
     for o in activas:
-        o["nota_log"] = o["notas_entrega"] or (con.execute("SELECT texto FROM notas_cliente WHERE cliente_id=? AND mostrar_logistica=1 LIMIT 1", (o["cliente_id"],)).fetchone() or [None])[0]
+        o["nota_log"] = " · ".join(indicaciones_cliente(con, o["cliente_id"], o["notas_entrega"])) or None
         o["pendiente_desde"] = o["pagada_en"] or o["creado_en"]
         o["fecha_op"] = o["fecha_prometida"] or hoy
     if dia and dia not in (hoy, manana): cola = "dia"
@@ -1492,7 +1496,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             te = k["tipo_programado"] or k["tipo_entrega"]
             if tipo and te != tipo: continue
             lista.append(dict(id=None, es_pack=True, pack_id=k["id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
-                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=repuesto_de_pack(k)[0], pack_pos=repuesto_de_pack(k)[1], nota_log=k["nota_programada"], tipo_entrega=te, franja=None,
+                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=repuesto_de_pack(k)[0], pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
                               receptor_nombre=None, agencia=None, guia=None, distribuidor=None, despachador=k["despachador_programado"], ciudad=(d["ciudad"] if d else k["ciudad"]), zona=None,
                               direccion=(d["direccion"] if d else None), maps=(d["maps"] if d else None), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), estado="pendiente", coordinada=bool(k["despachador_programado"] or te == "pickup"), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
     if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
@@ -1504,7 +1508,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             if cola == "sin_coordinar" and (r["tipo_entrega"] not in ("delivery", "delivery_fuera") or r["despachador"]): continue
             if tipo and r["tipo_entrega"] != tipo: continue
             lista.append(dict(id=None, es_prepagado=True, rid=r["id"], cliente=r["cliente"], cliente_id=r["cliente_id"], numero=r["orden"] or "", alertas=[], incidencias=0,
-                              fecha_op=r["fecha_programada"], fecha_prometida=r["fecha_programada"], productos=f"1× Repuesto {r['tamano'] or ''} · prepagado", nota_log=r["notas"], tipo_entrega=r["tipo_entrega"], franja=None,
+                              fecha_op=r["fecha_programada"], fecha_prometida=r["fecha_programada"], productos=f"1× Repuesto {r['tamano'] or ''} · prepagado", nota_log=" · ".join(indicaciones_cliente(con, r["cliente_id"], r["notas"])) or None, tipo_entrega=r["tipo_entrega"], franja=None,
                               receptor_nombre=None, agencia=r["agencia"], guia=None, distribuidor=None, despachador=r["despachador"], ciudad=r["ciudad"], zona=None, direccion=r["direccion"], maps=r["maps"],
                               estado_pago="pagada", estado=("en_ruta" if r["en_ruta"] else "pendiente"),
                               coordinada=bool(r["despachador"] or r["agencia"] or r["tipo_entrega"] == "pickup"), total=0, pagado=0, monto_contra_entrega=None, telefono=r["telefono"],
@@ -4347,6 +4351,14 @@ def despachadores(request: Request, q: str = "", con=Depends(db)):
     return render(request, "despachadores.html", seccion="despachadores", despachadores=rows, q=q)
 
 
+def indicaciones_cliente(con, cid, extra=None):
+    """Lo que hay que saber para entregarle a este cliente: sus notas que no son privadas
+    ('solo recibe hasta las 3pm', 'necesita ayuda para subir') y la nota de esta entrega, si hay."""
+    notas = [r[0] for r in con.execute("SELECT texto FROM notas_cliente WHERE cliente_id=? AND mostrar_logistica=1 ORDER BY id", (cid,)) if r[0]]
+    extra = (extra or "").strip()
+    return ([extra] if extra and extra not in notas else []) + notas
+
+
 def ruta_despachador(con, nombre, hoy):
     """La lista que se le manda al despachador por WhatsApp: a quién, dónde y qué lleva.
     Va el nombre de pila, la dirección y el teléfono — sin eso no puede entregar. No va cédula,
@@ -4354,7 +4366,7 @@ def ruta_despachador(con, nombre, hoy):
     filas = []
     for o in con.execute("""SELECT o.id, o.numero, o.total, o.estado_pago, o.tipo_entrega,
                             COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.telefono,
-                            o.direccion, o.maps, o.zona, o.ciudad, c.id cid
+                            o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
                             WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
                               AND o.tipo_entrega NOT IN ('pickup','distribuidor')
@@ -4371,6 +4383,7 @@ def ruta_despachador(con, nombre, hoy):
         # solo lo que el despachador tiene que cobrar en la puerta; lo demás no es asunto suyo
         d["cobrar"] = falta if (d["estado_pago"] in ("contra_entrega", "sin_pago", "abonada", "rechazado") and falta > 0) else 0
         d["que_lleva"] = lo_que_lleva(con, d["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
+        d["indicaciones"] = indicaciones_cliente(con, d["cid"], d["notas_entrega"])
         filas.append(d)
     return filas
 
@@ -4383,6 +4396,7 @@ def texto_ruta(filas, hoy):
         if f["direccion"]: out.append(f"   {f['direccion']}")
         if f["maps"]: out.append(f"   {f['maps']}")
         out.append(f"   {f['que_lleva']}")
+        for t in f.get("indicaciones") or []: out.append(f"   📌 {t}")
         if f["cobrar"]: out.append(f"   COBRAR ${f['cobrar']:,.2f}")
         out.append("")
     cobros = sum(f["cobrar"] for f in filas)

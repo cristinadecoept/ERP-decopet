@@ -14,7 +14,7 @@
 {% for f in ruta %}<tr>
  <td style="width:140px"><b>{{ f.quien }}</b>{% if f.telefono %}<div class="mini"><a href="{{ f.telefono|wa }}" target="_blank" rel="noreferrer">{{ f.telefono }}</a></div>{% endif %}</td>
  <td>{{ f.direccion or '—' }}{% if f.maps %} <a href="{{ f.maps }}" target="_blank" rel="noreferrer" class="mini">mapa ↗</a>{% endif %}</td>
- <td class="mini">{{ f.que_lleva }}</td>
+ <td class="mini">{{ f.que_lleva }}{% for t in f.indicaciones %}<div class="op-nota">📌 {{ t }}</div>{% endfor %}</td>
  <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}</td>
  <td style="text-align:right;width:250px">{% if f.id %}
   {% if not f.en_ruta %}<form method="post" action="/ordenes/{{ f.id }}/estado" style="display:inline">
