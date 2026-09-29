@@ -260,6 +260,10 @@ async def puerta(request: Request, call_next):
         permitido, casa = PUERTAS.get(rol_de(request), (None, None))
         if permitido and not ruta.startswith(permitido):
             return con_escudos(RedirectResponse(casa, status_code=303))
+        # De las órdenes, el despachador solo puede marcar las suyas (en camino / entregada). Nunca abrir la ficha ni exportar.
+        if rol_de(request) == "despachador" and ruta.startswith("/ordenes/") and not (
+                request.method == "POST" and re.fullmatch(r"/ordenes/\d+/estado", ruta)):
+            return con_escudos(RedirectResponse(casa, status_code=303))
     return con_escudos(await call_next(request))
 
 
@@ -957,6 +961,7 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
     rol = rol_de(request); uid = uid_de(request)
     if PERMISO_ESTADO.get(estado) not in PERMISOS[rol]: return volver(oid, request)
     o = cargar_orden(con, oid)
+    if not o: return RedirectResponse("/ordenes", status_code=303)
     yo = quien_es(request)
     if yo and yo["rol"] == "despachador" and o["despachador"] != yo["despachador"]:
         return RedirectResponse("/mis-entregas", status_code=303)   # solo sus propias entregas
