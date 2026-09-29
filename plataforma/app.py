@@ -284,6 +284,7 @@ COLUMNAS = (
     ("packs", "fecha_programada", "TEXT"), ("packs", "nota_programada", "TEXT"),
     ("packs", "retiro_programado", "INTEGER"), ("packs", "tipo_programado", "TEXT"),
     ("produccion", "cantidad", "INTEGER NOT NULL DEFAULT 1"), ("produccion", "fecha_pago", "TEXT"),
+    ("produccion", "faltaron", "INTEGER"),   # al cerrar un pedido incompleto: cuántos no llegaron
     ("produccion", "recibido", "INTEGER DEFAULT 0"), ("produccion", "tipo_pedido", "TEXT DEFAULT 'produccion'"),
     ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
     ("pagos", "en_cashflow", "INTEGER NOT NULL DEFAULT 0"),   # ya lo pasó Cristina al libro a mano
@@ -632,6 +633,7 @@ def inicio(request: Request, con=Depends(db)):
                               AND (COALESCE(pr.fecha_pago, pr.fecha_esperada) <= ?
                                    OR (COALESCE(pr.fecha_pago, pr.fecha_esperada) IS NULL AND (pr.recibido > 0 OR pr.estado!='en_proceso')))
                             ORDER BY 4""", (h,))] if rol == "admin" else []
+    c["prov_deben"] = proveedores_que_deben(con) if rol == "admin" else []   # no entregó todo y ya se le había pagado
     # a los despachadores se les paga los LUNES: el resto de la semana el aviso solo estorba mientras se acumulan entregas
     viejo = con.execute("""SELECT MIN(COALESCE(fecha_entrega, substr(creado_en,1,10))) FROM ordenes
                            WHERE despachador IS NOT NULL AND despachador!='' AND estado!='cancelada'
@@ -1819,7 +1821,8 @@ def libro_caja(con, caja_id=None, mes=None):
     for g in con.execute("SELECT * FROM gastos"):
         lineas.append(dict(fecha=g["fecha"], cuando=g["creado_en"] or "", concepto=g["descripcion"] or "Pago",
                            detalle=f"Gasto · {g['categoria']}" + (f" · {g['proveedor']}" if g["proveedor"] else ""),
-                           caja=por_id.get(g["cuenta_id"]), entrada=0, salida=g["monto_usd"], ref=("gasto", g["id"]),
+                           caja=por_id.get(g["cuenta_id"]),   # un gasto en negativo es plata que vuelve (una devolución)
+                           entrada=max(-(g["monto_usd"] or 0), 0), salida=max(g["monto_usd"] or 0, 0), ref=("gasto", g["id"]),
                            moneda=g["moneda"], real=g["monto_real"]))
     for m in con.execute("SELECT * FROM movimientos"):
         nombre = (m["concepto"] or CONCEPTO.get(m["tipo"], m["tipo"])).split(" · ")[0]; det = m["concepto"] or nombre
@@ -3467,10 +3470,44 @@ def produccion_cerrar(request: Request, pid: int, con=Depends(db)):
     if r and (r["recibido"] or 0) > 0 and r["recibido"] < r["cantidad"]:
         # el costo baja en proporción a lo que de verdad llegó, para no quedar debiendo lo que no te mandaron
         unit = (r["costo"] or 0) / r["cantidad"] if r["cantidad"] else 0
-        con.execute("UPDATE produccion SET cantidad=?, costo=?, estado='recibido', recibido_en=? WHERE id=?",
-                    (r["recibido"], round(unit * r["recibido"], 2), datetime.date.today().isoformat(), pid))
+        con.execute("UPDATE produccion SET cantidad=?, costo=?, estado='recibido', recibido_en=?, faltaron=? WHERE id=?",
+                    (r["recibido"], round(unit * r["recibido"], 2), datetime.date.today().isoformat(), r["cantidad"] - r["recibido"], pid))
         con.commit()
     return volver_produccion(con, pid)
+
+
+def proveedores_que_deben(con):
+    """Pedidos donde se pagó más de lo que llegó: el proveedor te debe la diferencia hasta que te la devuelva."""
+    return [dict(r) for r in con.execute("""SELECT pr.id, COALESCE(pr.pieza, p.nombre) pieza, pr.responsable, pr.faltaron,
+                COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) - pr.costo debe
+                FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
+                WHERE pr.estado!='cancelado' AND pr.costo IS NOT NULL
+                  AND COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) - pr.costo > 0.009
+                ORDER BY pr.id""")]
+
+
+@app.post("/produccion/{pid}/devolucion")
+def produccion_devolucion(request: Request, pid: int, monto: str = Form(...), forma: str = Form(""), fecha: str = Form(""),
+                          volver: str = Form(""), con=Depends(db)):
+    """El proveedor te devolvió lo que pagaste de más. Entra a la caja que elijas y el gasto del pedido baja."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    pr = con.execute("SELECT * FROM produccion WHERE id=?", (pid,)).fetchone()
+    m = cifra(monto)
+    if pr and m > 0:
+        f = fecha or datetime.date.today().isoformat(); uid = uid_de(request)
+        cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma or ""),)).fetchone()
+        categoria = cfg_json(con, "categoria_por_proveedor", {}).get(pr["responsable"] or "", "Proveedores")
+        falta = f"{pr['faltaron']} no entregad{'a' if pr['faltaron'] == 1 else 'as'}" if pr["faltaron"] else "pagado de más"
+        # un gasto en negativo: baja lo gastado en ese pedido y en Cash flow entra como plata que vuelve
+        cur = con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
+                             cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD',?,?,?,?,?,?,?)""",
+                          (f, -m, -m, categoria, pr["pieza"], f"{pr['pieza']} · devolución ({falta})", pr["responsable"],
+                           cuenta["id"] if cuenta else None, f"Te devolvió {fmt_usd(m)}", uid))
+        con.execute("INSERT INTO abonos_produccion (produccion_id, fecha, monto, forma, nota, usuario_id, gasto_id) VALUES (?,?,?,?,?,?,?)",
+                    (pid, f, -m, forma or None, "devolución", uid, cur.lastrowid))
+        con.commit()
+    if volver.startswith("/"): return RedirectResponse(volver, status_code=303)
+    return volver_produccion(con, pid, "&ver=todas")
 
 
 @app.post("/produccion/{pid}/cancelar")

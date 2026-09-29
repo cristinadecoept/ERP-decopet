@@ -319,6 +319,24 @@ def _():
     assert A.tipo_de_proveedor("Ferretería") == "proveedor" and A.tipo_de_proveedor("Walter") == "produccion"
 
 
+@prueba("Si el proveedor no entregó todo y ya se le pagó, te debe la diferencia; al devolverla entra a la caja")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO cuentas (id,nombre,activa,saldo_inicial) VALUES (1,'Efectivo',1,100)")
+    con.execute("INSERT INTO produccion (id,pieza,cantidad,recibido,costo,estado,responsable,fecha_pedido,tipo_pedido,faltaron) VALUES (5,'Grama',18,18,54,'recibido','Yovanny','2026-09-28','proveedor',2)")
+    con.execute("INSERT INTO abonos_produccion (produccion_id,fecha,monto) VALUES (5,'2026-09-28',60)")
+    con.commit()
+    d = A.proveedores_que_deben(con)
+    assert len(d) == 1 and round(d[0]["debe"], 2) == 6 and d[0]["faltaron"] == 2, d
+    # la devolución: un gasto en negativo que en el libro de caja es una entrada
+    con.execute("INSERT INTO gastos (id,fecha,monto_usd,categoria,descripcion,cuenta_id) VALUES (9,'2026-09-28',-6,'Proveedores','Grama · devolución',1)")
+    con.execute("INSERT INTO abonos_produccion (produccion_id,fecha,monto,gasto_id) VALUES (5,'2026-09-28',-6,9)")
+    con.commit()
+    assert A.proveedores_que_deben(con) == []
+    l = [x for x in A.libro_caja(con) if x["ref"] == ("gasto", 9)][0]
+    assert (l["entrada"], l["salida"]) == (6, 0), l
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")
