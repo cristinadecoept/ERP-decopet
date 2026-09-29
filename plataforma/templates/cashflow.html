@@ -35,7 +35,7 @@
 
 <div class="g3">
  <div><label>Monto <span class="mini">en $</span></label><input type="number" step="0.01" id="l-monto" name="monto" required inputmode="decimal" placeholder="0.00" class="cf-monto"></div>
- <div><label id="lb-caja">Forma de pago</label><select name="caja_id" required>{% for c in activas %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+ <div><label id="lb-caja">Forma de pago</label><select name="caja_id" required><option value="" selected disabled>¿Qué caja?</option>{% for c in activas %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
  <div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}"></div>
 </div>
 

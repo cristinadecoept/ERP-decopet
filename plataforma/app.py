@@ -1826,6 +1826,7 @@ async def cashflow_linea(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     f = await request.form(); uid = uid_de(request)
     fecha = f.get("fecha") or datetime.date.today().isoformat()
+    if not (f.get("caja_id") or "").isdigit(): return RedirectResponse("/cashflow", status_code=303)   # sin caja no se registra
     caja = int(f["caja_id"]); monto = cifra(f.get("monto"))
     if monto <= 0: return RedirectResponse("/cashflow", status_code=303)
     g = lambda k: (f.get(k) or "").strip() or None
@@ -3279,6 +3280,7 @@ def recurrente_pagar(request: Request, cid: int, vence: str = Form(...), monto: 
                      fecha: str = Form(""), cantidad: str = Form(""), volver: str = Form("/finanzas/recurrentes"), con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     c = con.execute("SELECT * FROM compromisos WHERE id=?", (cid,)).fetchone(); tasa = tasa_hoy(con)["valor"] or 0
+    if not (cuenta_id or c["cuenta_id"]): return RedirectResponse(volver, status_code=303)   # sin caja no se sabe de dónde salió
     monto_usd = round(monto / tasa, 2) if (c["moneda"] == "VES" and tasa) else monto
     cant = cifra(cantidad) or None
     desc = c["nombre"] + (f" · {cant:g} {c['unidad']}" if cant and c["unidad"] else "")
