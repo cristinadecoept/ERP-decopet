@@ -197,7 +197,7 @@ def db():
 # Cada rol restringido tiene su lista de lo que puede abrir. Todo lo demás lo devuelve a su pantalla.
 PUERTAS = {
     "taller":      (("/taller", "/inventario", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/taller"),
-    "despachador": (("/mis-entregas", "/ordenes/", "/static", "/fotos", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
+    "despachador": (("/mis-entregas", "/ordenes/", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
 }
 TALLER_PERMITIDO = PUERTAS["taller"][0]
 
@@ -536,13 +536,17 @@ def salir(request: Request, con=Depends(db)):
 
 
 @app.get("/ver-como/{rol}")
-def ver_como(request: Request, rol: str, volver: str = "/ordenes"):
-    """Vista previa: el administrador mira el ERP como lo vería otro. No cambia quién eres."""
+def ver_como(request: Request, rol: str, volver: str = "/ordenes", quien: str = ""):
+    """Vista previa: el administrador mira el ERP como lo vería otro. No cambia quién eres.
+    Como despachador hay que elegir cuál, porque cada uno ve solo lo suyo."""
     u = quien_es(request)
     if u and u["rol"] != "admin": return RedirectResponse("/inicio", status_code=303)
+    if rol == "despachador" and volver in ("/ordenes", "/inicio"): volver = "/mis-entregas"
+    if rol == "admin" and volver.startswith("/mis-entregas"): volver = "/inicio"
     r = RedirectResponse(volver, status_code=303)
-    if rol == "admin": r.delete_cookie("ver_como")
+    if rol == "admin": r.delete_cookie("ver_como"); r.delete_cookie("ver_desp")
     else: r.set_cookie("ver_como", rol if rol in PERMISOS else "admin", samesite="lax")
+    if rol == "despachador" and quien in DESPACHADORES: r.set_cookie("ver_desp", quien, samesite="lax")
     return r
 
 @app.get("/")
@@ -4330,8 +4334,10 @@ def mis_entregas(request: Request, con=Depends(db)):
     Ve dinero, pero solo el suyo: nunca el de la empresa ni el de otro despachador."""
     u = quien_es(request)
     nombre = (u or {}).get("despachador")
-    if rol_de(request) == "admin" and not nombre:
-        nombre = request.query_params.get("quien", "")       # para que Cristina pueda ver cómo se ve
+    viendo = (not u or u["rol"] == "admin")   # Cristina mirando cómo lo ve un despachador
+    if viendo:
+        nombre = (request.query_params.get("quien") or request.cookies.get("ver_desp") or "").strip()
+        if nombre not in DESPACHADORES: nombre = DESPACHADORES[0] if DESPACHADORES else ""
     if not nombre: return RedirectResponse("/inicio", status_code=303)
     hoy = datetime.date.today()
     r = resumen_despachador(con, nombre, hoy)
@@ -4347,7 +4353,7 @@ def mis_entregas(request: Request, con=Depends(db)):
     for f in ruta:
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
-    return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, r=r, ruta=ruta,
+    return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist, pagos=pagos, hoy_iso=hoy.isoformat(),
                   ganado_mes=round(sum(h["pago"] for h in hist if (h["fecha"] or "")[:7] == mes), 2),
