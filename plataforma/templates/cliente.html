@@ -111,8 +111,7 @@ document.querySelectorAll('form').forEach(f=>{
 
 {% if rol=='admin' %}<div class="tarjeta cf-b" style="margin-top:16px"><h3>Saldo a favor</h3>
  <div class="cf-cuerpo">
-  <p class="cf-d">{% if credito %}Tiene <b>{{ credito|usd }}</b> a favor.{% else %}No tiene saldo a favor.{% endif %}
-   <span class="mini">Se genera solo cuando paga de más porque no hay vuelto. También lo puedes anotar a mano.</span></p>
+  <p class="cf-d">{% if credito %}Tiene <b>{{ credito|usd }}</b> a favor.{% else %}No tiene saldo a favor.{% endif %}</p>
   {% if credito_mov %}<table class="lineas"><tr><th>Fecha</th><th>Qué pasó</th><th class="num">Monto</th></tr>
   {% for m in credito_mov %}<tr>
    <td class="mono mini" style="width:100px">{{ m.fecha|dia }}</td>
