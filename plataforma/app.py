@@ -3322,7 +3322,11 @@ def pagar_produccion(con, pid, monto, forma, fecha, nota, uid):
     if nota: detalle += f" · {nota}"
     # el gasto tiene que decir lo que de verdad llegó, no lo que se pidió: si llegaron 8 de 10, son 8
     recibido = int(pr["recibido"] or 0); pedido = int(pr["cantidad"] or 0)
-    if recibido:
+    if queda <= 0.009:
+        # con este pago queda saldado: no es un adelanto, llegue o no la mercancía
+        cant_gasto = recibido or None
+        desc = f"{pr['pieza']} · " + ("pago final" if ya > 0.009 else "pago") + f" de pedido {pedido} unidades"
+    elif recibido:
         cant_gasto = recibido
         desc = f"{pr['pieza']} · {recibido}" + (f" recibidos de {pedido}" if recibido != pedido else "")
     else:
