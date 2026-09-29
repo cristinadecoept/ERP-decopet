@@ -664,7 +664,8 @@ def inicio(request: Request, con=Depends(db)):
         pronto = d["dias"] is not None and d["dias"] <= 14
         if bajo_minimo or pronto or (d["stock"] <= 0 and d["v30"] > 0): bajos.append(d)
     bajos.sort(key=lambda b: (b["dias"] if b["dias"] is not None else (-1 if b["stock"] <= 0 else 999)))
-    llega = [dict(r) for r in con.execute("""SELECT pr.cantidad - pr.recibido faltan, pr.fecha_esperada, COALESCE(pr.pieza, p.nombre) nombre, pr.responsable FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
+    llega = [dict(r) for r in con.execute("""SELECT pr.cantidad - pr.recibido faltan, pr.fecha_esperada, COALESCE(pr.pieza, p.nombre) nombre, pr.responsable,
+        COALESCE(pr.tipo_pedido,'produccion') tipo FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
         WHERE pr.estado='en_proceso' AND pr.fecha_esperada IS NOT NULL AND pr.fecha_esperada <= ? ORDER BY pr.fecha_esperada""", (h,))]
     proximos = [dict(r) for r in con.execute("""SELECT pr.cantidad - pr.recibido faltan, pr.fecha_esperada, COALESCE(pr.pieza, p.nombre) nombre, pr.responsable, (pr.fecha_esperada < ?) atrasado FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
         WHERE pr.estado='en_proceso' AND (pr.fecha_esperada IS NULL OR pr.fecha_esperada != ?) ORDER BY pr.fecha_esperada IS NULL, pr.fecha_esperada LIMIT 8""", (h, h))]
@@ -672,11 +673,15 @@ def inicio(request: Request, con=Depends(db)):
     c["llegan_hoy"] = sum(l["faltan"] for l in llega); c["llegan_hoy_n"] = len(llega)
     # para Pedidos es solo un recordatorio: no tiene acceso a Taller, así que se le dice qué llega y ya
     c["llegan_hoy_qué"] = " · ".join(f"{int(l['faltan'])}× {l['nombre']}" for l in llega[:3])
-    # para Cristina es operativo: de quién llega, y qué trae cada uno
-    por_quien = {}
-    for l in llega: por_quien.setdefault(l["responsable"] or "sin asignar", []).append(f"{int(l['faltan'])}× {l['nombre']}")
-    c["llegan_hoy_de"] = " · ".join(f"{q}: {', '.join(v[:3])}" + (f" y {len(v) - 3} más" if len(v) > 3 else "")
-                                    for q, v in list(por_quien.items())[:3])
+    # para Cristina es operativo: de quién llega, y qué trae cada uno. Producción (Walter, David)
+    # y pedidos a proveedores van por separado: no es lo mismo que llegue madera que la grama.
+    def de_quien(tipo):
+        por_quien = {}
+        for l in llega:
+            if l["tipo"] == tipo: por_quien.setdefault(l["responsable"] or "sin asignar", []).append(f"{int(l['faltan'])}× {l['nombre']}")
+        return " · ".join(f"{q}: {', '.join(v[:3])}" + (f" y {len(v) - 3} más" if len(v) > 3 else "")
+                          for q, v in list(por_quien.items())[:3])
+    c["llegan_hoy_de"] = de_quien("produccion"); c["llegan_prov_de"] = de_quien("proveedor")
     c["atrasados"] = [dict(r) for r in con.execute("""SELECT COALESCE(pr.pieza, p.nombre) nombre, pr.cantidad - pr.recibido faltan, pr.responsable, pr.fecha_esperada
                        FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
                        WHERE pr.estado='en_proceso' AND pr.fecha_esperada IS NOT NULL AND pr.fecha_esperada < ? ORDER BY pr.fecha_esperada""", (h,))]
