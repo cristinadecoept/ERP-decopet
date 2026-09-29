@@ -9,7 +9,7 @@
 
 <template id="pr-tpl"><div class="g3 pr-linea">
  <div><label>Producto</label><select name="pieza" onchange="montoPr()">{% for z in piezas %}<option>{{ z }}</option>{% endfor %}</select>
-  <div class="pr-desc-w" hidden style="margin-top:6px"><label>Qué te está haciendo</label><input name="descripcion" placeholder="ej. comedero doble con patas altas, 40 cm"></div></div>
+  <div class="pr-desc-w" hidden style="margin-top:6px"><label class="pr-desc-l">Qué te está haciendo</label><input name="descripcion" placeholder="ej. comedero doble con patas altas, 40 cm"></div></div>
  <div><label>Cantidad</label><input type="number" name="cantidad" min="1" required oninput="montoPr()">
   <label class="chk pr-barn-w" style="margin-top:6px"><input type="checkbox" name="barnizado" value="1" checked onchange="montoPr()"> <span>van barnizadas</span></label></div>
  <div><label>Monto <span class="mini pr-detalle"></span></label><div style="display:flex;gap:6px;align-items:center"><input type="number" step="0.01" name="costo_linea" oninput="this.dataset.tocado=1;montoPr()"><button type="button" class="no-x-sm pr-quitar" title="Quitar" onclick="this.closest('.pr-linea').remove();montoPr()">×</button></div></div>
@@ -43,12 +43,15 @@ function agregarLinea(){const t=document.getElementById('pr-tpl');
 function montoPr(){const q=document.getElementById('pr-quien').value,P=PRECIOS[q]||{};let total=0;
  document.querySelectorAll('.pr-linea').forEach(fila=>{
   const z=fila.querySelector('[name=pieza]').value, c=+fila.querySelector('[name=cantidad]').value||0;
-  const esCaja=z.startsWith('Caja'), esMuestra=z.startsWith('Muestra');
+  const esCaja=z.startsWith('Caja de madera'), esOtro=z==='Otro', esMuestra=z.startsWith('Muestra')||esOtro;
   const bw=fila.querySelector('.pr-barn-w'), bc=bw.querySelector('input'); bw.hidden=!esCaja;
-  const dw=fila.querySelector('.pr-desc-w'); dw.hidden=!esMuestra; dw.querySelector('input').required=esMuestra;
+  const dw=fila.querySelector('.pr-desc-w'), di=dw.querySelector('input'); dw.hidden=!esMuestra; di.required=esMuestra;
+  dw.querySelector('.pr-desc-l').textContent=esOtro?'¿Qué es?':'Qué te está haciendo';
+  di.placeholder=esOtro?'ej. lija, tornillos, cinta de embalaje':'ej. comedero doble con patas altas, 40 cm';
   const d=fila.querySelector('.pr-detalle'), i=fila.querySelector('[name=costo_linea]');
   const pu=P[z], barn=(esCaja&&bc.checked)?(P.__barnizado||0):0;
-  if(esMuestra){d.textContent='· depende del producto';}
+  if(esOtro){d.textContent='· escríbelo';}
+  else if(esMuestra){d.textContent='· depende del producto';}
   else if(pu==null){d.textContent=c?'· sin precio · escríbelo':'';}
   else{d.textContent='· '+(c?c+' × ':'')+'$'+pu.toFixed(2)+(barn?' + $'+barn.toFixed(2)+' barnizado':'');
        if(!i.dataset.tocado)i.value=((pu+barn)*c).toFixed(2);}

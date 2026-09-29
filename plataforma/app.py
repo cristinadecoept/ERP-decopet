@@ -3247,6 +3247,7 @@ def unidad_pedido(con, pr):
 
 
 PROVEEDORES_MADERA = ("Walter", "David")   # lo que se manda a hacer; el resto son pedidos a proveedores
+OTRO = "Otro"   # en Pedidos a proveedores: algo que no está en el catálogo del proveedor
 
 
 def tipo_de_proveedor(nombre):
@@ -3281,7 +3282,7 @@ def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str
         piezas = [p[0] for p in PIEZAS_PRODUCCION]
     else:   # lo que venden los proveedores (su catálogo en Taller › Proveedores)
         piezas = [r[0] for r in con.execute("""SELECT DISTINCT i.item FROM proveedor_items i JOIN proveedores p ON p.id=i.proveedor_id
-                                                WHERE p.activo=1 AND p.nombre NOT IN (?,?) ORDER BY i.item""", PROVEEDORES_MADERA)]
+                                                WHERE p.activo=1 AND p.nombre NOT IN (?,?) ORDER BY i.item""", PROVEEDORES_MADERA)] + [OTRO]
     precios = {c: {z: precio_pieza(con, z, c) for z in piezas} | {"__barnizado": precio_barnizado(con, c)} for c in quienes}
     return render(request, "produccion.html", seccion="produccion" if tipo == "produccion" else "compras", tipo=tipo, rows=rows, piezas=piezas,
                   carpinteros=quienes, ver=ver, n=n, debe=debe, por_pagar=por_pagar, FORMAS_PAGO=FORMAS_PAGO, precios=precios)
@@ -3293,7 +3294,7 @@ async def produccion_crear(request: Request, con=Depends(db)):
     """Un pedido puede traer varios productos (a Walter le pides comedores y cajas a la vez).
     Cada producto queda como su propia línea, porque se recibe y se paga por separado."""
     f = await request.form()
-    piezas_ok = {p[0] for p in PIEZAS_PRODUCCION} | {r[0] for r in con.execute("SELECT DISTINCT item FROM proveedor_items")}
+    piezas_ok = {p[0] for p in PIEZAS_PRODUCCION} | {r[0] for r in con.execute("SELECT DISTINCT item FROM proveedor_items")} | {OTRO}
     quien = (f.get("responsable") or "").strip() or None
     fped = f.get("fecha_pedido") or datetime.date.today().isoformat()
     fesp = f.get("fecha_esperada") or None
@@ -3304,6 +3305,10 @@ async def produccion_crear(request: Request, con=Depends(db)):
         if pieza not in piezas_ok or not (cant or "").strip(): continue
         cantidad = int(cifra(cant))
         if cantidad <= 0: continue
+        if pieza == OTRO:   # algo que no está en el catálogo: el pedido se llama como lo escribió
+            escrito = (descs[idx] if idx < len(descs) else "").strip()
+            if not escrito: continue
+            lineas.append((escrito, cantidad, cifra(costo_l) or None, 0, None)); continue
         barn = 1 if (pieza.startswith("Caja de madera") and barns and len(barns) > i_barn) else 0
         if pieza.startswith("Caja de madera"): i_barn += 1
         costo = cifra(costo_l) or None
