@@ -851,18 +851,15 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 /* un cuadro que se abre dentro de una tabla no puede quedar cortado */
 .tabla:has(details.cobro[open]){overflow:visible}
 
-/* Pantalla de entrar: blanca y limpia, logo arriba a la izquierda, frase y dibujo a un lado y el formulario al otro.
-   El verde es el de la marca y el naranja solo resalta (el halo del dibujo y el campo en el que se escribe). */
+/* Pantalla de entrar: blanca y limpia, logo arriba a la izquierda, la frase a un lado y el formulario al otro.
+   El verde es el de la marca y el naranja solo resalta (el campo en el que se escribe). */
 .entrar-w{position:fixed;inset:0;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;background:#fff;color:#1d1d1b;padding:0;overflow:auto}
 .entrar-top{padding:34px 44px 0}
 .entrar-marca-l{position:relative;display:inline-block;line-height:0}
 .entrar-top .entrar-logo{display:block;height:44px;width:auto}
 .entrar-r{position:absolute;top:-4px;right:-13px;font-size:12px;font-weight:700;color:#5A9075;line-height:1}
 .entrar-m{flex:1;display:grid;grid-template-columns:1fr minmax(0,420px);gap:64px;align-items:center;max-width:1180px;width:100%;margin:0 auto;padding:40px 44px 64px}
-.entrar-frase{font-size:clamp(34px,4vw,50px);line-height:1.02;font-weight:800;letter-spacing:-.045em;margin:0 0 28px;color:#1d1d1b}
-.entrar-dibujo{position:relative;width:min(380px,100%)}
-.entrar-dibujo svg{position:relative;display:block;width:100%;height:auto}
-.entrar-halo{position:absolute;left:12%;top:4%;width:76%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(225,120,46,.32),rgba(225,120,46,0) 68%)}
+.entrar-frase{font-family:"Fraunces",Georgia,serif;font-size:clamp(36px,4.4vw,56px);line-height:1.08;font-weight:500;letter-spacing:-.01em;margin:0;color:#1d1d1b}
 .entrar-c{width:100%;color:#1d1d1b;background:none;box-shadow:none;border-radius:0;padding:0}
 .entrar-c h1{font-size:30px;line-height:1.05;font-weight:800;letter-spacing:-.04em;margin:0 0 6px;color:#1d1d1b}
 .entrar-c p.mini{color:#6b6b66;margin:6px 0 18px}
@@ -875,7 +872,7 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 .entrar-c .btn:active{transform:translateY(1px)}
 .entrar-c .entrar-mal{color:#a4481a;background:#fdf0e7;border-radius:10px;padding:10px 14px;margin-top:14px}
 @media (max-width:820px){.entrar-top{padding:24px 20px 0}.entrar-top .entrar-logo{height:34px}.entrar-r{right:-11px;font-size:10px}
- .entrar-m{grid-template-columns:1fr;gap:28px;padding:36px 20px 40px;align-items:start;align-content:start}.entrar-dibujo{display:none}.entrar-frase{margin:0}}
+ .entrar-m{grid-template-columns:1fr;gap:28px;padding:36px 20px 40px;align-items:start;align-content:start}.entrar-frase{margin:0}}
 
 
 
