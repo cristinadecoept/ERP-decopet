@@ -178,6 +178,13 @@ def wa(tel):
 tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa=wa)
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
                "Mérida", "San Cristóbal", "Maturín", "Cumaná", "Porlamar", "Valera", "Punto Fijo", "Coro", "Cabimas", "Acarigua", "Guanare", "San Felipe", "Barinas", "El Tigre", "Carúpano", "Charallave", "Cúa"]
+def fmt_cant(v, unidad=None):
+    """37.8 → '37,8' y 20.0 → '20'. Con unidad: '37,8 litros', '1 rollo'."""
+    v = round(float(v or 0), 1)
+    n = str(int(v)) if v.is_integer() else f"{v:.1f}".replace(".", ",")
+    if not unidad: return n
+    return f"{n} {unidad}" if v == 1 else f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
+tpl.env.filters["cant"] = fmt_cant
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
 tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
@@ -443,7 +450,7 @@ def uid_de(request):
     """Quién está haciendo esto. Si hay sesión, es esa persona — no el rol genérico.
     Así el historial dice "Isaías" y no "Taller"."""
     u = quien_es(request)
-    return u["id"] if u else uid_de(request)
+    return u["id"] if u else usuario_id(rol_de(request))
 
 
 def usuario_id(rol, request=None):
@@ -2905,8 +2912,10 @@ def inventario(request: Request, con=Depends(db)):
 
 
 @app.post("/inventario/mov")
-def inventario_mov(request: Request, producto_id: int = Form(...), tipo: str = Form(...), cantidad: int = Form(...),
+def inventario_mov(request: Request, producto_id: int = Form(...), tipo: str = Form(...), cantidad: str = Form(...),
                    nota: str = Form(""), fecha: str = Form(""), color: str = Form(""), con=Depends(db)):
+    cantidad = cifra(cantidad) or 0
+    cantidad = int(cantidad) if float(cantidad).is_integer() else round(cantidad, 2)
     q = abs(cantidad) if tipo == "entrada" else (-abs(cantidad) if tipo == "salida" else cantidad)
     con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
                 (producto_id, fecha or datetime.date.today().isoformat(), tipo, q, nota or None, (color or "").lower() or None, uid_de(request)))
@@ -3190,7 +3199,20 @@ PIEZAS_PRODUCCION = [
 ITEMS_A_INVENTARIO = {
     "Bowl pequeño": "BOWL-P", "Bowl mediano": "BOWL-M", "Bowl grande": "BOWL-G",
     "Plato de alimentación lenta azul": "PLATO-AZUL", "Plato de alimentación lenta rosado": "PLATO-ROSA",
+    # materiales: no se venden, pero se lleva cuánto queda (aproximado)
+    "Pega amarilla": "INS-PEGA", "Cinta antideslizante": "INS-CINTA", "Tela de rampa": "INS-TELA",
+    "Placas de bambú Decopet": "INS-BAMBU", "Bolsas negras": "INS-BOLSA",
 }
+# Se compra en una unidad y se lleva en otra: la pega viene por cuñete o galón y se cuenta en litros.
+LITROS_POR = {"cuñete": 18.9, "cunete": 18.9, "galón": 3.785, "galon": 3.785}
+
+
+def a_inventario(con, r, n):
+    """Cuánto entra al inventario cuando llegan n de lo que se pidió, en la unidad en que se lleva el stock."""
+    u = con.execute("""SELECT pi.unidad FROM proveedor_items pi LEFT JOIN proveedores pv ON pv.id=pi.proveedor_id
+                       WHERE pi.item=? ORDER BY (pv.nombre=?) DESC LIMIT 1""", (r["pieza"] or "", r["responsable"] or "")).fetchone()
+    f = LITROS_POR.get((u[0] or "").strip().lower()) if u else None
+    return round(n * f, 2) if f else n
 # nombre de la pieza → ítem del proveedor (para sacar el precio de Taller › Proveedores)
 PIEZA_ITEM = {"Caja de madera mediana": "Caja de madera mediana", "Caja de madera grande": "Caja de madera grande",
               "Rampa Nueva": "Rampa Nueva", "Rampa Para Perros Mini": "Rampa Para Perros Mini"}
@@ -3305,7 +3327,7 @@ def produccion_recibir(request: Request, pid: int, cantidad: int = Form(...), co
         hoy = datetime.date.today().isoformat(); uid = uid_de(request)
         terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
         if terminado and r["producto_id"]:   # comedores, rampas y cajas entran al inventario; las muestras no
-            con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)", (r["producto_id"], hoy, "entrada", cantidad, f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else ""), uid))
+            con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)", (r["producto_id"], hoy, "entrada", a_inventario(con, r, cantidad), f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else ""), uid))
         total = r["recibido"] + cantidad
         con.execute("UPDATE produccion SET recibido=?, estado=?, recibido_en=? WHERE id=?", (total, "recibido" if total >= r["cantidad"] else "en_proceso", hoy if total >= r["cantidad"] else None, pid))
         con.commit()
@@ -4613,7 +4635,7 @@ def taller_llegada(request: Request, pid: int, cantidad: str = Form("0"), nota: 
         terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
         if terminado and r["producto_id"]:
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
-                        (r["producto_id"], hoy, "entrada", n, f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else "") + " · confirmado en taller" + (f" · {nota.strip()}" if nota.strip() else ""), uid))
+                        (r["producto_id"], hoy, "entrada", a_inventario(con, r, n), f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else "") + " · confirmado en taller" + (f" · {nota.strip()}" if nota.strip() else ""), uid))
         total = (r["recibido"] or 0) + n
         con.execute("UPDATE produccion SET recibido=?, estado=?, recibido_en=? WHERE id=?",
                     (total, "recibido" if total >= r["cantidad"] else "en_proceso", hoy if total >= r["cantidad"] else None, pid))

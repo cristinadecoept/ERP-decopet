@@ -287,6 +287,27 @@ def _():
         assert con.execute("SELECT 1 FROM productos WHERE sku=?", (sku,)).fetchone(), f"{item} apunta a {sku}, que no existe"
 
 
+@prueba("La pega se compra por cuñete o galón y entra al inventario en litros")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO proveedores (id,nombre) VALUES (8,'Ferretería')")
+    con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (8,'Pega amarilla',86,'cuñete')")
+    con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (8,'Cinta antideslizante',1,'rollo')")
+    r = {"pieza": "Pega amarilla", "responsable": "Ferretería"}
+    assert A.a_inventario(con, r, 2) == 37.8, A.a_inventario(con, r, 2)
+    assert A.a_inventario(con, {"pieza": "Cinta antideslizante", "responsable": "Ferretería"}, 3) == 3
+    assert A.fmt_cant(37.8, "litro") == "37,8 litros" and A.fmt_cant(1, "rollo") == "1 rollo"
+
+
+@prueba("Sin nadie conectado (ERP recién instalado) se puede guardar y queda a nombre de un usuario")
+def _():
+    class R:   # una petición sin sesión
+        cookies = {}; headers = {}
+    con = base_limpia()
+    uid = A.uid_de(R())
+    assert uid is not None
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")
