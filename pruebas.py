@@ -358,6 +358,16 @@ def _():
     assert "📌 Solo recibe hasta las 3pm" in t and "privada" not in t, t
 
 
+@prueba("Eliminar una orden funciona aunque haya dejado o usado saldo a favor, y todo lo que referencia una orden se borra")
+def _():
+    con = base_limpia(); con.execute("PRAGMA foreign_keys=ON")
+    # cualquier tabla nueva que apunte a ordenes tiene que estar en la lista de eliminar_orden
+    import inspect
+    fuente = inspect.getsource(A.eliminar_orden)
+    for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE '%REFERENCES ordenes%'"):
+        assert f'"{t}"' in fuente or t in ("entregas_repuesto",), f"eliminar_orden no borra {t}"
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

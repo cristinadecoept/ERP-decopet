@@ -1135,7 +1135,8 @@ def eliminar_orden(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request)
     if "ver_dinero" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("DELETE FROM entregas_repuesto WHERE pack_id IN (SELECT id FROM packs WHERE orden_id=?)", (oid,))
-    for tb in ("packs", "repuestos_prepagados", "pagos", "historial", "incidencias", "orden_lineas", "gastos", "mov_inventario", "fotos"): con.execute(f"DELETE FROM {tb} WHERE orden_id=?", (oid,))
+    # el saldo a favor que dejó o que usó esta orden también se va: borrarla es como si nunca hubiera existido
+    for tb in ("packs", "repuestos_prepagados", "pagos", "historial", "incidencias", "orden_lineas", "gastos", "mov_inventario", "fotos", "credito_cliente"): con.execute(f"DELETE FROM {tb} WHERE orden_id=?", (oid,))
     con.execute("DELETE FROM ordenes WHERE id=?", (oid,)); con.commit()
     return RedirectResponse(request.query_params.get("volver") or "/ordenes", status_code=303)
 
