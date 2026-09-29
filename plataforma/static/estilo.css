@@ -851,13 +851,20 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 /* un cuadro que se abre dentro de una tabla no puede quedar cortado */
 .tabla:has(details.cobro[open]){overflow:visible}
 
-/* Pantalla de entrar: el verde de la marca con huellas y grama, el logo grande y la tarjeta clara */
-.entrar-w{background:
-  radial-gradient(60vmax 60vmax at 88% 12%, rgba(228,177,143,.38), transparent 60%),
-  radial-gradient(50vmax 50vmax at 8% 92%, rgba(248,153,128,.28), transparent 60%),
-  url("/static/fondo-entrar.svg") 0 0/220px 220px,
-  linear-gradient(145deg, #6fa98a 0%, #5A9075 45%, #3f6d56 100%);
-  display:grid;grid-template-columns:1.1fr 1fr;align-items:center;justify-items:center;gap:40px;padding:40px 6vw;overflow:auto}
+/* Pantalla de entrar: degradé de malla con los colores de la marca, grano fino y un movimiento lento */
+.entrar-w{background:#4c7f66;display:grid;grid-template-columns:1.1fr 1fr;align-items:center;justify-items:center;gap:40px;padding:40px 6vw;overflow:auto;isolation:isolate}
+.entrar-w::before{content:"";position:fixed;inset:-20%;z-index:-2;
+  background:
+   radial-gradient(40% 45% at 78% 18%, #E4B18F 0%, transparent 70%),
+   radial-gradient(38% 42% at 18% 82%, #F89980 0%, transparent 70%),
+   radial-gradient(45% 50% at 30% 25%, #8cc2a6 0%, transparent 72%),
+   radial-gradient(50% 55% at 85% 85%, #2f5443 0%, transparent 70%),
+   linear-gradient(140deg, #6fa98a, #3f6d56);
+  filter:blur(40px) saturate(1.05);animation:entrar-malla 26s ease-in-out infinite alternate}
+.entrar-w::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.16;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E")}
+@keyframes entrar-malla{0%{transform:translate(0,0) rotate(0deg) scale(1)}50%{transform:translate(3%,-2%) rotate(6deg) scale(1.05)}100%{transform:translate(-2%,3%) rotate(-4deg) scale(1.02)}}
+@media (prefers-reduced-motion:reduce){.entrar-w::before{animation:none}}
 .entrar-marca img{width:min(420px,34vw);height:auto;display:block;filter:drop-shadow(0 10px 30px rgba(0,0,0,.12))}
 .entrar-c{width:min(400px,100%);background:rgba(250,250,248,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
   border-radius:24px;padding:38px 36px;box-shadow:0 30px 80px -20px rgba(22,40,31,.45),0 0 0 1px rgba(255,255,255,.5) inset}
