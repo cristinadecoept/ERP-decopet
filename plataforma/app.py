@@ -1634,13 +1634,32 @@ def sobrante_a_favor(con, oid, uid, fecha=None):
 
 
 @app.post("/clientes/{cid}/credito")
-def credito_manual(request: Request, cid: int, monto: str = Form("0"), motivo: str = Form(""),
+def credito_manual(request: Request, cid: int, monto: str = Form("0"), motivo: str = Form(""), accion: str = Form(""),
                    volver_a: str = Form(""), con=Depends(db)):
-    """Anotar o descontar un saldo a favor a mano."""
+    """Anotar o descontar un saldo a favor a mano (para corregir: lo normal es que se genere y se use solo)."""
     if "confirmar_pago" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     m = cifra(monto) or 0
-    if m: mover_credito(con, cid, m, motivo.strip() or ("Saldo a favor" if m > 0 else "Usado"), None, uid_de(request))
+    if accion == "restar": m = -min(abs(m), credito_de(con, cid))
+    elif accion == "sumar": m = abs(m)
+    if m: mover_credito(con, cid, m, motivo.strip() or ("Saldo a favor" if m > 0 else "Corrección"), None, uid_de(request))
     con.commit(); return RedirectResponse(volver_a or f"/clientes/{cid}", status_code=303)
+
+
+@app.post("/clientes/{cid}/credito/devolver")
+def credito_devolver(request: Request, cid: int, monto: str = Form("0"), caja: str = Form(""), fecha: str = Form(""), con=Depends(db)):
+    """El cliente prefirió que le devuelvan la plata en vez de usarla en otra compra.
+    Sale de la caja que elijas y su saldo a favor baja. No es un gasto: es plata de él que vuelve."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    m = round(min(cifra(monto) or 0, credito_de(con, cid)), 2)
+    cta = con.execute("SELECT id, nombre FROM cuentas WHERE id=? AND activa=1", (int(caja) if caja.isdigit() else 0,)).fetchone()
+    if m > 0 and cta:
+        f = fecha or datetime.date.today().isoformat(); uid = uid_de(request)
+        nombre = con.execute("SELECT nombre FROM clientes WHERE id=?", (cid,)).fetchone()[0]
+        con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_origen_id, monto_usd, monto_real, moneda, concepto, categoria, usuario_id)
+                       VALUES (?,'salida',?,?,?,'USD',?,'Devolución a cliente',?)""", (f, cta["id"], m, m, f"Devolución de saldo a favor · {nombre}", uid))
+        mover_credito(con, cid, -m, f"Se le devolvió la plata ({cta['nombre']})", None, uid, f)
+        con.commit()
+    return RedirectResponse(f"/clientes/{cid}", status_code=303)
 
 
 def caja_efectivo(con):
@@ -4141,7 +4160,8 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
                   credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
                         (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=k.orden_id AND p.estado='confirmado' AND p.forma!=?) pagado
                         FROM credito_cliente k LEFT JOIN ordenes o ON o.id=k.orden_id
-                        WHERE k.cliente_id=? ORDER BY k.id DESC LIMIT 12""", (SALDO_FAVOR, cid)).fetchall(), c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
+                        WHERE k.cliente_id=? ORDER BY k.id DESC LIMIT 12""", (SALDO_FAVOR, cid)).fetchall(),
+                  cajas=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 ORDER BY orden").fetchall(), c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
                   refirio=refirio, lo_trajo=lo_trajo,
                   packs=packs, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
                   etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack,
