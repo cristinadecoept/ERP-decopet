@@ -851,21 +851,34 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 /* un cuadro que se abre dentro de una tabla no puede quedar cortado */
 .tabla:has(details.cobro[open]){overflow:visible}
 
-/* Pantalla de entrar: minimalista. Crema de la marca, el logo y el formulario al centro. Nada más. */
-.entrar-w{background:#EFE8E1;display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow:auto}
-.entrar-c{width:min(380px,100%);background:#fff;border-radius:24px;padding:40px 36px 36px;box-shadow:0 1px 2px rgba(29,38,34,.04),0 12px 40px -12px rgba(29,38,34,.12)}
-.entrar-c .entrar-logo{display:block;height:auto;width:150px;margin:0 auto 30px}
-.entrar-c h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px;color:#1d2622}
-.entrar-c label{color:#6b7570;font-weight:500;font-size:13px}
-.entrar-c input{height:48px;border-radius:12px;padding:0 14px;font-size:16px;background:#fafaf8;border:1px solid #e6e1da;color:#1d2622}
+/* Pantalla de entrar: pantalla partida. A la izquierda el formulario sin tarjeta, con tipografía grande;
+   a la derecha el verde sólido de la marca con el logo gigante cortado por los bordes. */
+.entrar-w{background:#FBFAF7;display:grid;grid-template-columns:minmax(420px,1fr) 1.15fr;padding:0;overflow:auto}
+.entrar-lado{display:flex;flex-direction:column;justify-content:space-between;padding:40px clamp(28px,6vw,96px);min-height:100vh}
+.entrar-lado .entrar-logo{height:26px;width:auto;display:block;align-self:flex-start;margin:0}
+.entrar-c{width:100%;max-width:360px;background:none;box-shadow:none;border-radius:0;padding:0}
+.entrar-c h1{font-size:44px;line-height:1;font-weight:800;letter-spacing:-.045em;margin:0 0 32px;color:#1d2622}
+.entrar-c p.mini{margin:-16px 0 24px}
+.entrar-c label{color:#1d2622;font-weight:600;font-size:13px;margin-top:18px}
+.entrar-c input{height:50px;border-radius:12px;padding:0 16px;font-size:16px;background:#F1EDE7;border:1px solid transparent;color:#1d2622;transition:background .15s,border-color .15s,box-shadow .15s}
+.entrar-c input:hover{background:#ECE7E0}
 .entrar-c input:focus{background:#fff;border-color:#5A9075;box-shadow:0 0 0 4px rgba(90,144,117,.14)}
-.entrar-c .btn{height:48px;border-radius:12px;font-size:15px;font-weight:600;background:#5A9075;border-color:#5A9075;color:#fff;margin-top:24px;transition:background .15s}
-.entrar-c .btn:hover{background:#3f6d56;border-color:#3f6d56}
+.entrar-c .btn{height:50px;border-radius:12px;font-size:15px;font-weight:600;background:#1d2622;border-color:#1d2622;color:#fff;margin-top:28px;transition:background .15s}
+.entrar-c .btn:hover{background:#5A9075;border-color:#5A9075}
+.entrar-pie{font-size:12px;color:#9aa19d}
+.entrar-arte{position:relative;overflow:hidden;background:#5A9075;margin:12px 12px 12px 0;border-radius:28px;min-height:calc(100vh - 24px)}
+.entrar-arte img{position:absolute;width:175%;max-width:none;left:-8%;bottom:-9%;opacity:.95}
 html.oscuro .entrar-w{background:#121614}
-html.oscuro .entrar-c{background:#1a201d;box-shadow:0 0 0 1px #262e2a}
-html.oscuro .entrar-c h1{color:#eef1ef}
-html.oscuro .entrar-c label{color:#9ea7a3}
-html.oscuro .entrar-c input{background:#202723;border-color:#2c3531;color:#eef1ef}
-@media (max-width:520px){.entrar-c{padding:32px 22px 26px;border-radius:20px}}
+html.oscuro .entrar-c h1,html.oscuro .entrar-c label{color:#eef1ef}
+html.oscuro .entrar-c input{background:#1a201d;color:#eef1ef}
+html.oscuro .entrar-c input:focus{background:#202723}
+html.oscuro .entrar-c .btn{background:#eef1ef;border-color:#eef1ef;color:#121614}
+html.oscuro .entrar-c .btn:hover{background:#8cc2a6;border-color:#8cc2a6}
+@media (max-width:860px){
+ .entrar-w{grid-template-columns:1fr}
+ .entrar-arte{display:none}
+ .entrar-lado{padding:28px 22px}
+ .entrar-c h1{font-size:38px}
+}
 
 
