@@ -851,37 +851,21 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 /* un cuadro que se abre dentro de una tabla no puede quedar cortado */
 .tabla:has(details.cobro[open]){overflow:visible}
 
-/* Pantalla de entrar, según la guía de estilo: fondo crema, verde sólido con el logo,
-   y formas planas en los cuatro colores secundarios. Sin degradados ni desenfoque. */
-.entrar-w{background:#EFE8E1;display:grid;grid-template-columns:1.05fr 1fr;align-items:stretch;gap:0;padding:18px;overflow:auto}
-.entrar-marca{position:relative;overflow:hidden;background:#5A9075;border-radius:32px;display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 36px)}
-.entrar-marca img{position:relative;z-index:1;width:min(420px,70%);height:auto;display:block}
-.ef{position:absolute;display:block}
-.ef-naranja{width:46vmin;height:46vmin;border-radius:50%;background:#E1782E;left:-14vmin;bottom:-16vmin}
-.ef-arena{width:40vmin;height:20vmin;border-radius:0 0 40vmin 40vmin;background:#E4B18F;right:9%;top:0}
-.ef-coral{width:26vmin;height:9vmin;border-radius:9vmin;background:#F89980;right:-4vmin;bottom:18%;transform:rotate(-24deg)}
-.ef-gris{width:7vmin;height:7vmin;border-radius:50%;background:#ABBABA;left:16%;top:14%}
-.entrar-c{align-self:center;justify-self:center;width:min(380px,100%);background:transparent;box-shadow:none;border-radius:0;padding:24px 8px}
-.entrar-c .entrar-logo{display:none}
-.entrar-c h1{font-size:34px;font-weight:800;letter-spacing:-.03em;margin:0 0 18px;color:#3f6d56}
-.entrar-c label{color:#55605b;font-weight:600}
-.entrar-c input{height:52px;border-radius:14px;padding:0 16px;font-size:16px;background:#fff;border:1.5px solid #e0d8cf;color:#1d2622}
-.entrar-c input:focus{border-color:#5A9075;box-shadow:0 0 0 4px rgba(90,144,117,.16)}
-.entrar-c .btn{height:52px;border-radius:14px;font-size:16px;font-weight:700;background:#5A9075;border-color:#5A9075;color:#fff;margin-top:26px;transition:background .15s,transform .05s}
+/* Pantalla de entrar: minimalista. Crema de la marca, el logo y el formulario al centro. Nada más. */
+.entrar-w{background:#EFE8E1;display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow:auto}
+.entrar-c{width:min(380px,100%);background:#fff;border-radius:24px;padding:40px 36px 36px;box-shadow:0 1px 2px rgba(29,38,34,.04),0 12px 40px -12px rgba(29,38,34,.12)}
+.entrar-c .entrar-logo{display:block;height:auto;width:150px;margin:0 auto 30px}
+.entrar-c h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px;color:#1d2622}
+.entrar-c label{color:#6b7570;font-weight:500;font-size:13px}
+.entrar-c input{height:48px;border-radius:12px;padding:0 14px;font-size:16px;background:#fafaf8;border:1px solid #e6e1da;color:#1d2622}
+.entrar-c input:focus{background:#fff;border-color:#5A9075;box-shadow:0 0 0 4px rgba(90,144,117,.14)}
+.entrar-c .btn{height:48px;border-radius:12px;font-size:15px;font-weight:600;background:#5A9075;border-color:#5A9075;color:#fff;margin-top:24px;transition:background .15s}
 .entrar-c .btn:hover{background:#3f6d56;border-color:#3f6d56}
-.entrar-c .btn:active{transform:translateY(1px)}
 html.oscuro .entrar-w{background:#121614}
-html.oscuro .entrar-c{background:transparent;box-shadow:none}
-html.oscuro .entrar-c h1{color:#8cc2a6}
+html.oscuro .entrar-c{background:#1a201d;box-shadow:0 0 0 1px #262e2a}
+html.oscuro .entrar-c h1{color:#eef1ef}
 html.oscuro .entrar-c label{color:#9ea7a3}
-html.oscuro .entrar-c input{background:#1a201d;border-color:#2c3531;color:#eef1ef}
-@media (max-width:860px){
- .entrar-w{grid-template-columns:1fr;align-content:start;padding:12px}
- .entrar-marca{min-height:34vh;border-radius:26px}
- .entrar-marca img{width:min(240px,62%)}
- .ef-naranja{width:34vw;height:34vw;left:-10vw;bottom:-14vw}.ef-arena{width:30vw;height:15vw;border-radius:0 0 30vw 30vw}
- .ef-coral{width:20vw;height:7vw}.ef-gris{width:5vw;height:5vw}
- .entrar-c{padding:28px 10px 20px}
- .entrar-c h1{font-size:28px}
-}
+html.oscuro .entrar-c input{background:#202723;border-color:#2c3531;color:#eef1ef}
+@media (max-width:520px){.entrar-c{padding:32px 22px 26px;border-radius:20px}}
+
 
