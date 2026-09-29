@@ -862,7 +862,7 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 .entrar-c{width:min(400px,100%);color:#fff;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
   -webkit-backdrop-filter:blur(24px) saturate(1.2);backdrop-filter:blur(24px) saturate(1.2);border-radius:28px;padding:40px 36px 36px;
   box-shadow:0 30px 80px -20px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.08)}
-.entrar-c .entrar-logo{display:block;height:auto;width:112px;margin:0 0 28px;align-self:auto}
+.entrar-c .entrar-logo{display:block;height:auto;width:160px;margin:0 0 30px;align-self:auto}
 .entrar-c h1{font-size:34px;line-height:1.05;font-weight:800;letter-spacing:-.04em;margin:0;color:#fff}
 .entrar-sub{color:#a9b8b0;font-size:15px;margin:8px 0 22px}
 .entrar-c p.mini{color:#a9b8b0;margin:10px 0 18px}
