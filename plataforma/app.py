@@ -1425,6 +1425,15 @@ def tasa_manual(request: Request, valor: float = Form(...), fecha_valor: str = F
 
 
 # ------------------------------------------------------------------ OPERACIONES
+def repuesto_de_pack(k):
+    """Qué se lleva de un pack, dicho por su número: 'Repuesto Mediano · 1 de 3 del pack'.
+    El saldo es lo que quedaba antes de esta entrega, así que el primero de hoy es el siguiente."""
+    n = k["retiro_programado"] or 1; u = k["unidades"] or 0; i = u - (k["saldo"] or 0) + 1
+    que = f"Repuesto {k['tamano'] or ''}".strip()
+    if n == 1: return f"{que} · {i} de {u} del pack"
+    return f"{n}× {que} · del {i} al {i + n - 1} de {u} del pack"
+
+
 @app.get("/operaciones", response_class=HTMLResponse)
 def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: str = "", dia: str = "", desp: str = "", vista: str = "tipo", q: str = "", con=Depends(db)):
     rol = rol_de(request); hoy_d = datetime.date.today(); hoy = hoy_d.isoformat(); manana = (hoy_d + datetime.timedelta(days=1)).isoformat()
@@ -1483,7 +1492,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             te = k["tipo_programado"] or k["tipo_entrega"]
             if tipo and te != tipo: continue
             lista.append(dict(id=None, es_pack=True, pack_id=k["id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
-                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=f"{k['retiro_programado'] or 1}× Repuesto {k['tamano'] or ''} · pack de {k['unidades']}, le quedan {k['saldo']}", nota_log=k["nota_programada"], tipo_entrega=te, franja=None,
+                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=repuesto_de_pack(k), nota_log=k["nota_programada"], tipo_entrega=te, franja=None,
                               receptor_nombre=None, agencia=None, guia=None, distribuidor=None, despachador=k["despachador_programado"], ciudad=(d["ciudad"] if d else k["ciudad"]), zona=None,
                               direccion=(d["direccion"] if d else None), maps=(d["maps"] if d else None), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), estado="pendiente", coordinada=bool(k["despachador_programado"] or te == "pickup"), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
     if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
