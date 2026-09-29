@@ -847,3 +847,6 @@ html.oscuro .cat-p{background:rgba(255,255,255,.1)}
 /* Safari dibuja listas y campos con su estilo propio si no sabe que la página es oscura */
 html{color-scheme:light}html.oscuro{color-scheme:dark}
 select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color:var(--tinta)}
+
+/* un cuadro que se abre dentro de una tabla no puede quedar cortado */
+.tabla:has(details.cobro[open]){overflow:visible}

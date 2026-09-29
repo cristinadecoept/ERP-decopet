@@ -20,7 +20,7 @@
  <td style="text-align:right;width:250px">{% if f.id %}
   {% if not f.en_ruta %}<form method="post" action="/ordenes/{{ f.id }}/estado" style="display:inline">
    <input type="hidden" name="estado" value="en_ruta"><button class="btn sec chico">Voy saliendo</button></form>
-  {% else %}<span class="pago por_cobrar">en ruta</span>{% endif %}
+  {% else %}<span class="pago por_cobrar">en ruta</span><form method="post" action="/mis-entregas/{{ f.id }}/aun-no" style="display:inline"><button class="no-link" style="font-size:12px" title="Lo tocaste sin querer">↩ todavía no salgo</button></form>{% endif %}
   <details class="cobro"><summary class="btn chico">Entregado</summary>
    <form method="post" action="/ordenes/{{ f.id }}/estado" class="cobro-f" style="min-width:230px">
     <input type="hidden" name="estado" value="entregada">
@@ -49,7 +49,7 @@
   {% for h in hist[:20] %}<tr>
    <td class="mono mini" style="width:100px">{{ h.fecha|dia }}</td><td>{{ h.quien }}</td>
    <td><span class="est {{ h.estado }}">{{ E_LABEL[h.estado] }}</span></td>
-   <td class="num">{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">sin pagar</div>{% endif %}</td>
+   <td class="num">{% if h.estado == 'entregada' %}{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">sin pagar</div>{% endif %}{% else %}<span class="mini">{{ h.pago|usd }} al entregar</span>{% endif %}</td>
   </tr>{% endfor %}</table>{% else %}<div class="vacio">Todavía no tienes entregas.</div>{% endif %}</div></div>
 
  <div class="tarjeta"><h3>Lo que te han pagado</h3>

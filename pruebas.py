@@ -400,6 +400,26 @@ def _():
     assert "if armado else 0" in inspect.getsource(A.descontar_inventario), "lo que tiene stock propio no debe gastar materiales al venderse"
 
 
+@prueba("Al despachador se le debe lo entregado, no lo asignado")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total,delivery,despachador,origen_excel,despachador_pagado) VALUES (1,'#1',1,'pendiente',20,5,'Juan',0,0)")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total,delivery,despachador,origen_excel,despachador_pagado) VALUES (2,'#2',1,'en_ruta',20,7,'Juan',0,0)")
+    con.commit()
+    assert A.resumen_despachador(con, "Juan", None)["debe"] == 0
+    con.execute("UPDATE ordenes SET estado='entregada' WHERE id=1"); con.commit()
+    assert A.resumen_despachador(con, "Juan", None)["debe"] == 5
+
+
+@prueba("Una llegada no se anota dos veces si el formulario se manda dos veces seguidas")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad,nota,usuario_id,creado_en) VALUES (1,'2026-09-28','entrada',10,'producción #1 · Walter',1,datetime('now','localtime'))")
+    con.commit()
+    assert A.llegada_repetida(con, 1, 1) and not A.llegada_repetida(con, 12, 1)
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

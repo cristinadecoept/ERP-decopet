@@ -56,7 +56,9 @@ document.addEventListener('toggle',e=>{
  if(d.tagName!=='DETAILS'||!d.classList.contains('cobro')||!d.open) return;
  setTimeout(()=>encajarCobro(d.querySelector('.cobro-f')),0);
 },true);
-addEventListener('resize',()=>document.querySelectorAll('details.cobro[open] .cobro-f').forEach(encajarCobro));</script>
+addEventListener('resize',()=>document.querySelectorAll('details.cobro[open] .cobro-f').forEach(encajarCobro));
+// un formulario no se manda dos veces: un doble clic anotaba las cosas dos veces
+document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.enviando){e.preventDefault();return;}f.dataset.enviando='1';setTimeout(()=>{delete f.dataset.enviando},4000);},true);</script>
 <div id="cand-w" hidden class="cand-w" onclick="if(event.target===this)candCerrar()">
  <form class="cand-c" onsubmit="candProbar(event)">
   <h4>Mostrar las cifras</h4>
