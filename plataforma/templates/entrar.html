@@ -1,8 +1,8 @@
 {% extends "base.html" %}{% block titulo %}Entrar · Decopet{% endblock %}{% block cuerpo %}
 <div class="entrar-w">
- <div class="entrar-lado">
-  <img src="/static/logo-verde.png" alt="Decopet" class="entrar-logo">
+ <i class="entrar-luz entrar-luz-v" aria-hidden="true"></i><i class="entrar-luz entrar-luz-n" aria-hidden="true"></i>
  <div class="entrar-c">
+  <img src="/static/logo-crema.png" alt="Decopet" class="entrar-logo">
   {% if primera_vez %}
    <h1>Ponle una clave a tu ERP</h1>
    <p class="mini">Hasta ahora cualquiera que abriera esta dirección entraba como administradora. Elige tu clave: no queda escrita en ningún lado y nadie más la ve, ni yo.</p>
@@ -14,7 +14,7 @@
     <button class="btn">Guardar y entrar</button>
    </form>
   {% else %}
-   <h1>Entrar</h1>
+   <h1>Hola de nuevo</h1><div class="entrar-sub">Entra a tu ERP</div>
    <form method="post" action="/entrar">
     <label>Correo o usuario</label><input name="usuario" required autofocus autocomplete="username" inputmode="email">
     <label>Clave</label><input type="password" name="clave" required autocomplete="current-password">
@@ -23,8 +23,5 @@
    </form>
   {% endif %}
  </div>
-  <div class="entrar-pie">Decopet Mascotas C.A.</div>
- </div>
- <div class="entrar-arte" aria-hidden="true"><img src="/static/logo-crema.png" alt=""></div>
 </div>
 {% endblock %}
