@@ -280,6 +280,13 @@ def _():
             assert entra, f"{nom} está marcada para no entrar al inventario"
 
 
+@prueba("Lo que se compra para vender tal cual (bowls, platos) tiene a qué producto entrar")
+def _():
+    con = sqlite3.connect(str(A.DB))
+    for item, sku in A.ITEMS_A_INVENTARIO.items():
+        assert con.execute("SELECT 1 FROM productos WHERE sku=?", (sku,)).fetchone(), f"{item} apunta a {sku}, que no existe"
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

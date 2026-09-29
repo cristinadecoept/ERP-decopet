@@ -3186,6 +3186,11 @@ PIEZAS_PRODUCCION = [
     ("Rampa Nueva", "RAMPA-N", True), ("Rampa Para Perros Mini", "RAMPA-MINI", True),
     ("Muestra / prototipo", None, False),   # lo que hace David cuando se prueba un producto nuevo; lleva descripción y precio a mano
 ]
+# Lo que se le compra a un proveedor y se vende tal cual: al recibirlo entra al inventario.
+ITEMS_A_INVENTARIO = {
+    "Bowl pequeño": "BOWL-P", "Bowl mediano": "BOWL-M", "Bowl grande": "BOWL-G",
+    "Plato de alimentación lenta azul": "PLATO-AZUL", "Plato de alimentación lenta rosado": "PLATO-ROSA",
+}
 # nombre de la pieza → ítem del proveedor (para sacar el precio de Taller › Proveedores)
 PIEZA_ITEM = {"Caja de madera mediana": "Caja de madera mediana", "Caja de madera grande": "Caja de madera grande",
               "Rampa Nueva": "Rampa Nueva", "Rampa Para Perros Mini": "Rampa Para Perros Mini"}
@@ -3272,7 +3277,7 @@ async def produccion_crear(request: Request, con=Depends(db)):
 
     ids = []
     for pieza, cantidad, costo, barn, desc in lineas:
-        sku = next((s_ for (nom, s_, _) in PIEZAS_PRODUCCION if nom == pieza), None)
+        sku = next((s_ for (nom, s_, _) in PIEZAS_PRODUCCION if nom == pieza), None) or ITEMS_A_INVENTARIO.get(pieza)
         pid_prod = con.execute("SELECT id FROM productos WHERE sku=?", (sku,)).fetchone()[0] if sku else None
         cur = con.execute("""INSERT INTO produccion (producto_id, pieza, cantidad, fecha_pedido, fecha_esperada, responsable, costo, nota, usuario_id, barnizado, descripcion, tipo_pedido, fecha_pago)
                              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
