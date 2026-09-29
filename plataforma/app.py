@@ -4676,15 +4676,31 @@ def taller_nota(request: Request, texto: str = Form(""), con=Depends(db)):
 
 
 @app.get("/taller/avisos", response_class=HTMLResponse)
-def taller_avisos(request: Request, con=Depends(db)):
-    """Lo que el taller te avisó. Se queda aquí hasta que lo resuelvas, no se borra al verlo."""
+def taller_avisos(request: Request, ver: str = "sin_resolver", mes: str = "", anio: str = "", con=Depends(db)):
+    """Lo que el taller te avisó. Se queda aquí hasta que lo resuelvas, no se borra al verlo.
+    Arranca mostrando solo lo sin resolver; lo resuelto se mira aparte, por mes."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    filas = con.execute("""SELECT n.*, u.nombre quien, pr.pieza, pr.responsable, pr.cantidad, pr.recibido
+    todas = con.execute("""SELECT n.*, u.nombre quien, pr.pieza, pr.responsable, pr.cantidad, pr.recibido,
+                           COALESCE(pr.tipo_pedido,'produccion') tipo
                            FROM notas_taller n LEFT JOIN usuarios u ON u.id=n.usuario_id
                            LEFT JOIN produccion pr ON pr.id=n.produccion_id
-                           ORDER BY n.resuelto, n.id DESC""").fetchall()
-    return render(request, "avisos.html", seccion="avisos", avisos=filas,
-                  pendientes=sum(1 for f in filas if not f["resuelto"]))
+                           ORDER BY n.fecha DESC, n.id DESC""").fetchall()
+    n = {"sin_resolver": sum(1 for f in todas if not f["resuelto"]), "resueltos": sum(1 for f in todas if f["resuelto"])}
+    if ver not in ("sin_resolver", "resueltos", "todos"): ver = "sin_resolver"
+    filas = [f for f in todas if ver == "todos" or (ver == "resueltos") == bool(f["resuelto"])]
+    hoy_d = datetime.date.today()
+    anios = sorted({int((f["fecha"] or "0000")[:4]) for f in todas if f["fecha"]} | {hoy_d.year}, reverse=True)
+    anio = int(mes[:4]) if mes else (int(anio) if anio.isdigit() else hoy_d.year)
+    if mes: filas = [f for f in filas if (f["fecha"] or "")[:7] == mes]
+    grupos = []   # por mes, lo más nuevo arriba
+    for f in filas:
+        k = (f["fecha"] or "")[:7]
+        if not grupos or grupos[-1]["k"] != k:
+            y, m = (int(k[:4]), int(k[5:7])) if len(k) == 7 else (hoy_d.year, hoy_d.month)
+            grupos.append({"k": k, "titulo": MESES_N[m - 1].capitalize() + (f" {y}" if y != hoy_d.year else ""), "avisos": []})
+        grupos[-1]["avisos"].append(f)
+    return render(request, "avisos.html", seccion="avisos", grupos=grupos, ver=ver, n=n, mes=mes, anio=anio, anios=anios,
+                  MESES_N=MESES_N, pendientes=n["sin_resolver"])
 
 
 @app.post("/taller/nota/{nid}/resolver")
