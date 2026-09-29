@@ -1426,12 +1426,12 @@ def tasa_manual(request: Request, valor: float = Form(...), fecha_valor: str = F
 
 # ------------------------------------------------------------------ OPERACIONES
 def repuesto_de_pack(k):
-    """Qué se lleva de un pack, dicho por su número: 'Repuesto Mediano · 1 de 3 del pack'.
+    """Qué se lleva de un pack, dicho por su número: 'Repuesto Mediano · 1/3 pack'.
     El saldo es lo que quedaba antes de esta entrega, así que el primero de hoy es el siguiente."""
     n = k["retiro_programado"] or 1; u = k["unidades"] or 0; i = u - (k["saldo"] or 0) + 1
     que = f"Repuesto {k['tamano'] or ''}".strip()
-    if n == 1: return f"{que} · {i} de {u} del pack"
-    return f"{n}× {que} · del {i} al {i + n - 1} de {u} del pack"
+    if n == 1: return f"{que} · {i}/{u} pack"
+    return f"{n}× {que} · {i}–{i + n - 1}/{u} pack"
 
 
 @app.get("/operaciones", response_class=HTMLResponse)

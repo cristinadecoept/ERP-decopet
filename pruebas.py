@@ -337,12 +337,12 @@ def _():
     assert (l["entrada"], l["salida"]) == (6, 0), l
 
 
-@prueba("El retiro de un pack dice qué número es: 1 de 3, no 'le quedan 3'")
+@prueba("El retiro de un pack dice qué número es: 1/3, no 'le quedan 3'")
 def _():
     k = lambda saldo, n=1: {"retiro_programado": n, "unidades": 3, "saldo": saldo, "tamano": "Mediano"}
-    assert A.repuesto_de_pack(k(3)) == "Repuesto Mediano · 1 de 3 del pack", A.repuesto_de_pack(k(3))
-    assert A.repuesto_de_pack(k(1)) == "Repuesto Mediano · 3 de 3 del pack"
-    assert A.repuesto_de_pack(k(3, 2)) == "2× Repuesto Mediano · del 1 al 2 de 3 del pack"
+    assert A.repuesto_de_pack(k(3)) == "Repuesto Mediano · 1/3 pack", A.repuesto_de_pack(k(3))
+    assert A.repuesto_de_pack(k(1)) == "Repuesto Mediano · 3/3 pack"
+    assert A.repuesto_de_pack(k(3, 2)) == "2× Repuesto Mediano · 1–2/3 pack"
 
 
 print("\nRECONSTRUIR DESDE CERO")
