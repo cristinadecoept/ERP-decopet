@@ -1992,7 +1992,14 @@ def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""
         return r[0] if r and r[0] is not None else d
     eq = cfg_json(con, "equipo", ["Víctor", "Isaías", "Manawa"])
     sue = cfg_json(con, "sueldos", {}) or {}
-    return render(request, "configuracion.html", seccion="configuracion",
+    # cómo se le paga a cada uno, para que se vea de una vez: sueldo por quincena o pagos fijos aparte
+    como = {n: [] for n in eq}
+    for c in con.execute("SELECT * FROM compromisos WHERE activo=1 AND proveedor IS NOT NULL"):
+        if c["proveedor"] in como:
+            cuando = {"semanal": f"cada {DIAS_SEM[c['dia'] if c['dia'] is not None else 4]}", "quincenal": "15 y último",
+                      "inicio_mes": f"primeros {c['dia'] or 5} días del mes", "mensual": f"el {c['dia']} de cada mes"}.get(c["frecuencia"], "")
+            como[c["proveedor"]].append(f"{c['nombre']}: ${(c['monto'] or 0):g} {cuando}".replace(f"{c['proveedor']}: ", ""))
+    return render(request, "configuracion.html", seccion="configuracion", pagos_de=como,
                   empresa=cfg_json(con, "empresa", {}) or {}, EMPRESA_CAMPOS=EMPRESA_CAMPOS,
                   documentos=cfg_json(con, "documentos", []) or [],
                   usuarios=con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY activo DESC, rol, nombre").fetchall(),

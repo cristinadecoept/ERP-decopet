@@ -86,16 +86,17 @@
  <h3>Equipo y sueldos</h3>
  <div class="cf-cuerpo">
  <form method="post" action="/configuracion/guardar"><input type="hidden" name="bloque" value="equipo">
-  <table class="lineas"><tr><th>Nombre</th><th class="num" style="width:170px">Sueldo al mes</th></tr>
+  <table class="lineas"><tr><th>Nombre</th><th>Cómo se le paga</th><th class="num" style="width:170px">Sueldo al mes</th></tr>
   {% for n in equipo %}<tr>
    <td><input name="nombre" value="{{ n }}"></td>
+   <td class="mini">{% if sueldos.get(n) %}sueldo por quincena · ${{ '%g'|format(sueldos[n] / 2) }} el 15 y ${{ '%g'|format(sueldos[n] / 2) }} el último{% endif %}{% for p in pagos_de.get(n, []) %}<div><a href="/finanzas/recurrentes">{{ p }}</a></div>{% endfor %}{% if not sueldos.get(n) and not pagos_de.get(n) %}<span style="color:#b45a1c">sin sueldo ni pago fijo</span>{% endif %}</td>
    <td class="num"><div class="cf-in" style="justify-content:flex-end"><span class="mini">$</span>
     <input name="sueldo" value="{{ '%g'|format(sueldos[n]) if sueldos.get(n) else '' }}" inputmode="decimal" placeholder="—" style="width:80px;text-align:right"></div></td>
   </tr>{% endfor %}
-  <tr><td><input name="nombre" placeholder="agregar a alguien…"></td>
+  <tr><td><input name="nombre" placeholder="agregar a alguien…"></td><td></td>
    <td class="num"><div class="cf-in" style="justify-content:flex-end"><span class="mini">$</span>
     <input name="sueldo" inputmode="decimal" placeholder="—" style="width:80px;text-align:right"></div></td></tr></table>
-  <p class="cf-d">Quien tenga sueldo se paga por quincena: la mitad el 15 y la mitad el último día. Deja el sueldo vacío para quien se le pague de otra forma — el contador, un alquiler — y llévalo en <a href="/finanzas/recurrentes">Pagos recurrentes</a>. Para sacar a alguien, borra su nombre.</p>
+  <p class="cf-d">Lo que no es sueldo se cambia en <a href="/finanzas/recurrentes">Pagos recurrentes</a>.</p>
   <p><button class="btn chico">Guardar</button></p>
  </form>
  </div>
