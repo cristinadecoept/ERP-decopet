@@ -3053,7 +3053,7 @@ def descontar_inventario(con, oid, uid):
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, orden_id, color, nota, usuario_id) VALUES (?,?,?,?,?,?,?,?)",
                         (l["producto_id"], hoy, "salida", -(de_listos if armado else cant), oid, (l["color"] or "").lower() or None,
                          "ya estaba armado" if armado else None, uid))
-        resto = cant - de_listos   # lo que no estaba armado se arma ahora y gasta sus materiales
+        resto = (cant - de_listos) if armado else 0   # lo que no estaba armado se arma ahora y gasta sus materiales; lo que tiene stock propio ya los gastó al armarse
         for r in con.execute("""SELECT r.insumo_id, r.cantidad, i.nombre FROM receta r JOIN productos i ON i.id=r.insumo_id
                                 WHERE r.producto_id=?""", (l["producto_id"],)):
             if resto <= 0: break
@@ -3315,7 +3315,8 @@ PIEZAS_PRODUCCION = [
     ("Caja de madera mediana", "INS-CAJAM", True), ("Caja de madera grande", "INS-CAJAG", True),
     ("Comedor Mini", "COM-10", True), ("Comedor Pequeño", "COM-15", True), ("Comedor Mediano", "COM-20", True),
     ("El Bar Grande", "BAR-25", True), ("El Bar Gigante", "BAR-30", True),
-    ("Slow Chow Mini", "SLOW-10", True), ("Slow Chow Pequeño", "SLOW-15", True), ("Slow Chow Mediano", "SLOW-20", True), ("Slow Chow Gigante", "SLOW-30", True),
+    # Walter entrega la base sin plato; el taller le pone el plato (azul o rosado) y ahí nace el Slow Chow con su color
+    ("Slow Chow Mini", "INS-SLOW10", True), ("Slow Chow Pequeño", "INS-SLOW15", True), ("Slow Chow Mediano", "INS-SLOW20", True), ("Slow Chow Gigante", "INS-SLOW30", True),
     ("Rampa Nueva", "RAMPA-N", True), ("Rampa Para Perros Mini", "RAMPA-MINI", True),
     ("Muestra / prototipo", None, False),   # lo que hace David cuando se prueba un producto nuevo; lleva descripción y precio a mano
 ]
@@ -3327,6 +3328,8 @@ ITEMS_A_INVENTARIO = {
     "Pega amarilla": "INS-PEGA", "Cinta antideslizante": "INS-CINTA", "Tela de rampa": "INS-TELA",
     "Placas de bambú Decopet": "INS-BAMBU", "Bolsas negras": "INS-BOLSA",
 }
+# El plato que se le pone a un Slow Chow según su color.
+PLATO_DE_COLOR = {"azul": "PLATO-AZUL", "rosado": "PLATO-ROSA"}
 # Se compra en una unidad y se lleva en otra: la pega viene por cuñete o galón y se cuenta en litros.
 LITROS_POR = {"cuñete": 18.9, "cunete": 18.9, "galón": 3.785, "galon": 3.785}
 
@@ -4739,18 +4742,20 @@ def taller_hoy(request: Request, con=Depends(db)):
                                 AND (pr.fecha_esperada IS NULL OR pr.fecha_esperada <= ?)
                               ORDER BY COALESCE(pr.fecha_esperada,'9999'), pr.id""", (hoy,)).fetchall()
     armables = []
-    for p_ in con.execute("""SELECT p.id, p.nombre,
-                             (SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario m WHERE m.producto_id=p.id) listos
-                             FROM productos p WHERE p.activo=1 AND EXISTS (SELECT 1 FROM receta r WHERE r.producto_id=p.id)
-                             ORDER BY p.orden"""):
-        # con lo que hay en el depósito, ¿cuántos se pueden armar? y sobre todo: ¿qué material es el que frena?
-        materiales = []
-        for r in con.execute("""SELECT i.nombre, r.cantidad necesita,
-                                COALESCE((SELECT SUM(cantidad) FROM mov_inventario m WHERE m.producto_id=r.insumo_id),0) hay
-                                FROM receta r JOIN productos i ON i.id=r.insumo_id WHERE r.producto_id=?""", (p_["id"],)):
-            materiales.append({"nombre": r["nombre"], "hay": int(r["hay"]), "da_para": int(r["hay"] // r["necesita"]) if r["necesita"] else 0})
-        tope = min(materiales, key=lambda m: m["da_para"]) if materiales else None
-        armables.append(dict(p_) | {"alcanza": tope["da_para"] if tope else 0, "materiales": materiales, "tope": tope})
+    stock = lambda pid, col=None: con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?" + (" AND color=?" if col else ""),
+                                              (pid, col) if col else (pid,)).fetchone()[0]
+    for p_ in con.execute("""SELECT p.id, p.nombre, p.requiere_color FROM productos p
+                             WHERE p.activo=1 AND EXISTS (SELECT 1 FROM receta r WHERE r.producto_id=p.id) ORDER BY p.orden"""):
+        receta_ = [dict(r) for r in con.execute("""SELECT i.id, i.nombre, r.cantidad necesita FROM receta r JOIN productos i ON i.id=r.insumo_id
+                                                    WHERE r.producto_id=?""", (p_["id"],))]
+        # un Slow Chow se arma por color: además de la base, lleva un plato de ese color
+        for col in (tuple(PLATO_DE_COLOR) if p_["requiere_color"] else (None,)):
+            lleva = receta_ + ([dict(con.execute("SELECT id, nombre, 1 necesita FROM productos WHERE sku=?", (PLATO_DE_COLOR[col],)).fetchone())] if col else [])
+            # con lo que hay en el depósito, ¿cuántos se pueden armar? y sobre todo: ¿qué material es el que frena?
+            materiales = [{"nombre": m["nombre"], "hay": int(stock(m["id"])), "da_para": int(stock(m["id"]) // m["necesita"]) if m["necesita"] else 0} for m in lleva]
+            tope = min(materiales, key=lambda m: m["da_para"]) if materiales else None
+            armables.append({"id": p_["id"], "nombre": p_["nombre"], "color": col, "listos": stock(p_["id"], col),
+                             "alcanza": tope["da_para"] if tope else 0, "materiales": materiales, "tope": tope})
     notas = con.execute("SELECT * FROM notas_taller ORDER BY id DESC LIMIT 8").fetchall()
     return render(request, "taller.html", seccion="taller", pickups=pickups, salidas=salidas, llegadas=llegadas, armables=armables, notas=notas, hoy_iso=hoy, fecha_larga=fecha_larga())
 
@@ -4858,19 +4863,26 @@ def taller_nota_visto(request: Request, nid: int, volver: str = Form("/inicio"),
 
 
 @app.post("/taller/armar")
-def taller_armar(request: Request, producto_id: int = Form(...), cantidad: str = Form("0"), con=Depends(db)):
+def taller_armar(request: Request, producto_id: int = Form(...), cantidad: str = Form("0"), color: str = Form(""), con=Depends(db)):
     """Armaron porches por adelantado: sale la materia prima y entran porches listos.
     Así la caja de madera no se cuenta dos veces (una como caja y otra al vender)."""
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     n = int(cifra(cantidad)) if cantidad.strip() else 0
-    p = con.execute("SELECT id, nombre FROM productos WHERE id=? AND activo=1", (producto_id,)).fetchone()
+    p = con.execute("SELECT id, nombre, requiere_color FROM productos WHERE id=? AND activo=1", (producto_id,)).fetchone()
+    color = (color or "").strip().lower() or None
+    if p and p["requiere_color"] and color not in PLATO_DE_COLOR: p = None   # un Slow Chow sin color no se puede armar
     if p and n > 0:
         hoy = datetime.date.today().isoformat(); uid = uid_de(request)
-        for r in con.execute("SELECT insumo_id, cantidad FROM receta WHERE producto_id=?", (producto_id,)):
+        que = f"{n}× {p['nombre']}" + (f" plato {color}" if color else "")
+        gasta = [(r["insumo_id"], r["cantidad"]) for r in con.execute("SELECT insumo_id, cantidad FROM receta WHERE producto_id=?", (producto_id,))]
+        if color:
+            plato = con.execute("SELECT id FROM productos WHERE sku=?", (PLATO_DE_COLOR[color],)).fetchone()
+            if plato: gasta.append((plato["id"], 1))
+        for insumo, c in gasta:
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
-                        (r["insumo_id"], hoy, "salida", -int(r["cantidad"] * n), f"para armar {n}× {p['nombre']}", uid))
-        con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
-                    (producto_id, hoy, "entrada", n, "armado en el taller", uid))
+                        (insumo, hoy, "salida", -int(c * n), f"para armar {que}", uid))
+        con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, color, nota, usuario_id) VALUES (?,?,?,?,?,?,?)",
+                    (producto_id, hoy, "entrada", n, color, "armado en el taller", uid))
         con.commit()
     return RedirectResponse("/taller", status_code=303)
 

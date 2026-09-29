@@ -383,6 +383,15 @@ def _():
     assert "$" not in A.resumen_despacho(o, con_plata=False) and "$20" in A.resumen_despacho(o)
 
 
+@prueba("Slow Chow: llega la base de Walter, el taller le pone plato de color, y al venderlo no se gasta dos veces")
+def _():
+    for nom, sku, entra in A.PIEZAS_PRODUCCION:
+        if nom.startswith("Slow Chow"): assert sku.startswith("INS-SLOW") and entra, f"{nom} entra como {sku}"
+    assert set(A.PLATO_DE_COLOR) == {"azul", "rosado"}
+    import inspect
+    assert "if armado else 0" in inspect.getsource(A.descontar_inventario), "lo que tiene stock propio no debe gastar materiales al venderse"
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

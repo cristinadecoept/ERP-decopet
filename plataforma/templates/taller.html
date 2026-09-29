@@ -35,19 +35,19 @@
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">No hay nada pedido esperando llegar.</div>{% endif %}</div>
 
-<div class="tarjeta" style="order:1"><h3>Porches armados</h3>
+<div class="tarjeta" style="order:1"><h3>Para armar</h3>
 <table class="lineas"><tr><th>Modelo</th><th class="num" style="padding-right:18px">Listos</th><th style="padding-right:22px">Material que hay</th><th class="num" style="padding-right:26px">Puede armar</th><th style="width:230px">¿Cuántos armaron?</th></tr>
 {% for a in armables %}<tr>
- <td><b>{{ a.nombre }}</b></td>
+ <td><b>{{ a.nombre }}</b>{% if a.color %} <span class="pl-{{ a.color }}">plato {{ a.color }}</span>{% endif %}</td>
  <td class="num" style="padding-right:18px"><b>{{ a.listos|int }}</b></td>
  <td style="padding-right:22px">{% for m in a.materiales %}<div class="mini">{{ m.hay }} × {{ m.nombre|lower }}{% if a.materiales|length > 1 and m.nombre == a.tope.nombre %} · es lo que frena{% endif %}</div>{% endfor %}</td>
 <td class="num" style="padding-right:26px">{% if a.alcanza %}<b>{{ a.alcanza }}</b>{% else %}<span class="ln-alerta">0</span>{% endif %}</td>
  <td><form method="post" action="/taller/armar" style="display:flex;gap:6px;align-items:center">
-   <input type="hidden" name="producto_id" value="{{ a.id }}">
+   <input type="hidden" name="producto_id" value="{{ a.id }}">{% if a.color %}<input type="hidden" name="color" value="{{ a.color }}">{% endif %}
    <input name="cantidad" inputmode="numeric" placeholder="0" style="width:70px;text-align:right">
    <button class="btn chico">Armamos</button></form></td>
 </tr>{% endfor %}</table>
-<div class="mini" style="margin-top:8px">Al anotarlos, la madera sale del inventario y quedan como porches listos. Cuando se venda uno, sale de aquí.</div></div>
+<div class="mini" style="margin-top:8px">Al anotarlos, el material sale del inventario y entran listos para vender.</div></div>
 
 <div class="tarjeta" style="order:2"><h3>Avisarle a Cristina</h3>
 <form method="post" action="/taller/nota" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
