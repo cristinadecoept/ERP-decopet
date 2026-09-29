@@ -3218,10 +3218,24 @@ def a_inventario(con, r, n):
 PIEZA_ITEM = {"Caja de madera mediana": "Caja de madera mediana", "Caja de madera grande": "Caja de madera grande",
               "Rampa Nueva": "Rampa Nueva", "Rampa Para Perros Mini": "Rampa Para Perros Mini"}
 
-def precio_pieza(con, pieza, responsable):
-    """Precio unitario que cobra el carpintero por esa pieza (comedores y slow chow usan 'Comedores')."""
+def item_de_pieza(con, pieza):
+    """Con qué ítem del catálogo del proveedor se cobra esa pieza (comedores y slow chow usan 'Comedores')."""
     item = PIEZA_ITEM.get(pieza, "Comedores (todos los tamaños)" if pieza.startswith(("Comedor", "El Bar", "Slow Chow")) else None)
     if not item and con.execute("SELECT 1 FROM proveedor_items WHERE item=?", (pieza,)).fetchone(): item = pieza
+    return item
+
+
+def guardar_precio(con, pieza, responsable, precio):
+    """Cambió el precio: queda como el nuevo del catálogo de ese proveedor para los próximos pedidos."""
+    item = item_de_pieza(con, pieza)
+    if not item or not responsable or precio is None or precio <= 0: return
+    con.execute("""UPDATE proveedor_items SET precio=? WHERE item=? AND proveedor_id=(SELECT id FROM proveedores WHERE nombre=?)""",
+                (round(precio, 2), item, responsable))
+
+
+def precio_pieza(con, pieza, responsable):
+    """Precio unitario que cobra el carpintero por esa pieza (comedores y slow chow usan 'Comedores')."""
+    item = item_de_pieza(con, pieza)
     if not item: return None
     def precio(it):
         r = con.execute("""SELECT i.precio FROM proveedor_items i JOIN proveedores p ON p.id=i.proveedor_id
@@ -3243,7 +3257,7 @@ def unidad_pedido(con, pr):
     """En qué se pidió: cuñete, rollo, metro… Lo dice el catálogo del proveedor; si no, unidades."""
     u = con.execute("""SELECT pi.unidad FROM proveedor_items pi LEFT JOIN proveedores pv ON pv.id=pi.proveedor_id
                        WHERE pi.item=? ORDER BY (pv.nombre=?) DESC LIMIT 1""", (pr["pieza"] or "", pr["responsable"] or "")).fetchone()
-    return ((u[0] if u else None) or "unidad").strip().lower()
+    return ((u[0] if u else None) or "unidad").split("(")[0].strip().lower() or "unidad"   # "caja (tapa y fondo)" → caja
 
 
 PROVEEDORES_MADERA = ("Walter", "David")   # lo que se manda a hacer; el resto son pedidos a proveedores
@@ -3284,7 +3298,11 @@ def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str
         piezas = [r[0] for r in con.execute("""SELECT DISTINCT i.item FROM proveedor_items i JOIN proveedores p ON p.id=i.proveedor_id
                                                 WHERE p.activo=1 AND p.nombre NOT IN (?,?) ORDER BY i.item""", PROVEEDORES_MADERA)] + [OTRO]
     precios = {c: {z: precio_pieza(con, z, c) for z in piezas} | {"__barnizado": precio_barnizado(con, c)} for c in quienes}
-    return render(request, "produccion.html", seccion="produccion" if tipo == "produccion" else "compras", tipo=tipo, rows=rows, piezas=piezas,
+    # qué vende cada proveedor, para que al elegirlo solo salga lo suyo (la madera se deja igual: son piezas, no su catálogo)
+    vende = {} if tipo == "produccion" else {
+        c: [r[0] for r in con.execute("""SELECT i.item FROM proveedor_items i JOIN proveedores p ON p.id=i.proveedor_id
+                                         WHERE p.nombre=? ORDER BY i.item""", (c,))] for c in quienes}
+    return render(request, "produccion.html", seccion="produccion" if tipo == "produccion" else "compras", tipo=tipo, rows=rows, piezas=piezas, vende=vende,
                   carpinteros=quienes, ver=ver, n=n, debe=debe, por_pagar=por_pagar, FORMAS_PAGO=FORMAS_PAGO, precios=precios)
 
 
@@ -3300,6 +3318,7 @@ async def produccion_crear(request: Request, con=Depends(db)):
     fesp = f.get("fecha_esperada") or None
     uid = uid_de(request)
     descs = f.getlist("descripcion"); barns = f.getlist("barnizado")
+    precio_nuevo = set(f.getlist("precio_nuevo"))   # líneas donde Cristina marcó "guardar como precio nuevo"
     lineas, i_barn = [], 0
     for idx, (pieza, cant, costo_l) in enumerate(zip(f.getlist("pieza"), f.getlist("cantidad"), f.getlist("costo_linea"))):
         if pieza not in piezas_ok or not (cant or "").strip(): continue
@@ -3315,6 +3334,8 @@ async def produccion_crear(request: Request, con=Depends(db)):
         if costo is None:   # sin monto escrito: cantidad × precio del proveedor (+ barnizado por caja)
             pu = precio_pieza(con, pieza, quien)
             if pu is not None: costo = round((pu + (precio_barnizado(con, quien) if barn else 0)) * cantidad, 2)
+        elif str(idx) in precio_nuevo:
+            guardar_precio(con, pieza, quien, costo / cantidad - (precio_barnizado(con, quien) if barn else 0))
         lineas.append((pieza, cantidad, costo, barn, (descs[idx].strip() if idx < len(descs) and descs[idx] else None)))
     if not lineas: return RedirectResponse("/produccion", status_code=303)
 
