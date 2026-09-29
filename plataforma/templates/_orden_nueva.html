@@ -79,7 +79,7 @@
 <script>
 const PR={{ productos|map(attribute='id')|list|tojson }},PN={{ productos|map(attribute='nombre')|list|tojson }},PP={{ productos|map(attribute='precio')|list|tojson }},P2={{ productos|map(attribute='precio_par')|list|tojson }},
  PC={{ productos|map(attribute='requiere_color')|list|tojson }},PM={{ productos|map(attribute='permite_malla')|list|tojson }},PZ={{ productos|map(attribute='permite_personalizacion')|list|tojson }},PS={{ productos|map(attribute='sku')|list|tojson }},PF={{ productos|map(attribute='foto')|list|tojson }},PFR={{ productos|map(attribute='foto_rosado')|list|tojson }};
-const OP_PERSO={{ opciones['OPC-PERSO'].precio }},OP_MALLA={{ opciones['OPC-MALLA'].precio }};const TASA={{ tasa.valor }};const FORMAS={{ FORMAS_PAGO|tojson }};
+const OP_PERSO={{ opciones['OPC-PERSO'].precio }},OP_MALLA={{ opciones['OPC-MALLA'].precio }};const TASA={{ tasa.valor }};const FORMAS={{ FORMAS_COBRO|tojson }};
 function abrirPicker(){document.getElementById('picker').hidden=!document.getElementById('picker').hidden;}
 function agregar(i){document.getElementById('picker').hidden=true;const d=document.createElement('div');d.className='no-linea';d.dataset.i=i;
  let ops='';

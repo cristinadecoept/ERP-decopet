@@ -92,6 +92,7 @@ def cfg_json(con, clave, por_defecto=None):
 
 
 FORMAS_PAGO = ["Pago Móvil", "Zelle", "Efectivo USD"]   # se reemplaza al arrancar con las cajas activas
+FORMAS_COBRO = list(FORMAS_PAGO)   # solo las cajas donde un cliente puede pagar (se reemplaza al arrancar)
 DESPACHADORES = ["Ingrid", "Cristina", "Fernando"]   # se reemplaza al arrancar con los activos de la tabla despachadores
 
 def cargar_despachadores():
@@ -188,7 +189,7 @@ def fmt_cant(v, unidad=None):
     return f"{n} {unidad}" if v == 1 else f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
 tpl.env.filters["cant"] = fmt_cant
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
-tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
+tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
 
 def db():
@@ -290,7 +291,8 @@ COLUMNAS = (
     ("packs", "fecha_programada", "TEXT"), ("packs", "nota_programada", "TEXT"),
     ("packs", "retiro_programado", "INTEGER"), ("packs", "tipo_programado", "TEXT"),
     ("produccion", "cantidad", "INTEGER NOT NULL DEFAULT 1"), ("produccion", "fecha_pago", "TEXT"),
-    ("produccion", "faltaron", "INTEGER"),   # al cerrar un pedido incompleto: cuántos no llegaron
+    ("produccion", "faltaron", "INTEGER"),
+    ("cuentas", "cobra", "INTEGER DEFAULT 1"),   # ¿se usa para cobrarle a un cliente? las de inversión o personales, no   # al cerrar un pedido incompleto: cuántos no llegaron
     ("produccion", "recibido", "INTEGER DEFAULT 0"), ("produccion", "tipo_pedido", "TEXT DEFAULT 'produccion'"),
     ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
     ("pagos", "en_cashflow", "INTEGER NOT NULL DEFAULT 0"),   # ya lo pasó Cristina al libro a mano
@@ -1623,10 +1625,12 @@ def es_bolivares(forma):
 def cargar_formas_pago():
     """Las formas de pago son las cajas: así nunca falta una ni sobra una que ya no usas."""
     con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
-    cajas = [r["nombre"] for r in con.execute("SELECT nombre FROM cuentas WHERE activa=1 ORDER BY orden")]
+    filas = con.execute("SELECT nombre, COALESCE(cobra,1) cobra FROM cuentas WHERE activa=1 ORDER BY orden").fetchall()
+    cajas = [r["nombre"] for r in filas]
     con.close()
     if cajas:
-        FORMAS_PAGO[:] = cajas
+        FORMAS_PAGO[:] = cajas                                        # para pagar: todas
+        FORMAS_COBRO[:] = [r["nombre"] for r in filas if r["cobra"]]   # para cobrarle a un cliente: sin las de inversión ni personales
         MONEDA_CAJA.clear()
         MONEDA_CAJA.update(dict(_monedas_cajas()))
         FORMA_CUENTA.clear()
@@ -1972,6 +1976,7 @@ async def cuentas_guardar(request: Request, con=Depends(db)):
         elif k.startswith("tipo_"): con.execute("UPDATE cuentas SET tipo=? WHERE id=?", (v, int(k[5:])))
         elif k.startswith("moneda_"): con.execute("UPDATE cuentas SET moneda=? WHERE id=?", (v, int(k[7:])))
         elif k.startswith("personal_"): con.execute("UPDATE cuentas SET personal=? WHERE id=?", (1 if v == "1" else 0, int(k[9:])))
+        elif k.startswith("cobra_"): con.execute("UPDATE cuentas SET cobra=? WHERE id=?", (1 if v == "1" else 0, int(k[6:])))
     if f.get("fecha_corte"): con.execute("UPDATE cuentas SET fecha_corte=?", (f["fecha_corte"],))
     if f.get("nueva_cuenta"):
         sig = con.execute("SELECT MAX(CAST(codigo AS INTEGER)) FROM cuentas").fetchone()[0] or 0
