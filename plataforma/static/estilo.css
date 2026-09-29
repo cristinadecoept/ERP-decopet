@@ -850,3 +850,31 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 
 /* un cuadro que se abre dentro de una tabla no puede quedar cortado */
 .tabla:has(details.cobro[open]){overflow:visible}
+
+/* Pantalla de entrar: el verde de la marca con huellas y grama, el logo grande y la tarjeta clara */
+.entrar-w{background:
+  radial-gradient(60vmax 60vmax at 88% 12%, rgba(228,177,143,.38), transparent 60%),
+  radial-gradient(50vmax 50vmax at 8% 92%, rgba(248,153,128,.28), transparent 60%),
+  url("/static/fondo-entrar.svg") 0 0/220px 220px,
+  linear-gradient(145deg, #6fa98a 0%, #5A9075 45%, #3f6d56 100%);
+  display:grid;grid-template-columns:1.1fr 1fr;align-items:center;justify-items:center;gap:40px;padding:40px 6vw;overflow:auto}
+.entrar-marca img{width:min(420px,34vw);height:auto;display:block;filter:drop-shadow(0 10px 30px rgba(0,0,0,.12))}
+.entrar-c{width:min(400px,100%);background:rgba(250,250,248,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border-radius:24px;padding:38px 36px;box-shadow:0 30px 80px -20px rgba(22,40,31,.45),0 0 0 1px rgba(255,255,255,.5) inset}
+.entrar-c .entrar-logo{display:none}
+.entrar-c h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px;color:#1d2622}
+.entrar-c label{color:#55605b}
+.entrar-c input{height:48px;border-radius:14px;padding:0 16px;font-size:16px;background:#fff;border:1px solid #e3e6e3;color:#1d2622}
+.entrar-c input:focus{border-color:#5A9075;box-shadow:0 0 0 4px rgba(90,144,117,.18)}
+.entrar-c .btn{height:50px;border-radius:14px;font-size:16px;background:#5A9075;border-color:#5A9075;color:#fff;margin-top:24px;transition:background .15s,transform .05s}
+.entrar-c .btn:hover{background:#3f6d56;border-color:#3f6d56}
+.entrar-c .btn:active{transform:translateY(1px)}
+html.oscuro .entrar-c{background:rgba(26,32,29,.9);box-shadow:0 30px 80px -20px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.06) inset}
+html.oscuro .entrar-c h1{color:#eef1ef}
+html.oscuro .entrar-c label{color:#9ea7a3}
+html.oscuro .entrar-c input{background:#202723;border-color:#2c3531;color:#eef1ef}
+@media (max-width:860px){
+ .entrar-w{grid-template-columns:1fr;align-content:center;gap:26px;padding:28px 16px}
+ .entrar-marca img{width:min(230px,60vw)}
+ .entrar-c{padding:30px 24px}
+}
