@@ -3323,8 +3323,8 @@ PIEZAS_PRODUCCION = [
     ("Caja de madera mediana", "INS-CAJAM", True), ("Caja de madera grande", "INS-CAJAG", True),
     ("Comedor Mini", "COM-10", True), ("Comedor Pequeño", "COM-15", True), ("Comedor Mediano", "COM-20", True),
     ("El Bar Grande", "BAR-25", True), ("El Bar Gigante", "BAR-30", True),
-    # Walter entrega la base sin plato; el taller le pone el plato (azul o rosado) y ahí nace el Slow Chow con su color
-    ("Slow Chow Mini", "INS-SLOW10", True), ("Slow Chow Pequeño", "INS-SLOW15", True), ("Slow Chow Mediano", "INS-SLOW20", True), ("Slow Chow Gigante", "INS-SLOW30", True),
+    # Walter entrega el Slow Chow sin plato; al confirmar que llegó, el taller dice cuántos van azules y cuántos rosados
+    ("Slow Chow Mini", "SLOW-10", True), ("Slow Chow Pequeño", "SLOW-15", True), ("Slow Chow Mediano", "SLOW-20", True), ("Slow Chow Gigante", "SLOW-30", True),
     ("Rampa Nueva", "RAMPA-N", True), ("Rampa Para Perros Mini", "RAMPA-MINI", True),
     ("Muestra / prototipo", None, False),   # lo que hace David cuando se prueba un producto nuevo; lleva descripción y precio a mano
 ]
@@ -3413,7 +3413,7 @@ def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str
     if (q or debe) and ver == "en_proceso": ver = "todas"   # al buscar, o al venir de "le debes a X", se mira todo
     saldo_sql = "pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0)"
     es_tipo = "COALESCE(pr.tipo_pedido,'produccion')=?"
-    rows = con.execute(f"""SELECT pr.*, COALESCE(pr.pieza, p.nombre) producto FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
+    rows = con.execute(f"""SELECT pr.*, COALESCE(pr.pieza, p.nombre) producto, p.requiere_color FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
                           WHERE {es_tipo} AND (?='todas' OR pr.estado=?)
                           AND (?='' OR pr.pieza LIKE ? OR pr.responsable LIKE ? OR pr.descripcion LIKE ? OR pr.nota LIKE ?)
                           AND (?='' OR (pr.responsable=? AND pr.estado!='cancelado' AND pr.costo IS NOT NULL AND {saldo_sql} > 0.009))
@@ -3512,15 +3512,43 @@ async def produccion_crear(request: Request, con=Depends(db)):
     con.commit(); return RedirectResponse(f"/produccion?tipo={tipo_de_proveedor(quien)}", status_code=303)
 
 
+def entrar_al_inventario(con, r, n, nota, uid, colores=None):
+    """Lo que llegó de un pedido entra al inventario. Si el producto va por color (Slow Chow),
+    entra separado por color y cada uno se lleva su plato."""
+    hoy = datetime.date.today().isoformat()
+    terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
+    if not (terminado and r["producto_id"]): return
+    if colores:
+        for col, k in colores.items():
+            if k <= 0: continue
+            con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, color, nota, usuario_id) VALUES (?,?,?,?,?,?,?)",
+                        (r["producto_id"], hoy, "entrada", k, col, nota, uid))
+            plato = con.execute("SELECT id FROM productos WHERE sku=?", (PLATO_DE_COLOR[col],)).fetchone()
+            if plato: con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
+                                  (plato["id"], hoy, "salida", -k, f"puesto en {k}× {r['pieza']}", uid))
+    else:
+        con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
+                    (r["producto_id"], hoy, "entrada", a_inventario(con, r, n), nota, uid))
+
+
+def colores_de(con, r, azul, rosado):
+    """Si lo que llegó va por color, cuántos de cada uno; si no, None."""
+    if not r["producto_id"]: return None
+    p = con.execute("SELECT requiere_color FROM productos WHERE id=?", (r["producto_id"],)).fetchone()
+    if not (p and p["requiere_color"]): return None
+    return {"azul": int(cifra(azul) or 0), "rosado": int(cifra(rosado) or 0)}
+
+
 @app.post("/produccion/{pid}/recibir")
-def produccion_recibir(request: Request, pid: int, cantidad: int = Form(...), con=Depends(db)):
+def produccion_recibir(request: Request, pid: int, cantidad: str = Form("0"), azul: str = Form(""), rosado: str = Form(""), con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)   # Taller es de Cristina
     r = con.execute("SELECT * FROM produccion WHERE id=?", (pid,)).fetchone()
-    if r:
+    col = colores_de(con, r, azul, rosado) if r else None
+    cantidad = sum(col.values()) if col else int(cifra(cantidad) or 0)
+    if r and cantidad > 0:
         hoy = datetime.date.today().isoformat(); uid = uid_de(request)
-        terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
-        if terminado and r["producto_id"]:   # comedores, rampas y cajas entran al inventario; las muestras no
-            con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)", (r["producto_id"], hoy, "entrada", a_inventario(con, r, cantidad), f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else ""), uid))
+        # comedores, rampas y cajas entran al inventario; las muestras no
+        entrar_al_inventario(con, r, cantidad, f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else ""), uid, col)
         total = r["recibido"] + cantidad
         con.execute("UPDATE produccion SET recibido=?, estado=?, recibido_en=? WHERE id=?", (total, "recibido" if total >= r["cantidad"] else "en_proceso", hoy if total >= r["cantidad"] else None, pid))
         con.commit()
@@ -4745,7 +4773,7 @@ def taller_hoy(request: Request, con=Depends(db)):
             g[k_] = " · ".join(f"{n}× {nom}" for nom, n in sorted(g[k_].items()))
     salidas = sorted(salidas.values(), key=lambda g: (g["quien_lleva"] == "Sin despachador", g["quien_lleva"]))
     llegadas = con.execute("""SELECT pr.id, pr.cantidad, pr.recibido, pr.fecha_esperada, pr.responsable, pr.pieza, pr.descripcion,
-                              COALESCE(NULLIF(pr.pieza,''), p.nombre) producto FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
+                              COALESCE(NULLIF(pr.pieza,''), p.nombre) producto, p.requiere_color FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
                               WHERE pr.estado NOT IN ('recibido','cancelado','cancelada')
                                 AND (pr.fecha_esperada IS NULL OR pr.fecha_esperada <= ?)
                               ORDER BY COALESCE(pr.fecha_esperada,'9999'), pr.id""", (hoy,)).fetchall()
@@ -4896,17 +4924,16 @@ def taller_armar(request: Request, producto_id: int = Form(...), cantidad: str =
 
 
 @app.post("/taller/llegada/{pid}")
-def taller_llegada(request: Request, pid: int, cantidad: str = Form("0"), nota: str = Form(""), con=Depends(db)):
-    """Llegó un pedido: el taller confirma cuántos llegaron de verdad (pueden ser menos de los esperados)."""
+def taller_llegada(request: Request, pid: int, cantidad: str = Form("0"), azul: str = Form(""), rosado: str = Form(""), nota: str = Form(""), con=Depends(db)):
+    """Llegó un pedido: el taller confirma cuántos llegaron de verdad (pueden ser menos de los esperados).
+    Un Slow Chow se confirma por color: cuántos llevan plato azul y cuántos rosado."""
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     r = con.execute("SELECT * FROM produccion WHERE id=?", (pid,)).fetchone()
-    n = int(cifra(cantidad)) if cantidad.strip() else 0
+    col = colores_de(con, r, azul, rosado) if r else None
+    n = sum(col.values()) if col else (int(cifra(cantidad)) if cantidad.strip() else 0)
     if r and n > 0:
         hoy = datetime.date.today().isoformat(); uid = uid_de(request)
-        terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
-        if terminado and r["producto_id"]:
-            con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
-                        (r["producto_id"], hoy, "entrada", a_inventario(con, r, n), f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else "") + " · confirmado en taller" + (f" · {nota.strip()}" if nota.strip() else ""), uid))
+        entrar_al_inventario(con, r, n, f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else "") + " · confirmado en taller" + (f" · {nota.strip()}" if nota.strip() else ""), uid, col)
         total = (r["recibido"] or 0) + n
         con.execute("UPDATE produccion SET recibido=?, estado=?, recibido_en=? WHERE id=?",
                     (total, "recibido" if total >= r["cantidad"] else "en_proceso", hoy if total >= r["cantidad"] else None, pid))

@@ -383,11 +383,19 @@ def _():
     assert "$" not in A.resumen_despacho(o, con_plata=False) and "$20" in A.resumen_despacho(o)
 
 
-@prueba("Slow Chow: llega la base de Walter, el taller le pone plato de color, y al venderlo no se gasta dos veces")
+@prueba("Slow Chow: al confirmar que llegó se dice cuántos azules y rosados; cada uno se lleva su plato")
 def _():
-    for nom, sku, entra in A.PIEZAS_PRODUCCION:
-        if nom.startswith("Slow Chow"): assert sku.startswith("INS-SLOW") and entra, f"{nom} entra como {sku}"
-    assert set(A.PLATO_DE_COLOR) == {"azul", "rosado"}
+    con = base_limpia()
+    con.execute("INSERT INTO productos (id,sku,nombre,tipo,requiere_color,activo) VALUES (15,'SLOW-10','Slow Chow Mini','producto',1,1)")
+    con.execute("INSERT INTO productos (id,sku,nombre,tipo,activo) VALUES (22,'PLATO-AZUL','Plato azul','producto',1)")
+    con.execute("INSERT INTO productos (id,sku,nombre,tipo,activo) VALUES (23,'PLATO-ROSA','Plato rosado','producto',1)")
+    con.execute("INSERT INTO produccion (id,producto_id,pieza,cantidad,recibido,estado,responsable,fecha_pedido) VALUES (1,15,'Slow Chow Mini',10,0,'en_proceso','Walter','2026-09-28')")
+    con.commit()
+    r = con.execute("SELECT * FROM produccion WHERE id=1").fetchone()
+    col = A.colores_de(con, r, "6", "4"); assert col == {"azul": 6, "rosado": 4}, col
+    A.entrar_al_inventario(con, r, 10, "prueba", 1, col)
+    st = lambda pid, c=None: con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?" + (" AND color=?" if c else ""), (pid, c) if c else (pid,)).fetchone()[0]
+    assert (st(15, "azul"), st(15, "rosado"), st(22), st(23)) == (6, 4, -6, -4), (st(15, "azul"), st(15, "rosado"), st(22), st(23))
     import inspect
     assert "if armado else 0" in inspect.getsource(A.descontar_inventario), "lo que tiene stock propio no debe gastar materiales al venderse"
 

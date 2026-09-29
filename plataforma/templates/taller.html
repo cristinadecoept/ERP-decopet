@@ -29,13 +29,14 @@
  <td class="num" style="padding-right:18px">{{ l.cantidad }}</td>
  <td class="mono">{% if l.fecha_esperada and l.fecha_esperada <= hoy_iso %}<b>hoy</b>{% elif l.fecha_esperada %}{{ l.fecha_esperada|dia }}{% else %}—{% endif %}</td>
  <td style="padding-left:20px"><form method="post" action="/taller/llegada/{{ l.id }}" style="display:flex;gap:6px;align-items:center">
-   <input name="cantidad" inputmode="numeric" value="{{ l.cantidad - (l.recibido or 0) }}" style="width:70px;text-align:right">
+   {% if l.requiere_color %}<span class="pl-azul">azul</span><input name="azul" inputmode="numeric" placeholder="0" style="width:56px;text-align:right"><span class="pl-rosado">rosado</span><input name="rosado" inputmode="numeric" placeholder="0" style="width:56px;text-align:right">
+   {% else %}<input name="cantidad" inputmode="numeric" value="{{ l.cantidad - (l.recibido or 0) }}" style="width:70px;text-align:right">{% endif %}
    <input name="nota" placeholder="¿algo vino mal?" style="width:160px">
    <button class="btn chico">Confirmar</button></form></td>
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">No hay nada pedido esperando llegar.</div>{% endif %}</div>
 
-<div class="tarjeta" style="order:1"><h3>Para armar</h3>
+<div class="tarjeta" style="order:1"><h3>Porches armados</h3>
 <table class="lineas"><tr><th>Modelo</th><th class="num" style="padding-right:18px">Listos</th><th style="padding-right:22px">Material que hay</th><th class="num" style="padding-right:26px">Puede armar</th><th style="width:230px">¿Cuántos armaron?</th></tr>
 {% for a in armables %}<tr>
  <td><b>{{ a.nombre }}</b>{% if a.color %} <span class="pl-{{ a.color }}">plato {{ a.color }}</span>{% endif %}</td>
