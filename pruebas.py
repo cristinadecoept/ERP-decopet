@@ -271,6 +271,15 @@ def _():
     assert _concepto(con) == "El Bar Gigante · pago de pedido 10 unidades", _concepto(con)
 
 
+@prueba("Las cajas de madera que llegan entran al inventario, que es de donde las saca el porche")
+def _():
+    # el porche descuenta la caja del insumo (receta); al recibirla tiene que entrar a ese mismo insumo
+    for nom, sku, entra in A.PIEZAS_PRODUCCION:
+        if nom.startswith("Caja de madera"):
+            assert sku.startswith("INS-CAJA"), f"{nom} apunta a {sku}, no a su insumo"
+            assert entra, f"{nom} está marcada para no entrar al inventario"
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

@@ -3178,7 +3178,8 @@ def recurrente_toggle(request: Request, cid: int, con=Depends(db)):
 # Lo que se manda a producir (trabajo de carpintería). Cada pieza apunta al producto del catálogo al que pertenece;
 # las cajas de madera son solo una parte de El Porche (falta grama, cartón, placa), así que al recibirlas NO entran como producto terminado.
 PIEZAS_PRODUCCION = [
-    ("Caja de madera mediana", "PRO-M", False), ("Caja de madera grande", "PRO-G", False),
+    # las cajas entran como insumo: el porche las descuenta de ahí al venderse (ver receta)
+    ("Caja de madera mediana", "INS-CAJAM", True), ("Caja de madera grande", "INS-CAJAG", True),
     ("Comedor Mini", "COM-10", True), ("Comedor Pequeño", "COM-15", True), ("Comedor Mediano", "COM-20", True),
     ("El Bar Grande", "BAR-25", True), ("El Bar Gigante", "BAR-30", True),
     ("Slow Chow Mini", "SLOW-10", True), ("Slow Chow Pequeño", "SLOW-15", True), ("Slow Chow Mediano", "SLOW-20", True), ("Slow Chow Gigante", "SLOW-30", True),
@@ -3298,7 +3299,7 @@ def produccion_recibir(request: Request, pid: int, cantidad: int = Form(...), co
     if r:
         hoy = datetime.date.today().isoformat(); uid = uid_de(request)
         terminado = next((ok for (nom, _, ok) in PIEZAS_PRODUCCION if nom == (r["pieza"] or "")), True)
-        if terminado and r["producto_id"]:   # comedores y rampas llegan listos; las cajas de madera y las muestras no son producto terminado
+        if terminado and r["producto_id"]:   # comedores, rampas y cajas entran al inventario; las muestras no
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)", (r["producto_id"], hoy, "entrada", cantidad, f"producción #{pid}" + (f" · {r['responsable']}" if r["responsable"] else ""), uid))
         total = r["recibido"] + cantidad
         con.execute("UPDATE produccion SET recibido=?, estado=?, recibido_en=? WHERE id=?", (total, "recibido" if total >= r["cantidad"] else "en_proceso", hoy if total >= r["cantidad"] else None, pid))

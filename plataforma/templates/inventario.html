@@ -10,7 +10,7 @@
 <div class="tabla"><table><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th class="num">Cantidad</th><th>Nota</th><th>Quién</th></tr>
 {% for m in movs %}<tr><td class="mono">{{ m.fecha|dia }}</td><td>{{ m.producto }}</td><td class="mini">{{ m.tipo }}{% if m.orden_id and rol != 'taller' %} · orden{% endif %}</td><td class="num" style="color:{{ 'var(--verde-osc)' if m.cantidad>0 else '#b45a1c' }}">{{ '+' if m.cantidad>0 }}{{ m.cantidad }}</td><td class="mini">{{ m.nota or '' }}</td><td class="mini">{{ m.usuario or 'sistema' }}</td></tr>
 {% else %}<tr><td colspan="6" class="vacio">Sin movimientos. Registra el conteo inicial con "+ Entrada / ajuste".</td></tr>{% endfor %}</table></div>
-<p class="mini" style="margin-top:8px">Los porches no se almacenan (se arman el día que salen); la grama y las cajas se llevarán en Producción. La malla descuenta del mismo stock tanto si se vende sola como si va agregada al porche.</p>
+<p class="mini" style="margin-top:8px">Los porches no se almacenan (se arman el día que salen); la grama se lleva en Producción. La malla descuenta del mismo stock tanto si se vende sola como si va agregada al porche.</p>
 <script>const CONCOLOR={{ productos|selectattr('requiere_color')|map(attribute='id')|list|tojson }};
 function invColor(){const v=+document.getElementById('inv-prod').value;document.getElementById('inv-color-w').hidden=!CONCOLOR.includes(v);}
 invColor();</script>
