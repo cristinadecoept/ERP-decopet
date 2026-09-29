@@ -838,3 +838,7 @@ html.oscuro .cat-p{background:rgba(255,255,255,.1)}
 .cf-cuerpo .lineas td:last-child{padding-right:0}
 .cf-cuerpo .lineas .pago{white-space:nowrap}
 .cf-b .bloqueado{border:0;opacity:.5}
+
+/* Taller: lo pendiente arriba, lo vacío abajo y en chiquito */
+.taller-col{display:flex;flex-direction:column;gap:16px}.taller-col>.tarjeta{display:block;width:100%;margin:0}
+.tarjeta.vacia{display:flex!important;align-items:baseline;gap:14px;padding-top:12px;padding-bottom:12px}.tarjeta.vacia h3{margin:0}.tarjeta.vacia .vacio{padding:0;text-align:left;font-size:13px}

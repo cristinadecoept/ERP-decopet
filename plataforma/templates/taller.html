@@ -1,7 +1,9 @@
 {% extends "base.html" %}{% block titulo %}Taller · Decopet{% endblock %}{% block cuerpo %}
 <div class="fila-titulo"><div><h1>Hoy en el taller</h1><div class="sub">{{ fecha_larga }}</div></div></div>
 
-<div class="tarjeta" style="margin-bottom:16px"><h3>Pick-up · por entregar</h3>
+{# Lo que tiene algo pendiente sube; lo que está vacío baja al final, en chiquito. #}
+<div class="taller-col">
+<div class="tarjeta {{ '' if pickups else 'vacia' }}" style="order:{{ 0 if pickups else 3 }}"><h3>Pick-up · por entregar</h3>
 {% if pickups %}<table class="lineas"><tr><th>Quién viene</th><th>Qué se lleva</th><th>Para cuándo</th><th></th></tr>
 {% for p in pickups %}<tr>
  <td><b>{{ p.quien }}</b>{% if p.falta_cobrar %} <span class="ln-alerta">cobrar antes de entregar</span>{% endif %}</td>
@@ -11,7 +13,7 @@
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">Nadie tiene que venir a buscar nada ahora mismo.</div>{% endif %}</div>
 
-<div class="tarjeta" style="margin-bottom:16px"><h3>Lo que se lleva cada despachador</h3>
+<div class="tarjeta {{ '' if salidas else 'vacia' }}" style="order:{{ 0 if salidas else 3 }}"><h3>Lo que se lleva cada despachador</h3>
 {% if salidas %}<table class="lineas">{% for g in salidas %}<tr>
  <td style="width:150px"><b>{{ g.quien_lleva }}</b></td>
  <td>{% if g.cosas %}<div>{{ g.cosas }}</div>{% endif %}
@@ -19,21 +21,7 @@
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">Hoy no se lleva nada nadie.</div>{% endif %}</div>
 
-<div class="tarjeta" style="margin-bottom:16px"><h3>Porches armados</h3>
-<table class="lineas"><tr><th>Modelo</th><th class="num" style="padding-right:18px">Listos</th><th style="padding-right:22px">Material que hay</th><th class="num" style="padding-right:26px">Puede armar</th><th style="width:230px">¿Cuántos armaron?</th></tr>
-{% for a in armables %}<tr>
- <td><b>{{ a.nombre }}</b></td>
- <td class="num" style="padding-right:18px"><b>{{ a.listos|int }}</b></td>
- <td style="padding-right:22px">{% for m in a.materiales %}<div class="mini">{{ m.hay }} × {{ m.nombre|lower }}{% if a.materiales|length > 1 and m.nombre == a.tope.nombre %} · es lo que frena{% endif %}</div>{% endfor %}</td>
-<td class="num" style="padding-right:26px">{% if a.alcanza %}<b>{{ a.alcanza }}</b>{% else %}<span class="ln-alerta">0</span>{% endif %}</td>
- <td><form method="post" action="/taller/armar" style="display:flex;gap:6px;align-items:center">
-   <input type="hidden" name="producto_id" value="{{ a.id }}">
-   <input name="cantidad" inputmode="numeric" placeholder="0" style="width:70px;text-align:right">
-   <button class="btn chico">Armamos</button></form></td>
-</tr>{% endfor %}</table>
-<div class="mini" style="margin-top:8px">Al anotarlos, la madera sale del inventario y quedan como porches listos. Cuando se venda uno, sale de aquí.</div></div>
-
-<div class="tarjeta"><h3>Lo que tiene que llegar</h3>
+<div class="tarjeta {{ '' if llegadas else 'vacia' }}" style="order:{{ 0 if llegadas else 3 }}"><h3>Lo que tiene que llegar</h3>
 {% if llegadas %}<table class="lineas"><tr><th>Qué</th><th>Quién lo trae</th><th class="num" style="padding-right:18px">Esperados</th><th style="padding-right:14px">Cuándo</th><th style="width:330px;padding-left:20px">¿Cuántos llegaron?</th></tr>
 {% for l in llegadas %}<tr>
  <td><b>{{ l.producto or l.pieza or l.descripcion or 'Pedido' }}</b>{% if l.recibido %}<div class="mini">ya llegaron {{ l.recibido }}</div>{% endif %}</td>
@@ -47,11 +35,26 @@
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">No hay nada pedido esperando llegar.</div>{% endif %}</div>
 
-<div class="tarjeta" style="margin-top:16px"><h3>Avisarle a Cristina</h3>
+<div class="tarjeta" style="order:1"><h3>Porches armados</h3>
+<table class="lineas"><tr><th>Modelo</th><th class="num" style="padding-right:18px">Listos</th><th style="padding-right:22px">Material que hay</th><th class="num" style="padding-right:26px">Puede armar</th><th style="width:230px">¿Cuántos armaron?</th></tr>
+{% for a in armables %}<tr>
+ <td><b>{{ a.nombre }}</b></td>
+ <td class="num" style="padding-right:18px"><b>{{ a.listos|int }}</b></td>
+ <td style="padding-right:22px">{% for m in a.materiales %}<div class="mini">{{ m.hay }} × {{ m.nombre|lower }}{% if a.materiales|length > 1 and m.nombre == a.tope.nombre %} · es lo que frena{% endif %}</div>{% endfor %}</td>
+<td class="num" style="padding-right:26px">{% if a.alcanza %}<b>{{ a.alcanza }}</b>{% else %}<span class="ln-alerta">0</span>{% endif %}</td>
+ <td><form method="post" action="/taller/armar" style="display:flex;gap:6px;align-items:center">
+   <input type="hidden" name="producto_id" value="{{ a.id }}">
+   <input name="cantidad" inputmode="numeric" placeholder="0" style="width:70px;text-align:right">
+   <button class="btn chico">Armamos</button></form></td>
+</tr>{% endfor %}</table>
+<div class="mini" style="margin-top:8px">Al anotarlos, la madera sale del inventario y quedan como porches listos. Cuando se venda uno, sale de aquí.</div></div>
+
+<div class="tarjeta" style="order:2"><h3>Avisarle a Cristina</h3>
 <form method="post" action="/taller/nota" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
  <input name="texto" placeholder="se acabó la cinta negra · llegaron 2 cajas partidas · se dañó una rampa" style="flex:1;min-width:260px" maxlength="400" required>
  <button class="btn chico">Enviar aviso</button>
 </form>
 {% if notas %}<table class="lineas" style="margin-top:10px"><tr><th style="width:90px">Cuándo</th><th>Aviso</th><th style="width:90px">Estado</th></tr>
 {% for n in notas %}<tr><td class="mono">{{ n.fecha|dia }}</td><td>{{ n.texto }}</td><td>{% if n.visto %}<span class="pago pagada">visto</span>{% else %}<span class="pago por_confirmar">enviado</span>{% endif %}</td></tr>{% endfor %}</table>{% endif %}</div>
+</div>
 {% endblock %}
