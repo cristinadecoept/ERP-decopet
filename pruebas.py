@@ -371,6 +371,18 @@ def _():
         assert f'"{t}"' in fuente or t == "ordenes", f"eliminar_cliente no borra {t}"
 
 
+@prueba("Logística tiene lista cerrada: no llega a plata, catálogo, exportes ni al manual técnico")
+def _():
+    permitido, _casa = A.PUERTAS["logistica"]
+    for ruta in ("/cashflow", "/finanzas", "/productos", "/historial", "/historial/exportar", "/configuracion", "/produccion", "/equipo", "/revision", "/tarifas", "/docs", "/openapi.json"):
+        assert not ruta.startswith(permitido), f"Logística puede abrir {ruta}"
+    assert A.app.openapi_url is None and A.app.docs_url is None, "el manual técnico está publicado"
+    o = {"numero": "#1", "cliente": "Ana", "telefono": "", "lineas": [], "tipo_entrega": "delivery", "fecha_prometida": None, "franja": None,
+         "agencia": None, "guia": None, "direccion": "", "estado_pago": "contra_entrega", "monto_contra_entrega": 20, "total": 20, "pagado": 0,
+         "forma_pago_prevista": "", "notas_entrega": None, "notas_cliente": []}
+    assert "$" not in A.resumen_despacho(o, con_plata=False) and "$20" in A.resumen_despacho(o)
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

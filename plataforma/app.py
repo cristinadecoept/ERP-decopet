@@ -17,7 +17,7 @@ DB = DATOS / "plataforma.db"
 DOCS_DIR = DATOS / "documentos"
 FOTOS_DIR = DATOS / "fotos"
 for _d in (DOCS_DIR, FOTOS_DIR): _d.mkdir(parents=True, exist_ok=True)
-app = FastAPI(title="Decopet")
+app = FastAPI(title="Decopet", docs_url=None, redoc_url=None, openapi_url=None)   # sin manual técnico público: nadie necesita ver cómo está hecho por dentro
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 (BASE / "data" / "fotos").mkdir(parents=True, exist_ok=True)
 app.mount("/fotos", StaticFiles(directory=FOTOS_DIR), name="fotos")
@@ -198,6 +198,10 @@ def db():
 PUERTAS = {
     "taller":      (("/taller", "/inventario", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/taller"),
     "despachador": (("/mis-entregas", "/ordenes/", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
+    # Logística coordina y entrega: ve órdenes, clientes y despachos, nunca plata ni catálogo con precios.
+    # Lista cerrada: una página nueva no la ve hasta que se agregue aquí a propósito.
+    "logistica":   (("/inicio", "/operaciones", "/ordenes", "/clientes", "/mascotas", "/inventario", "/despachadores",
+                     "/packs", "/prepagados", "/seguimientos", "/miembros", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/operaciones"),
 }
 TALLER_PERMITIDO = PUERTAS["taller"][0]
 
@@ -863,6 +867,7 @@ def cargar_orden(con, oid):
     o["ganancia"] = round((o["total"] or 0) - (o["iva"] or 0) - (o["comision"] or 0) - (o["costo_productos"] or 0) - (o["costo_entrega"] or 0), 2)
     o["margen"] = round(o["ganancia"] / o["total"] * 100, 1) if o["total"] else 0
     o["resumen"] = resumen_despacho(o)
+    o["resumen_sin_plata"] = resumen_despacho(o, con_plata=False)
     return o
 
 
@@ -882,7 +887,7 @@ def descripcion_linea(l):
     return " · ".join(partes)
 
 
-def resumen_despacho(o):
+def resumen_despacho(o, con_plata=True):
     L = [f"📦 {o['numero']} — {o['cliente']}" + (f" · {o['telefono']}" if o["telefono"] else "")]
     for l in o["lineas"]:
         L.append("• " + descripcion_linea(l))
@@ -895,7 +900,11 @@ def resumen_despacho(o):
     elif o["tipo_entrega"] != "pickup" and o["direccion"]:
         L.append(f"📍 {o['zona'] + ', ' if o['zona'] else ''}{o['direccion']}" + (f" — recibe {o['receptor_nombre']}" + (f" {o['receptor_telefono']}" if o["receptor_telefono"] else "") if o["receptor_nombre"] else ""))
         if o["maps"]: L.append(f"🗺 {o['maps']}")
-    if o["estado_pago"] == "contra_entrega":
+    if not con_plata:   # para quien no ve dinero: qué hacer, sin montos (el despachador ve el suyo en su pantalla)
+        if o["estado_pago"] == "contra_entrega": L.append("💵 CONTRA ENTREGA: se cobra en efectivo")
+        elif o["estado_pago"] in ("abonada", "sin_pago", "rechazado"): L.append("💵 Falta cobrar: lo coordina Cristina")
+        else: L.append("✅ Pagado, no cobrar nada")
+    elif o["estado_pago"] == "contra_entrega":
         pend = o["monto_contra_entrega"] or (o["total"] - o["pagado"])
         L.append(f"💵 CONTRA ENTREGA: cobrar {fmt_usd(pend)} en efectivo" + (f" (ya pagó {fmt_usd(o['pagado'])} por {o['forma_pago_prevista'].split(' + ')[0]})" if o["pagado"] > 0 else ""))
     elif o["estado_pago"] == "abonada": L.append(f"💵 Abonó {fmt_usd(o['pagado'])}; falta {fmt_usd(o['total'] - o['pagado'])}")
@@ -1564,7 +1573,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     por_desp = {}
     for o in activas:
         if o["despachador"] and o["fecha_op"] <= hoy and o["estado"] in ("pendiente", "en_ruta"):
-            por_desp.setdefault(o["despachador"], []).append(resumen_despacho(cargar_orden(con, o["id"])))
+            por_desp.setdefault(o["despachador"], []).append(resumen_despacho(cargar_orden(con, o["id"]), con_plata="ver_dinero" in PERMISOS[rol]))
     # envío nacional: pedidos que todavía nadie ha llevado a la oficina de la agencia
     por_llevar = con.execute("""SELECT o.id, o.numero, o.agencia, o.ciudad, o.estado, c.nombre cliente,
                                        COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha
@@ -4447,6 +4456,7 @@ def texto_ruta(filas, hoy):
 
 @app.get("/despachadores/{did}", response_class=HTMLResponse)
 def despachador_ficha(request: Request, did: int, con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/despachadores", status_code=303)   # lo que se le debe y se le pagó: solo Cristina
     d = con.execute("SELECT * FROM despachadores WHERE id=?", (did,)).fetchone()
     if not d: return RedirectResponse("/despachadores", status_code=303)
     hoy = datetime.date.today(); r = resumen_despachador(con, d["nombre"], hoy)
