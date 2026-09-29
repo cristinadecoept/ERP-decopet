@@ -1,8 +1,19 @@
 {% extends "base.html" %}{% block titulo %}Entrar · Decopet{% endblock %}{% block cuerpo %}
 <div class="entrar-w">
- <i class="entrar-luz entrar-luz-v" aria-hidden="true"></i><i class="entrar-luz entrar-luz-n" aria-hidden="true"></i>
- <div class="entrar-c">
-  <img src="/static/logo-crema.png" alt="Decopet" class="entrar-logo">
+ <header class="entrar-top"><span class="entrar-marca-l"><img src="/static/logo-verde-recorte.png" alt="Decopet" class="entrar-logo"><sup class="entrar-r">®</sup></span></header>
+ <main class="entrar-m">
+  <section class="entrar-izq" aria-hidden="true">
+   <h2 class="entrar-frase">Todo Decopet,<br>en un solo lugar</h2>
+   <div class="entrar-dibujo"><i class="entrar-halo"></i>
+    <svg viewBox="0 0 320 240" fill="none" stroke="#1d1d1b" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+     <path d="M70 128h180"/><path d="M78 128c6 42 40 66 82 66s76-24 82-66"/>
+     <path d="M108 188l-18 34M212 188l18 34M82 222h36M202 222h36"/>
+     <circle cx="120" cy="116" r="11"/><circle cx="144" cy="110" r="12"/><circle cx="170" cy="113" r="11"/><circle cx="195" cy="109" r="12"/><circle cx="160" cy="98" r="9"/>
+     <path d="M240 62c10 0 10-14 20-14s10 14 0 18c10 4 10 18 0 18s-10-14-20-14-10 14-20 14 0-14 0-18-10-18 0-18 10 14 20 14z" stroke-width="3"/>
+     <path d="M62 70l4 4M58 86l6-2M270 150l6 3M280 136l4-5"/>
+    </svg></div>
+  </section>
+  <div class="entrar-c">
   {% if primera_vez %}
    <h1>Ponle una clave a tu ERP</h1>
    <p class="mini">Hasta ahora cualquiera que abriera esta dirección entraba como administradora. Elige tu clave: no queda escrita en ningún lado y nadie más la ve, ni yo.</p>
@@ -21,6 +32,7 @@
     <button class="btn">Entrar</button>
    </form>
   {% endif %}
- </div>
+  </div>
+ </main>
 </div>
 {% endblock %}
