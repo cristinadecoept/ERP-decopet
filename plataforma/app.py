@@ -415,11 +415,18 @@ def quien_es(request: Request):
     """El usuario conectado, o None. Se lee de la ficha del navegador, no de un rol escrito a mano."""
     ficha = request.cookies.get("sesion")
     if not ficha: return None
-    con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
+    con = sqlite3.connect(DB, timeout=0.5); con.row_factory = sqlite3.Row
     try:
         u = con.execute("""SELECT u.* FROM sesiones s JOIN usuarios u ON u.id=s.usuario_id
                            WHERE s.ficha=? AND s.vence_en >= datetime('now','localtime') AND u.activo=1""", (ficha,)).fetchone()
-        if u: con.execute("UPDATE sesiones SET visto_en=datetime('now','localtime') WHERE ficha=?", (ficha,)); con.commit()
+        # "visto por última vez": como mucho cada 5 minutos, y si la base está ocupada guardando otra
+        # cosa (esta misma petición a mitad de un cambio), se deja para la próxima. Nunca debe tumbar nada.
+        if u:
+            try:
+                con.execute("""UPDATE sesiones SET visto_en=datetime('now','localtime') WHERE ficha=?
+                               AND (visto_en IS NULL OR visto_en < datetime('now','localtime','-5 minutes'))""", (ficha,)); con.commit()
+            except sqlite3.OperationalError:
+                pass
         return dict(u) if u else None
     finally:
         con.close()
