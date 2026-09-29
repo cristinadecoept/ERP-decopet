@@ -843,3 +843,7 @@ html.oscuro .cat-p{background:rgba(255,255,255,.1)}
 .taller-col{display:flex;flex-direction:column;gap:16px}.taller-col>.tarjeta{display:block;width:100%;margin:0}
 .tarjeta.vacia{display:flex!important;align-items:baseline;gap:14px;padding-top:12px;padding-bottom:12px}.tarjeta.vacia h3{margin:0}.tarjeta.vacia .vacio{padding:0;text-align:left;font-size:13px}
 .pack-tag{display:inline-flex;align-items:center;gap:4px;line-height:1;padding:3px 7px 3px 6px;vertical-align:middle}.pack-tag>span{font-size:12px;line-height:1}
+
+/* Safari dibuja listas y campos con su estilo propio si no sabe que la página es oscura */
+html{color-scheme:light}html.oscuro{color-scheme:dark}
+select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color:var(--tinta)}
