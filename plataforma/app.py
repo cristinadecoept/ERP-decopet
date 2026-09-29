@@ -117,8 +117,10 @@ ORIGENES = ["Instagram", "Recomendación de otro cliente", "Página web / Google
 CONCEPTOS_EXTRA = ["Delivery", "Personalización", "Propina", "Repuesto adicional", "Ajuste", "Otro"]   # cosas que un cliente le agrega a una orden ya hecha
 
 PERMISOS = {
-    "admin": {"crear", "pago_por_confirmar", "confirmar_pago", "rechazar_pago", "precios", "coordinar", "despachar", "entregar", "editar_entrega", "incidencia", "reprogramar", "cancelar", "ver_dinero", "contra_entrega"},
-    "logistica": {"crear", "coordinar", "entregar", "editar_entrega", "incidencia", "reprogramar"},
+    "admin": {"ver_cobros", "crear", "pago_por_confirmar", "confirmar_pago", "rechazar_pago", "precios", "coordinar", "despachar", "entregar", "editar_entrega", "incidencia", "reprogramar", "cancelar", "ver_dinero", "contra_entrega"},
+    # ver_cobros: precios, totales y pagos de una orden (lo necesita para vender y coordinar).
+    # ver_dinero: Cash flow, Resultados, márgenes, costos, cajas. Eso solo Cristina.
+    "logistica": {"ver_cobros", "crear", "coordinar", "entregar", "editar_entrega", "incidencia", "reprogramar"},
     "taller": {"taller"},   # Isaías y Manawa: solo su pantalla. Nada de clientes, órdenes ni dinero.
     # El despachador SÍ ve dinero, pero solo el suyo: lo que se le debe por sus entregas.
     # No ve el de la empresa ni el de nadie más. Por eso es un rol aparte de Logística.
@@ -1420,6 +1422,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     registrar(con, oid, uid, "creada", f"Orden creada por canal {canal}")
     descontar_inventario(con, oid, uid)
     ahora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); tasa_v = tasa
+    confirma = "confirmar_pago" in PERMISOS[rol]
     digital = sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo"))
     efectivo = sum(m for fo, m, _ in pagos_in if fo.startswith("Efectivo"))
     for fo, m, ref in pagos_in:
@@ -1431,11 +1434,16 @@ async def crear_orden(request: Request, con=Depends(db)):
             queda = credito_de(con, cid)
             registrar(con, oid, uid, "pago", f"Usó {fmt_usd(m)} de su saldo a favor" + (f" · le quedan {fmt_usd(queda)}" if queda > 0.009 else " · no le queda saldo"))
             continue
-        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,'confirmado',?,?)",
-                    (oid, fo, m, round(m * tasa_v, 2) if es_bolivares(fo) else m, "VES" if es_bolivares(fo) else "USD", tasa_v if es_bolivares(fo) else None, FORMA_CUENTA.get(fo), ref or None, ahora, uid, ahora))
+        # si lo registra alguien que no confirma pagos (Logística), queda por revisar hasta que Cristina lo vea
+        est = "confirmado" if confirma else "por_confirmar"
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (oid, fo, m, round(m * tasa_v, 2) if es_bolivares(fo) else m, "VES" if es_bolivares(fo) else "USD", tasa_v if es_bolivares(fo) else None, FORMA_CUENTA.get(fo), ref or None, ahora, est,
+                     uid if confirma else None, ahora if confirma else None))
     # Cashea se trata como cualquier canal: si Cristina marca el pago completo, la orden queda pagada.
     # El seguimiento de las cuotas de Cashea queda para más adelante.
-    if digital >= total - 0.01: ep = "pagada"
+    por_revisar = 0 if confirma else sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo") and fo != SALDO_FAVOR)
+    if por_revisar > 0.009: ep = "por_confirmar"
+    elif digital >= total - 0.01: ep = "pagada"
     elif digital + efectivo >= total - 0.01: ep = "contra_entrega"
     else: ep = estado_pago_de(digital, total)
     con.execute("UPDATE ordenes SET estado_pago=?, monto_contra_entrega=? WHERE id=?", (ep, round(efectivo, 2) if ep == "contra_entrega" else 0, oid))
@@ -1573,7 +1581,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     por_desp = {}
     for o in activas:
         if o["despachador"] and o["fecha_op"] <= hoy and o["estado"] in ("pendiente", "en_ruta"):
-            por_desp.setdefault(o["despachador"], []).append(resumen_despacho(cargar_orden(con, o["id"]), con_plata="ver_dinero" in PERMISOS[rol]))
+            por_desp.setdefault(o["despachador"], []).append(resumen_despacho(cargar_orden(con, o["id"]), con_plata="ver_cobros" in PERMISOS[rol]))
     # envío nacional: pedidos que todavía nadie ha llevado a la oficina de la agencia
     por_llevar = con.execute("""SELECT o.id, o.numero, o.agencia, o.ciudad, o.estado, c.nombre cliente,
                                        COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha
