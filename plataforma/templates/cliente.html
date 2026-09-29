@@ -132,4 +132,8 @@ document.querySelectorAll('form').forEach(f=>{
    <button class="btn chico" name="accion" value="sumar">Sumar</button><button class="btn sec chico" name="accion" value="restar">Restar</button>
   </form></details>
  </div></div>{% endif %}
+{% if rol=='admin' %}{% set n_ord = ordenes|length %}<details style="margin-top:22px" {{ 'open' if request.query_params.get('err')=='confirmar' }}><summary class="no-link" style="font-size:13px;color:#c94a2f">Eliminar cliente</summary>
+<div class="tarjeta" style="margin-top:10px;display:block"><p style="margin:0 0 10px">Se borra <b>{{ c.nombre }}</b>{% if n_ord %} con sus <b>{{ n_ord }} orden{{ 'es' if n_ord != 1 }}</b>{% endif %}, sus mascotas, direcciones, notas{% if credito %} y su saldo a favor{% endif %}. <b>No se puede deshacer.</b></p>
+{% if request.query_params.get('err')=='confirmar' %}<p class="ln-alerta" style="margin:0 0 8px">El nombre no coincide. No se borró nada.</p>{% endif %}
+<form method="post" action="/clientes/{{ c.id }}/eliminar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input name="confirmar" placeholder="escribe {{ c.nombre }} para confirmar" autocomplete="off" style="flex:1;min-width:220px" required><button class="btn pel chico">Eliminar para siempre</button></form></div></details>{% endif %}
 {% endblock %}

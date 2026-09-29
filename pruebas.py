@@ -363,9 +363,12 @@ def _():
     con = base_limpia(); con.execute("PRAGMA foreign_keys=ON")
     # cualquier tabla nueva que apunte a ordenes tiene que estar en la lista de eliminar_orden
     import inspect
-    fuente = inspect.getsource(A.eliminar_orden)
+    fuente = inspect.getsource(A.borrar_orden)
     for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE '%REFERENCES ordenes%'"):
-        assert f'"{t}"' in fuente or t in ("entregas_repuesto",), f"eliminar_orden no borra {t}"
+        assert f'"{t}"' in fuente or t in ("entregas_repuesto",), f"borrar_orden no borra {t}"
+    fuente = inspect.getsource(A.eliminar_cliente)
+    for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name!='clientes' AND sql LIKE '%REFERENCES clientes%'"):
+        assert f'"{t}"' in fuente or t == "ordenes", f"eliminar_cliente no borra {t}"
 
 
 print("\nRECONSTRUIR DESDE CERO")

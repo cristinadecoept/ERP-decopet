@@ -1134,11 +1134,34 @@ def eliminar_orden(request: Request, oid: int, con=Depends(db)):
     """Borra la orden por completo (solo Cristina). Se usa para pruebas o errores de carga; para una venta real que se cae, usar Cancelar."""
     rol = rol_de(request)
     if "ver_dinero" not in PERMISOS[rol]: return volver(oid, request)
+    borrar_orden(con, oid); con.commit()
+    return RedirectResponse(request.query_params.get("volver") or "/ordenes", status_code=303)
+
+
+def borrar_orden(con, oid):
+    """Borra una orden y todo lo que cuelga de ella. No hace commit."""
     con.execute("DELETE FROM entregas_repuesto WHERE pack_id IN (SELECT id FROM packs WHERE orden_id=?)", (oid,))
     # el saldo a favor que dejó o que usó esta orden también se va: borrarla es como si nunca hubiera existido
     for tb in ("packs", "repuestos_prepagados", "pagos", "historial", "incidencias", "orden_lineas", "gastos", "mov_inventario", "fotos", "credito_cliente"): con.execute(f"DELETE FROM {tb} WHERE orden_id=?", (oid,))
-    con.execute("DELETE FROM ordenes WHERE id=?", (oid,)); con.commit()
-    return RedirectResponse(request.query_params.get("volver") or "/ordenes", status_code=303)
+    con.execute("DELETE FROM ordenes WHERE id=?", (oid,))
+
+
+@app.post("/clientes/{cid}/eliminar")
+def eliminar_cliente(request: Request, cid: int, confirmar: str = Form(""), con=Depends(db)):
+    """Borra un cliente con todo lo suyo: órdenes, mascotas, direcciones, notas, packs, saldo a favor.
+    Solo Cristina, y solo si escribe el nombre del cliente: no se puede deshacer."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    c = con.execute("SELECT nombre FROM clientes WHERE id=?", (cid,)).fetchone()
+    if not c: return RedirectResponse("/clientes", status_code=303)
+    if " ".join(confirmar.split()).lower() != " ".join((c["nombre"] or "").split()).lower():
+        return RedirectResponse(f"/clientes/{cid}?err=confirmar", status_code=303)
+    for (oid,) in con.execute("SELECT id FROM ordenes WHERE cliente_id=?", (cid,)).fetchall(): borrar_orden(con, oid)
+    con.execute("DELETE FROM entregas_repuesto WHERE pack_id IN (SELECT id FROM packs WHERE cliente_id=?)", (cid,))
+    for tb in ("packs", "repuestos_prepagados", "seguimientos", "fotos", "credito_cliente", "notas_cliente", "direcciones", "mascotas"):
+        con.execute(f"DELETE FROM {tb} WHERE cliente_id=?", (cid,))
+    con.execute("UPDATE clientes SET referido_id=NULL WHERE referido_id=?", (cid,))   # a quienes recomendó no se les borra nada
+    con.execute("DELETE FROM clientes WHERE id=?", (cid,)); con.commit()
+    return RedirectResponse("/clientes", status_code=303)
 
 
 @app.get("/ordenes/{oid}/eliminar")
