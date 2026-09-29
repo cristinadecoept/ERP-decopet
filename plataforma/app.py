@@ -3253,11 +3253,17 @@ def recurrentes(request: Request, con=Depends(db)):
 async def recurrente_crear(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     f = await request.form()
-    con.execute("""INSERT INTO compromisos (nombre, categoria, subcategoria, proveedor, monto, moneda, frecuencia, dia, cuenta_id, nota, unidad, precio_unitario)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (f["nombre"].strip(), f.get("categoria") or None, f.get("subcategoria") or None, f.get("proveedor") or None, float(f["monto"]) if f.get("monto") else None, f.get("moneda") or "USD",
-                 f["frecuencia"], int(f["dia"]) if f.get("dia") not in (None, "") else None, int(f["cuenta_id"]) if f.get("cuenta_id") else None, f.get("nota") or None,
-                 (f.get("unidad") or "").strip() or None, cifra(f.get("precio_unitario")) or None))
+    datos = (f["nombre"].strip(), f.get("categoria") or None, f.get("subcategoria") or None, f.get("proveedor") or None, cifra(f.get("monto")) if f.get("monto") else None, f.get("moneda") or "USD",
+             f["frecuencia"], int(f["dia"]) if f.get("dia") not in (None, "") and f["frecuencia"] != "quincenal" else None,
+             int(f["cuenta_id"]) if f.get("cuenta_id") else None, f.get("nota") or None,
+             (f.get("unidad") or "").strip() or None, cifra(f.get("precio_unitario")) or None)
+    cid = int(f["id"]) if (f.get("id") or "").isdigit() else 0
+    if cid:   # editar uno que ya existe: lo pagado antes no cambia, lo que viene sigue la regla nueva
+        con.execute("""UPDATE compromisos SET nombre=?, categoria=?, subcategoria=?, proveedor=?, monto=?, moneda=?, frecuencia=?, dia=?,
+                       cuenta_id=?, nota=?, unidad=?, precio_unitario=? WHERE id=?""", datos + (cid,))
+    else:
+        con.execute("""INSERT INTO compromisos (nombre, categoria, subcategoria, proveedor, monto, moneda, frecuencia, dia, cuenta_id, nota, unidad, precio_unitario)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", datos)
     con.commit(); return RedirectResponse("/finanzas/recurrentes", status_code=303)
 
 
