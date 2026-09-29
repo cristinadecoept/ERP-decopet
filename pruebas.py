@@ -415,6 +415,7 @@ def _():
 @prueba("Una llegada no se anota dos veces si el formulario se manda dos veces seguidas")
 def _():
     con = base_limpia()
+    con.execute("INSERT INTO productos (id,sku,nombre,tipo,activo) VALUES (1,'INS-CAJAM','Caja de madera mediana','insumo',1)")
     con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad,nota,usuario_id,creado_en) VALUES (1,'2026-09-28','entrada',10,'producción #1 · Walter',1,datetime('now','localtime'))")
     con.commit()
     assert A.llegada_repetida(con, 1, 1) and not A.llegada_repetida(con, 12, 1)
