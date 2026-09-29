@@ -668,7 +668,9 @@ def inicio(request: Request, con=Depends(db)):
                        WHERE pr.estado='en_proceso' AND pr.fecha_esperada IS NOT NULL AND pr.fecha_esperada < ? ORDER BY pr.fecha_esperada""", (h,))]
     d = con.execute("""SELECT COUNT(DISTINCT COALESCE(pr.responsable,'—')) n, COALESCE(SUM(pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0)),0) monto
                        FROM produccion pr WHERE pr.estado!='cancelado' AND pr.costo IS NOT NULL
-                       AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009""").fetchone()
+                       AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009
+                       -- el resto se paga al entregar: avisa el día de entrega, o cuando ya llegó algo
+                       AND ((pr.fecha_esperada IS NOT NULL AND pr.fecha_esperada <= ?) OR pr.recibido > 0 OR pr.estado!='en_proceso')""", (h,)).fetchone()
     c["prov_debe"] = d["monto"]; c["prov_n"] = d["n"]
     return render(request, "inicio.html", seccion="inicio", c=c, v=v, prom=prom, disponible=disponible, fecha_larga=fecha_larga(), serie=serie, tipos=tipos, hoy_lista=hoy_lista, bajos=bajos, llega=llega, proximos=proximos, seg=seg_resumen, pagos_pend=pagos_pend, cuentas_act=cuentas_act, armados=armados, n_armados=n_armados, avisos_taller=avisos_taller, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, hoy_iso=datetime.date.today().isoformat())
 
