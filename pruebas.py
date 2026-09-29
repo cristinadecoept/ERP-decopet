@@ -242,6 +242,35 @@ def _():
 
 
 # ─────────────────────────────────────────────── poder reconstruir el ERP
+print("\nPAGOS A PRODUCCIÓN")
+
+def _pedido(con, recibido=0):
+    con.execute("INSERT INTO produccion (id,pieza,cantidad,recibido,costo,estado,responsable,fecha_pedido) VALUES (1,'El Bar Gigante',10,?,105,'en_proceso','Walter','2026-09-28')", (recibido,))
+    con.commit()
+
+def _concepto(con):
+    return con.execute("SELECT descripcion FROM gastos ORDER BY id DESC LIMIT 1").fetchone()[0]
+
+@prueba("Pagar una parte antes de que llegue es un adelanto")
+def _():
+    con = base_limpia(); _pedido(con)
+    A.pagar_produccion(con, 1, 100, "", "2026-09-28", "", 1)
+    assert _concepto(con) == "El Bar Gigante · adelanto de pedido 10 unidades", _concepto(con)
+
+@prueba("El pago que salda el pedido es el pago final, aunque no haya llegado")
+def _():
+    con = base_limpia(); _pedido(con)
+    A.pagar_produccion(con, 1, 100, "", "2026-09-28", "", 1)
+    A.pagar_produccion(con, 1, 5, "", "2026-09-28", "", 1)
+    assert _concepto(con) == "El Bar Gigante · pago final de pedido 10 unidades", _concepto(con)
+
+@prueba("Pagar todo de una vez es un pago, no un adelanto")
+def _():
+    con = base_limpia(); _pedido(con)
+    A.pagar_produccion(con, 1, 105, "", "2026-09-28", "", 1)
+    assert _concepto(con) == "El Bar Gigante · pago de pedido 10 unidades", _concepto(con)
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")
