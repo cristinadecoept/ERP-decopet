@@ -624,7 +624,8 @@ def inicio(request: Request, con=Depends(db)):
     # ninguna de las dos, cuando llega algo. Un aviso por pedido, con lo que falta pagar.
     c["toca_pagar_prov"] = [dict(r) for r in con.execute("""SELECT pr.id, COALESCE(pr.pieza, p.nombre) pieza, pr.responsable,
                             COALESCE(pr.fecha_pago, pr.fecha_esperada) fecha_pago,
-                            pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) debe
+                            pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) debe,
+                            COALESCE(pr.tipo_pedido,'produccion') tipo
                             FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
                             WHERE pr.estado!='cancelado' AND pr.costo IS NOT NULL
                               AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009
@@ -3232,9 +3233,17 @@ def precio_barnizado(con, responsable):
     r = con.execute("""SELECT i.precio FROM proveedor_items i JOIN proveedores p ON p.id=i.proveedor_id WHERE i.item='Barnizado de caja' AND (p.nombre=? OR ?='') LIMIT 1""", (responsable or "", responsable or "")).fetchone()
     return r["precio"] if r else 0
 
-def volver_produccion(con, pid):
+def volver_produccion(con, pid, extra=""):
+    """Después de pagar, recibir o editar, de vuelta a la pantalla de donde vino: Producción o Pedidos a proveedores."""
     r = con.execute("SELECT COALESCE(tipo_pedido,'produccion') t FROM produccion WHERE id=?", (pid,)).fetchone()
-    return RedirectResponse(f"/produccion?tipo={r['t'] if r else 'produccion'}", status_code=303)
+    return RedirectResponse(f"/produccion?tipo={r['t'] if r else 'produccion'}{extra}", status_code=303)
+
+
+def unidad_pedido(con, pr):
+    """En qué se pidió: cuñete, rollo, metro… Lo dice el catálogo del proveedor; si no, unidades."""
+    u = con.execute("""SELECT pi.unidad FROM proveedor_items pi LEFT JOIN proveedores pv ON pv.id=pi.proveedor_id
+                       WHERE pi.item=? ORDER BY (pv.nombre=?) DESC LIMIT 1""", (pr["pieza"] or "", pr["responsable"] or "")).fetchone()
+    return ((u[0] if u else None) or "unidad").strip().lower()
 
 
 PROVEEDORES_MADERA = ("Walter", "David")   # lo que se manda a hacer; el resto son pedidos a proveedores
@@ -3245,29 +3254,36 @@ def tipo_de_proveedor(nombre):
 
 
 @app.get("/produccion", response_class=HTMLResponse)
-def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str = "", con=Depends(db)):
-    """Todo lo que está pedido y no ha llegado: la madera que manda a hacer y lo que le compra a un proveedor."""
+def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str = "", tipo: str = "produccion", con=Depends(db)):
+    """Dos pantallas con la misma mecánica (pedir, pagar, recibir):
+      · produccion: la madera que se manda a hacer (Walter, David)
+      · proveedor:  lo que se le compra a un proveedor (pega, cinta, tela, placas, bolsas…)"""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)   # Taller es de Cristina
+    tipo = "proveedor" if tipo == "proveedor" else "produccion"
     if (q or debe) and ver == "en_proceso": ver = "todas"   # al buscar, o al venir de "le debes a X", se mira todo
     saldo_sql = "pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0)"
+    es_tipo = "COALESCE(pr.tipo_pedido,'produccion')=?"
     rows = con.execute(f"""SELECT pr.*, COALESCE(pr.pieza, p.nombre) producto FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
-                          WHERE (?='todas' OR pr.estado=?)
+                          WHERE {es_tipo} AND (?='todas' OR pr.estado=?)
                           AND (?='' OR pr.pieza LIKE ? OR pr.responsable LIKE ? OR pr.descripcion LIKE ? OR pr.nota LIKE ?)
                           AND (?='' OR (pr.responsable=? AND pr.estado!='cancelado' AND pr.costo IS NOT NULL AND {saldo_sql} > 0.009))
                           ORDER BY COALESCE(pr.fecha_esperada, pr.fecha_pedido), pr.id""",
-                       (ver, ver, q, f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", debe, debe)).fetchall()
-    n = {r[0]: r[1] for r in con.execute("SELECT estado, COUNT(*) FROM produccion GROUP BY 1")}
-    por_pagar = con.execute("""SELECT COALESCE(pr.responsable,'—') quien, SUM(pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0)) monto, COUNT(*) n
-                               FROM produccion pr WHERE pr.estado!='cancelado' AND pr.costo IS NOT NULL
-                               AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009 GROUP BY 1 ORDER BY monto DESC""").fetchall()
+                       (tipo, ver, ver, q, f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", debe, debe)).fetchall()
+    n = {r[0]: r[1] for r in con.execute(f"SELECT estado, COUNT(*) FROM produccion pr WHERE {es_tipo} GROUP BY 1", (tipo,))}
+    por_pagar = con.execute(f"""SELECT COALESCE(pr.responsable,'—') quien, SUM({saldo_sql}) monto, COUNT(*) n
+                               FROM produccion pr WHERE {es_tipo} AND pr.estado!='cancelado' AND pr.costo IS NOT NULL
+                               AND {saldo_sql} > 0.009 GROUP BY 1 ORDER BY monto DESC""", (tipo,)).fetchall()
     rows = [dict(r) | {"abonado": con.execute("SELECT COALESCE(SUM(monto),0) FROM abonos_produccion WHERE produccion_id=?", (r["id"],)).fetchone()[0],
                        "abonos": con.execute("SELECT * FROM abonos_produccion WHERE produccion_id=? ORDER BY fecha, id", (r["id"],)).fetchall()} for r in rows]
-    quienes = [r[0] for r in con.execute("SELECT nombre FROM proveedores WHERE activo=1 ORDER BY (nombre='Walter') DESC, nombre")]
-    piezas = [p[0] for p in PIEZAS_PRODUCCION]
-    for r in con.execute("SELECT DISTINCT item FROM proveedor_items ORDER BY item"):
-        if r["item"] not in piezas: piezas.append(r["item"])
+    quienes = [r[0] for r in con.execute("SELECT nombre FROM proveedores WHERE activo=1 ORDER BY (nombre='Walter') DESC, nombre")
+               if (r[0] in PROVEEDORES_MADERA) == (tipo == "produccion")]
+    if tipo == "produccion":
+        piezas = [p[0] for p in PIEZAS_PRODUCCION]
+    else:   # lo que venden los proveedores (su catálogo en Taller › Proveedores)
+        piezas = [r[0] for r in con.execute("""SELECT DISTINCT i.item FROM proveedor_items i JOIN proveedores p ON p.id=i.proveedor_id
+                                                WHERE p.activo=1 AND p.nombre NOT IN (?,?) ORDER BY i.item""", PROVEEDORES_MADERA)]
     precios = {c: {z: precio_pieza(con, z, c) for z in piezas} | {"__barnizado": precio_barnizado(con, c)} for c in quienes}
-    return render(request, "produccion.html", seccion="produccion", rows=rows, piezas=piezas,
+    return render(request, "produccion.html", seccion="produccion" if tipo == "produccion" else "compras", tipo=tipo, rows=rows, piezas=piezas,
                   carpinteros=quienes, ver=ver, n=n, debe=debe, por_pagar=por_pagar, FORMAS_PAGO=FORMAS_PAGO, precios=precios)
 
 
@@ -3316,7 +3332,7 @@ async def produccion_crear(request: Request, con=Depends(db)):
             repartido += monto
             if monto > 0:
                 pagar_produccion(con, pid_l, monto, f.get("abono_forma"), f.get("abono_fecha") or fped, "abono al hacer el pedido", uid)
-    con.commit(); return RedirectResponse("/produccion", status_code=303)
+    con.commit(); return RedirectResponse(f"/produccion?tipo={tipo_de_proveedor(quien)}", status_code=303)
 
 
 @app.post("/produccion/{pid}/recibir")
@@ -3331,7 +3347,7 @@ def produccion_recibir(request: Request, pid: int, cantidad: int = Form(...), co
         total = r["recibido"] + cantidad
         con.execute("UPDATE produccion SET recibido=?, estado=?, recibido_en=? WHERE id=?", (total, "recibido" if total >= r["cantidad"] else "en_proceso", hoy if total >= r["cantidad"] else None, pid))
         con.commit()
-    return RedirectResponse("/produccion", status_code=303)
+    return volver_produccion(con, pid)
 
 
 def pagar_produccion(con, pid, monto, forma, fecha, nota, uid):
@@ -3350,16 +3366,17 @@ def pagar_produccion(con, pid, monto, forma, fecha, nota, uid):
     if nota: detalle += f" · {nota}"
     # el gasto tiene que decir lo que de verdad llegó, no lo que se pidió: si llegaron 8 de 10, son 8
     recibido = int(pr["recibido"] or 0); pedido = int(pr["cantidad"] or 0)
+    en = fmt_cant(pedido, unidad_pedido(con, pr))    # "20 unidades", "2 cuñetes", "1 rollo"
     if queda <= 0.009:
         # con este pago queda saldado: no es un adelanto, llegue o no la mercancía
         cant_gasto = recibido or None
-        desc = f"{pr['pieza']} · " + ("pago final" if ya > 0.009 else "pago") + f" de pedido {pedido} unidades"
+        desc = f"{pr['pieza']} · " + ("pago final" if ya > 0.009 else "pago") + f" de pedido {en}"
     elif recibido:
         cant_gasto = recibido
         desc = f"{pr['pieza']} · {recibido}" + (f" recibidos de {pedido}" if recibido != pedido else "")
     else:
         cant_gasto = None          # adelanto: todavía no ha llegado nada, así que no se cuenta cantidad
-        desc = f"{pr['pieza']} · adelanto de pedido {pedido} unidades"
+        desc = f"{pr['pieza']} · adelanto de pedido {en}"
     cur = con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                          cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD',?,?,?,?,?,?,?,?)""",
                       (fecha, monto, monto, categoria, pr["pieza"], desc, pr["responsable"], cant_gasto,
@@ -3377,7 +3394,7 @@ def produccion_abonar(request: Request, pid: int, monto: str = Form(...), forma:
     if m > 0:
         pagar_produccion(con, pid, m, forma, fecha or datetime.date.today().isoformat(), nota, uid_de(request))
         con.commit()
-    return RedirectResponse("/produccion?ver=todas", status_code=303)
+    return volver_produccion(con, pid, "&ver=todas")
 
 
 @app.post("/produccion/{pid}/editar")
@@ -3389,7 +3406,7 @@ async def produccion_editar(request: Request, pid: int, con=Depends(db)):
                  float(f["costo"].replace(",", ".")) if g("costo") else None, g("nota"), 1 if f.get("barnizado") == "1" else 0, g("descripcion"), pid))
     r = con.execute("SELECT costo, (SELECT COALESCE(SUM(monto),0) FROM abonos_produccion WHERE produccion_id=?) ab FROM produccion WHERE id=?", (pid, pid)).fetchone()
     con.execute("UPDATE produccion SET pagado=? WHERE id=?", (1 if r["costo"] is not None and r["ab"] >= r["costo"] - 0.009 else 0, pid))
-    con.commit(); return RedirectResponse("/produccion?ver=todas", status_code=303)
+    con.commit(); return volver_produccion(con, pid, "&ver=todas")
 
 
 @app.post("/produccion/abono/{aid}/borrar")
@@ -3398,6 +3415,7 @@ def produccion_abono_borrar(request: Request, aid: int, con=Depends(db)):
     r = con.execute("SELECT produccion_id FROM abonos_produccion WHERE id=?", (aid,)).fetchone()
     if r:
         con.execute("DELETE FROM abonos_produccion WHERE id=?", (aid,)); con.execute("UPDATE produccion SET pagado=0 WHERE id=?", (r["produccion_id"],)); con.commit()
+        return volver_produccion(con, r["produccion_id"], "&ver=todas")
     return RedirectResponse("/produccion?ver=todas", status_code=303)
 
 
@@ -3407,7 +3425,7 @@ def produccion_deshacer(request: Request, pid: int, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/produccion", status_code=303)
     con.execute("DELETE FROM mov_inventario WHERE nota LIKE ?", (f"producción #{pid}%",))
     con.execute("UPDATE produccion SET recibido=0, estado='en_proceso', recibido_en=NULL WHERE id=? AND estado!='cancelado'", (pid,))
-    con.commit(); return RedirectResponse("/produccion", status_code=303)
+    con.commit(); return volver_produccion(con, pid)
 
 
 @app.post("/produccion/{pid}/cerrar")
@@ -3421,13 +3439,13 @@ def produccion_cerrar(request: Request, pid: int, con=Depends(db)):
         con.execute("UPDATE produccion SET cantidad=?, costo=?, estado='recibido', recibido_en=? WHERE id=?",
                     (r["recibido"], round(unit * r["recibido"], 2), datetime.date.today().isoformat(), pid))
         con.commit()
-    return RedirectResponse("/produccion", status_code=303)
+    return volver_produccion(con, pid)
 
 
 @app.post("/produccion/{pid}/cancelar")
 def produccion_cancelar(request: Request, pid: int, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    con.execute("UPDATE produccion SET estado='cancelado' WHERE id=?", (pid,)); con.commit(); return RedirectResponse("/produccion", status_code=303)
+    con.execute("UPDATE produccion SET estado='cancelado' WHERE id=?", (pid,)); con.commit(); return volver_produccion(con, pid)
 
 
 # ------------------------------------------------------------------ SEGUIMIENTOS (El Porche)

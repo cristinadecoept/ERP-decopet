@@ -308,6 +308,17 @@ def _():
     assert uid is not None
 
 
+@prueba("Un pedido a proveedor dice en qué se pidió: 2 cuñetes, no 2 unidades")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO proveedores (id,nombre) VALUES (8,'Ferretería')")
+    con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (8,'Pega amarilla',86,'cuñete')")
+    con.execute("INSERT INTO produccion (id,pieza,cantidad,costo,estado,responsable,fecha_pedido,tipo_pedido) VALUES (1,'Pega amarilla',2,172,'en_proceso','Ferretería','2026-09-28','proveedor')")
+    A.pagar_produccion(con, 1, 100, "", "2026-09-28", "", 1)
+    assert _concepto(con) == "Pega amarilla · adelanto de pedido 2 cuñetes", _concepto(con)
+    assert A.tipo_de_proveedor("Ferretería") == "proveedor" and A.tipo_de_proveedor("Walter") == "produccion"
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

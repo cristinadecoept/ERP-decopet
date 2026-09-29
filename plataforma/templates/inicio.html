@@ -6,7 +6,7 @@
 {% set pend = [] %}
 {% if rol=='admin' and c.por_revisar %}{% set _ = pend.append(('/ordenes?estado=por_revisar', c.por_revisar ~ ' pago' ~ ('s' if c.por_revisar!=1) ~ ' por revisar', 'revisar', 'nar')) %}{% endif %}
 {% if rol=='admin' and c.con_saldo %}{% set _ = pend.append(('/operaciones?cola=con_saldo', c.con_saldo ~ ' orden' ~ ('es' if c.con_saldo!=1) ~ ' con saldo pendiente · ' ~ (c.saldo_total|usd), 'cobrar', 'nar')) %}{% endif %}
-{% for pv in c.toca_pagar_prov %}{% set _ = pend.append(('/produccion', 'Hoy toca pagar ' ~ pv.pieza ~ ' a ' ~ (pv.responsable or 'proveedor') ~ ' · ' ~ (pv.debe|usd), 'pagar', 'nar')) %}{% endfor %}
+{% for pv in c.toca_pagar_prov %}{% set _ = pend.append(('/produccion?tipo=' ~ pv.tipo,'Hoy toca pagar ' ~ pv.pieza ~ ' a ' ~ (pv.responsable or 'proveedor') ~ ' · ' ~ (pv.debe|usd), 'pagar', 'nar')) %}{% endfor %}
 {% if rol=='admin' and c.desp_debe and c.toca_pagar_desp %}{% set _ = pend.append(('/despachadores', ('Quedó sin pagar del lunes: ' if c.desp_atrasado else 'Hoy es lunes: pagar a ') ~ c.desp_n ~ ' despachador' ~ ('es' if c.desp_n!=1) ~ ' · ' ~ (c.desp_debe|usd), 'pagar', 'rojo' if c.desp_atrasado else 'nar')) %}{% endif %}
 {% if rol=='admin' and c.efectivo_n %}{% set _ = pend.append(('/cashflow#efectivo', 'Cobrado en efectivo y sin pasar al Cash flow · ' ~ (c.efectivo_total|usd) ~ ' en ' ~ c.efectivo_n ~ ' entrega' ~ ('s' if c.efectivo_n!=1), 'registrar', 'nar')) %}{% endif %}
 {% if rol=='admin' and c.quincena_n %}{% set _ = pend.append(('/equipo', ('Hoy es quincena: pagar a ' if c.es_quincena else 'Quedó sin pagar la quincena de ') ~ (c.quincena_falta|join(', ')), 'pagar', 'nar' if c.es_quincena else 'rojo')) %}{% endif %}
