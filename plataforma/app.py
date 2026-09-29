@@ -3327,7 +3327,7 @@ def pagar_produccion(con, pid, monto, forma, fecha, nota, uid):
         desc = f"{pr['pieza']} · {recibido}" + (f" recibidos de {pedido}" if recibido != pedido else "")
     else:
         cant_gasto = None          # adelanto: todavía no ha llegado nada, así que no se cuenta cantidad
-        desc = f"{pr['pieza']} · adelanto · {pedido} unidades"
+        desc = f"{pr['pieza']} · adelanto de pedido {pedido} unidades"
     cur = con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                          cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD',?,?,?,?,?,?,?,?)""",
                       (fecha, monto, monto, categoria, pr["pieza"], desc, pr["responsable"], cant_gasto,
