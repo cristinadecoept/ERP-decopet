@@ -13,7 +13,6 @@
 {% if c.llegan_hoy %}{% if rol=='admin' %}{% set _ = pend.append(('/produccion', 'Hoy llega producción · ' ~ c['llegan_hoy_de'], 'ver', '')) %}
 {% else %}{% set _ = pend.append(('__aviso__0', 'Hoy llegan ' ~ c['llegan_hoy_qué'], '', '')) %}{% endif %}{% endif %}
 {% if c.atrasados %}{% set _ = pend.append(('/produccion', c.atrasados|length ~ ' pedido' ~ ('s' if c.atrasados|length!=1) ~ ' que ya debió llegar: ' ~ (c.atrasados|map(attribute='nombre')|join(', '))|truncate(60), 'ver', 'rojo')) %}{% endif %}
-{% if rol=='admin' and c.prov_debe %}{% set _ = pend.append(('/produccion', 'Le debes ' ~ (c.prov_debe|usd) ~ ' a ' ~ c.prov_n ~ ' proveedor' ~ ('es' if c.prov_n!=1), 'abonar', '')) %}{% endif %}
 {% if c.sin_coordinar %}{% set _ = pend.append(('/operaciones?cola=sin_coordinar', c.sin_coordinar ~ ' entrega' ~ ('s' if c.sin_coordinar!=1) ~ ' sin coordinar', 'coordinar', 'nar')) %}{% endif %}
 {% if rol=='admin' and c.avisos_pendientes and not avisos_taller %}{% set _ = pend.append(('/taller/avisos', c.avisos_pendientes ~ ' aviso' ~ ('s' if c.avisos_pendientes!=1) ~ ' del taller sin resolver', 'ver', '')) %}{% endif %}
 {% for a in avisos_taller %}{% set _ = pend.append(('__aviso__' ~ a.id, 'Taller: ' ~ a.texto, 'visto', 'nar')) %}{% endfor %}

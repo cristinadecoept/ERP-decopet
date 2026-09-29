@@ -613,11 +613,17 @@ def inicio(request: Request, con=Depends(db)):
     viajes_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_agencia WHERE pagado=0 GROUP BY 1 HAVING m>0").fetchall() if rol == "admin" else []
     c["desp_debe"] = sum(r["m"] for r in deuda_desp) + sum(r["m"] for r in viajes_desp)   # entregas + viajes a la agencia
     # pedidos cuyo día de pago llegó (la grama se paga los viernes aunque llegue el lunes)
-    c["toca_pagar_prov"] = [dict(r) for r in con.execute("""SELECT pr.id, pr.pieza, pr.responsable, pr.fecha_pago,
+    # El resto se paga el día de pago si se puso uno; si no, el día de entrega; y si no tiene
+    # ninguna de las dos, cuando llega algo. Un aviso por pedido, con lo que falta pagar.
+    c["toca_pagar_prov"] = [dict(r) for r in con.execute("""SELECT pr.id, COALESCE(pr.pieza, p.nombre) pieza, pr.responsable,
+                            COALESCE(pr.fecha_pago, pr.fecha_esperada) fecha_pago,
                             pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) debe
-                            FROM produccion pr WHERE pr.estado!='cancelado' AND pr.fecha_pago IS NOT NULL AND pr.fecha_pago<=?
+                            FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
+                            WHERE pr.estado!='cancelado' AND pr.costo IS NOT NULL
                               AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009
-                            ORDER BY pr.fecha_pago""", (h,))] if rol == "admin" else []
+                              AND (COALESCE(pr.fecha_pago, pr.fecha_esperada) <= ?
+                                   OR (COALESCE(pr.fecha_pago, pr.fecha_esperada) IS NULL AND (pr.recibido > 0 OR pr.estado!='en_proceso')))
+                            ORDER BY 4""", (h,))] if rol == "admin" else []
     # a los despachadores se les paga los LUNES: el resto de la semana el aviso solo estorba mientras se acumulan entregas
     viejo = con.execute("""SELECT MIN(COALESCE(fecha_entrega, substr(creado_en,1,10))) FROM ordenes
                            WHERE despachador IS NOT NULL AND despachador!='' AND estado!='cancelada'
@@ -668,9 +674,7 @@ def inicio(request: Request, con=Depends(db)):
                        WHERE pr.estado='en_proceso' AND pr.fecha_esperada IS NOT NULL AND pr.fecha_esperada < ? ORDER BY pr.fecha_esperada""", (h,))]
     d = con.execute("""SELECT COUNT(DISTINCT COALESCE(pr.responsable,'—')) n, COALESCE(SUM(pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0)),0) monto
                        FROM produccion pr WHERE pr.estado!='cancelado' AND pr.costo IS NOT NULL
-                       AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009
-                       -- el resto se paga al entregar: avisa el día de entrega, o cuando ya llegó algo
-                       AND ((pr.fecha_esperada IS NOT NULL AND pr.fecha_esperada <= ?) OR pr.recibido > 0 OR pr.estado!='en_proceso')""", (h,)).fetchone()
+                       AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009""").fetchone()
     c["prov_debe"] = d["monto"]; c["prov_n"] = d["n"]
     return render(request, "inicio.html", seccion="inicio", c=c, v=v, prom=prom, disponible=disponible, fecha_larga=fecha_larga(), serie=serie, tipos=tipos, hoy_lista=hoy_lista, bajos=bajos, llega=llega, proximos=proximos, seg=seg_resumen, pagos_pend=pagos_pend, cuentas_act=cuentas_act, armados=armados, n_armados=n_armados, avisos_taller=avisos_taller, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, hoy_iso=datetime.date.today().isoformat())
 
