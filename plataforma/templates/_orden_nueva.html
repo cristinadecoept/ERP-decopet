@@ -9,7 +9,7 @@
 
 <!-- 1 · CLIENTE -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">2</span><b>Cliente</b></div>
-<div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
+<div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-credito="{{ c.credito or 0 }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
 <div class="mini" style="margin-top:6px">Si no aparece, <a href="#" onclick="clienteNuevo();return false">crear cliente nuevo</a></div></div>
 <div id="cl-existente" hidden class="no-cliente"><div class="no-avatar" id="cl-ex-ini">C</div><div style="flex:1;min-width:0"><b id="cl-ex-nombre"></b><div class="mini" id="cl-ex-datos"></div><div class="no-perros" id="cl-ex-mascotas"></div></div><button type="button" class="no-link" onclick="limpiarCliente()">Cambiar</button></div>
 <div id="cl-faltan" hidden class="no-sub"><div class="no-sub-h"><span>Faltan datos de este cliente</span></div>
@@ -67,6 +67,7 @@
 <span id="fe-nota" hidden></span>
 </section>
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">6</span><b>Pago</b></div>
+<div id="cred-w" hidden class="ahora-ln nar" style="margin-bottom:8px"><span class="ahora-dot"></span><span style="flex:1">Tiene <b id="cred-m" style="margin:0"></b> a favor</span><button type="button" class="btn chico" onclick="usarCredito()">Usarlo</button></div>
 <div id="pagos"></div>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px"><button type="button" class="no-link" onclick="agregarPago()">+ Otra forma de pago</button><span class="mini" id="p-falta"></span></div>
 <div class="no-saldo"><span>Monto pagado</span><b id="p-pagado">$0.00</b><span>Saldo pendiente</span><b id="p-saldo">$0.00</b></div>
@@ -109,7 +110,7 @@ function calc(){let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{
  const tot=s-ds+iva+dl;document.getElementById('t-tot').innerText='$'+tot.toFixed(2);document.getElementById('t-bs').innerText='≈ Bs '+(tot*TASA).toLocaleString('es-VE',{maximumFractionDigits:0});pagos(tot);}
 function agregarPago(){const d=document.createElement('div');d.className='no-pago';let o='<option value="">forma de pago…</option>';FORMAS.forEach(x=>o+=`<option>${x}</option>`);
  d.innerHTML=`<select name="pago_forma" onchange="calc()">${o}</select><input type="number" step="0.01" name="pago_monto" placeholder="monto" oninput="this.dataset.tocado=1;calc()"><input name="pago_ref" placeholder="referencia"><button type="button" class="no-x-sm" onclick="this.parentElement.remove();calc()">×</button>`;document.getElementById('pagos').appendChild(d);}
-function pagos(tot){const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');if(filas.length===1&&!m.dataset.tocado)m.value=tot.toFixed(2);s+=+m.value||0;
+function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');if(filas.length===1&&!m.dataset.tocado)m.value=tot.toFixed(2);s+=+m.value||0;
   if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
  document.getElementById('p-pagado').innerText='$'+s.toFixed(2);document.getElementById('p-saldo').innerText='$'+Math.max(tot-s,0).toFixed(2);document.getElementById('p-saldo').style.color=(tot-s)>0.01?'#b45a1c':'var(--verde-osc)';
  const f=document.getElementById('p-falta');const d=tot-s;f.innerText=Math.abs(d)<0.01?'':(d>0&&d<tot-0.01?'pago parcial':(d>0?'sin pagar todavía':'sobran $'+(-d).toFixed(2)));f.style.color='#b45a1c';
@@ -134,12 +135,25 @@ function dirHabitualNueva(){const d=document.getElementById('cl-dir').value.trim
 function recModo(m){document.getElementById('rec-datos').hidden=(m!=='tercero');document.getElementById('rec-cli').classList.toggle('act',m==='cliente');document.getElementById('rec-ter').classList.toggle('act',m==='tercero');if(m==='cliente'){document.querySelector('[name=receptor_nombre]').value='';document.querySelector('[name=receptor_telefono]').value='';}faltanDatos();}
 function agregarMascota(){const d=document.createElement('div');d.className='no-sub';d.style.marginTop='8px';d.innerHTML=`<div class="no-sub-h"><span>Mascota</span><button type="button" class="no-link" onclick="this.closest('.no-sub').remove()">Quitar</button></div><div class="g2"><div><label>Nombre</label><input name="cliente_mascota_nombre" placeholder="Toby"></div><div><label>Raza</label><input name="cliente_mascota_raza" list="razas" autocomplete="off" placeholder="elegir…"></div></div><div class="g2"><div><label>Cumpleaños <span class="mini">(día/mes)</span></label><input name="cliente_mascota_cumple" placeholder="25/09" inputmode="numeric"></div><div><label>Año de nacimiento <span class="mini">(si lo saben)</span></label><input name="cliente_mascota_anio" placeholder="2021" inputmode="numeric" maxlength="4"></div></div><input type="hidden" name="cliente_mascota_nacimiento" value=""><input type="hidden" name="cliente_mascota_peso" value="">`;document.getElementById('masc-lista').appendChild(d);d.querySelector('input').focus();}
 function clienteNuevo(){document.getElementById('cl-faltan').hidden=true;document.getElementById('cl-buscar').hidden=true;document.getElementById('cl-nuevo').hidden=false;document.getElementById('cl-id').value='';document.getElementById('cl-in').value='';dirHabitualNueva();document.getElementById('cl-nombre').focus();}
-function limpiarCliente(){document.getElementById('cl-in').value='';document.getElementById('cl-id').value='';document.getElementById('cl-existente').hidden=true;document.getElementById('cl-faltan').hidden=true;document.getElementById('cl-nuevo').hidden=true;document.getElementById('cl-buscar').hidden=false;['cl-nombre','cl-apellido','cl-tel'].forEach(id=>document.getElementById(id).value='');document.getElementById('cl-in').focus();}
+function limpiarCliente(){mostrarCredito(0);document.getElementById('cl-in').value='';document.getElementById('cl-id').value='';document.getElementById('cl-existente').hidden=true;document.getElementById('cl-faltan').hidden=true;document.getElementById('cl-nuevo').hidden=true;document.getElementById('cl-buscar').hidden=false;['cl-nombre','cl-apellido','cl-tel'].forEach(id=>document.getElementById(id).value='');document.getElementById('cl-in').focus();}
 document.getElementById('cl-in').addEventListener('input',e=>{const op=[...document.getElementById('cl').options].find(o=>o.value===e.target.value);if(!op)return;document.getElementById('cl-id').value=op.dataset.id;
  document.getElementById('cl-ex-ini').innerText=op.value.trim()[0].toUpperCase();document.getElementById('cl-ex-nombre').innerText=op.value;document.getElementById('cl-ex-datos').innerHTML=(op.dataset.porche?'<span class="porche-tag'+(op.dataset.porche.startsWith('Miembro')?' pro':'')+'">'+op.dataset.porche+'</span> ':'')+[op.dataset.tel,op.dataset.ciudad].filter(Boolean).join(' · ');
  const ms=document.getElementById('cl-ex-mascotas');ms.innerHTML=op.dataset.perros?op.dataset.perros.split(', ').map(p=>'<span class="no-perro">🐾 '+p+'</span>').join(''):'<span class="mini">sin mascotas registradas</span>';
  document.getElementById('dir-hab-txt').innerHTML=op.dataset.dir?('<b>'+op.dataset.dir+'</b>'+(op.dataset.ciudad?' · '+op.dataset.ciudad:'')):'Este cliente no tiene dirección habitual guardada: escribe una nueva abajo.';
- document.getElementById('cl-buscar').hidden=true;document.getElementById('cl-existente').hidden=false;faltanDatos();});
+ document.getElementById('cl-buscar').hidden=true;document.getElementById('cl-existente').hidden=false;faltanDatos();mostrarCredito(+op.dataset.credito||0);});
+// saldo a favor del cliente: se ofrece para pagar con él (nunca más de lo que tiene)
+let CRED=0,TOT=0;
+function mostrarCredito(c){CRED=c;document.getElementById('cred-w').hidden=!(c>0.009);document.getElementById('cred-m').innerText='$'+c.toFixed(2);}
+function usarCredito(){
+ let filas=[...document.querySelectorAll('#pagos .no-pago')];
+ let f=filas.find(d=>!d.querySelector('[name=pago_forma]').value);
+ if(!f){agregarPago();f=[...document.querySelectorAll('#pagos .no-pago')].pop();}
+ const sel=f.querySelector('[name=pago_forma]'),mi=f.querySelector('[name=pago_monto]'),usa=Math.min(CRED,TOT);
+ if(![...sel.options].some(o=>o.value==='Saldo a favor'))sel.insertAdjacentHTML('beforeend','<option>Saldo a favor</option>');
+ sel.value='Saldo a favor';mi.value=usa.toFixed(2);mi.max=CRED.toFixed(2);mi.dataset.tocado=1;
+ const puesto=[...document.querySelectorAll('#pagos [name=pago_monto]')].reduce((s,i)=>s+(+i.value||0),0);
+ if(TOT-puesto>0.009){agregarPago();const r=[...document.querySelectorAll('#pagos .no-pago')].pop().querySelector('[name=pago_monto]');r.value=(TOT-puesto).toFixed(2);r.dataset.tocado=1;}
+ document.getElementById('cred-w').hidden=true;calc();}
 const sirve=v=>!!(v&&v.trim()&&v.trim().toLowerCase()!=='pendiente');
 function esTercero(){return document.getElementById('rec-ter').classList.contains('act');}
 function faltanDatos(){   // un cliente que ya existe puede no tener correo, teléfono o cédula: se completan aquí

@@ -83,6 +83,7 @@
 {% else %}<div class="mini">Sin pagos registrados.</div>{% endif %}
 {% if o.estado_pago=='abonada' %}<div class="nota-log">Abonó {{ o.pagado|usd }} · debe {{ (o.total-o.pagado)|usd }}{% if o.saldo_concepto %} — {{ o.saldo_concepto }}{% endif %}</div>
 {% elif o.estado_pago in ['sin_pago','rechazado'] %}<div class="nota-log">Por cobrar {{ o.total|usd }}{% if o.saldo_concepto %} — {{ o.saldo_concepto }}{% endif %}</div>{% endif %}
+{% if o.a_favor and 'ver_dinero' in puede %}<div class="nota-log">Pagó {{ o.pagado|usd }} por una orden de {{ o.total|usd }}: <b>le quedaron {{ o.a_favor|usd }} a favor</b> · <a href="/clientes/{{ o.cliente_id }}">ver su saldo</a></div>{% endif %}
 {% if o.estado_pago=='contra_entrega' %}<div class="nota-log">💵 El despachador cobra {{ o.total|usd }} en efectivo al entregar.</div>{% endif %}
 {% if o.estado_pago=='por_cobrar' and o.canal=='cashea' %}<div class="nota-cli"><span class="t">Cashea</span>Inicial cobrada {{ o.pagado|usd }} · faltan {{ (o.total-o.pagado)|usd }} en cuotas que transfiere Cashea. No detiene la entrega.</div>{% endif %}
 {% if 'pago_por_confirmar' in puede and o.estado_pago in ['sin_pago','abonada','por_confirmar','rechazado'] %}<details><summary>Registrar pago reportado</summary><form method="post" action="/ordenes/{{ o.id }}/pago?estado={{ fp.get('estado','todas') }}">

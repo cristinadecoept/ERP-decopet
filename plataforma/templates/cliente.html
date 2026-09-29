@@ -115,7 +115,7 @@ document.querySelectorAll('form').forEach(f=>{
   {% if credito_mov %}<table class="lineas"><tr><th>Fecha</th><th>Qué pasó</th><th class="num">Monto</th></tr>
   {% for m in credito_mov %}<tr>
    <td class="mono mini" style="width:100px">{{ m.fecha|dia }}</td>
-   <td>{{ m.motivo or '—' }}{% if m.orden_id %}<span class="mini"> · orden</span>{% endif %}</td>
+   <td>{% if m.orden_id and m.numero %}{% if m.monto > 0 %}Pagó {{ m.pagado|usd }} por la orden <a href="/ordenes?abrir={{ m.orden_id }}">{{ m.numero }}</a> de {{ m.total|usd }}{% else %}Lo usó para pagar la orden <a href="/ordenes?abrir={{ m.orden_id }}">{{ m.numero }}</a>{% endif %}{% else %}{{ m.motivo or '—' }}{% endif %}</td>
    <td class="num"><b style="color:{{ 'var(--verde-osc)' if m.monto > 0 else '#b45a1c' }}">{{ '+' if m.monto > 0 }}{{ m.monto|usd }}</b></td>
   </tr>{% endfor %}</table>{% endif %}
   <form method="post" action="/clientes/{{ c.id }}/credito" class="cf-doc">

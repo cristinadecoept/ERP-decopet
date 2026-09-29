@@ -846,7 +846,9 @@ def cargar_orden(con, oid):
     o["dir_es_habitual"] = bool(a and b and (a == b or a in b or b in a))
     o["personalizaciones"] = [l["personalizacion"] for l in o["lineas"] if l["personalizacion"]]
     o["saldo"] = round((o["total"] or 0) - (o["pagado"] or 0), 2)
-    o["mascotas"] = con.execute("SELECT * FROM mascotas WHERE cliente_id=?", (o["cliente_id"],)).fetchall()
+    # lo que dejó a favor en esta orden (pagó de más) y lo que usó de su saldo a favor para pagarla
+    o["a_favor"] = round(con.execute("SELECT COALESCE(SUM(monto),0) FROM credito_cliente WHERE orden_id=? AND monto>0", (oid,)).fetchone()[0], 2)
+    o["mascotas"] =con.execute("SELECT * FROM mascotas WHERE cliente_id=?", (o["cliente_id"],)).fetchall()
     o["ganancia"] = round((o["total"] or 0) - (o["iva"] or 0) - (o["comision"] or 0) - (o["costo_productos"] or 0) - (o["costo_entrega"] or 0), 2)
     o["margen"] = round(o["ganancia"] / o["total"] * 100, 1) if o["total"] else 0
     o["resumen"] = resumen_despacho(o)
@@ -897,7 +899,8 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
     productos = con.execute("SELECT * FROM productos WHERE activo=1 AND tipo='producto' ORDER BY orden").fetchall()
     opciones = {r["sku"]: r for r in con.execute("SELECT * FROM productos WHERE tipo='opcion'")}
     clientes = con.execute("""SELECT c.*, (SELECT direccion || COALESCE(' · ' || zona,'') FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
-                              (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros FROM clientes c ORDER BY nombre""").fetchall()
+                              (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
+                              (SELECT ROUND(COALESCE(SUM(k.monto),0),2) FROM credito_cliente k WHERE k.cliente_id=c.id) credito FROM clientes c ORDER BY nombre""").fetchall()
     pre = con.execute("SELECT nombre FROM clientes WHERE id=?", (cliente,)).fetchone() if cliente else None
     return render(request, "_orden_nueva.html", productos=productos, opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", tarifas=con.execute("SELECT zona, tarifa FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
 
@@ -1318,6 +1321,12 @@ async def crear_orden(request: Request, con=Depends(db)):
     fecha_auto = f.get("fecha_prometida") or hoy_d.isoformat()
     # Pagos (puede ser mixto): forma + monto + referencia por línea
     pagos_in = [(fo, float(mo or 0), re_) for fo, mo, re_ in zip(f.getlist("pago_forma"), f.getlist("pago_monto"), f.getlist("pago_ref")) if fo and float(mo or 0) > 0]
+    # pagar con lo que tenía a favor: nunca más de lo que de verdad tiene
+    disponible = credito_de(con, cid) if cid else 0
+    for i, (fo, mo, re_) in enumerate(pagos_in):
+        if fo == SALDO_FAVOR:
+            usa = round(min(mo, disponible), 2); disponible -= usa; pagos_in[i] = (fo, usa, re_)
+    pagos_in = [p for p in pagos_in if p[1] > 0]
     cur = con.execute("""INSERT INTO ordenes (numero,tipo,cliente_id,canal,creada_por,ref_externa,estado,estado_pago,subtotal,descuento,motivo_descuento,iva,delivery,total,tasa_bcv,comision,
                          tipo_entrega,direccion,zona,ciudad,receptor_nombre,receptor_telefono,fecha_prometida,franja,notas_entrega,notas,costo_productos,forma_pago_prevista,modalidad_envio,maps)
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -1367,6 +1376,13 @@ async def crear_orden(request: Request, con=Depends(db)):
     efectivo = sum(m for fo, m, _ in pagos_in if fo.startswith("Efectivo"))
     for fo, m, ref in pagos_in:
         if fo.startswith("Efectivo"): continue  # el efectivo se registra al entregar
+        if fo == SALDO_FAVOR:   # no entra plata nueva a ninguna caja: se gasta la que ya había entrado
+            con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado,confirmado_por,confirmado_en)
+                           VALUES (?,?,?,?,'USD',?,'confirmado',?,?)""", (oid, SALDO_FAVOR, m, m, ahora, uid, ahora))
+            mover_credito(con, cid, -m, "Usado en una compra", oid, uid)
+            queda = credito_de(con, cid)
+            registrar(con, oid, uid, "pago", f"Usó {fmt_usd(m)} de su saldo a favor" + (f" · le quedan {fmt_usd(queda)}" if queda > 0.009 else " · no le queda saldo"))
+            continue
         con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,'confirmado',?,?)",
                     (oid, fo, m, round(m * tasa_v, 2) if es_bolivares(fo) else m, "VES" if es_bolivares(fo) else "USD", tasa_v if es_bolivares(fo) else None, FORMA_CUENTA.get(fo), ref or None, ahora, uid, ahora))
     # Cashea se trata como cualquier canal: si Cristina marca el pago completo, la orden queda pagada.
@@ -4122,7 +4138,10 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     lo_trajo = con.execute("SELECT id, nombre FROM clientes WHERE id=?", (c["referido_id"],)).fetchone() if c["referido_id"] else None
     return render(request, "cliente.html", seccion="clientes",
                   credito=credito_de(con, cid),
-                  credito_mov=con.execute("SELECT * FROM credito_cliente WHERE cliente_id=? ORDER BY id DESC LIMIT 12", (cid,)).fetchall(), c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
+                  credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
+                        (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=k.orden_id AND p.estado='confirmado' AND p.forma!=?) pagado
+                        FROM credito_cliente k LEFT JOIN ordenes o ON o.id=k.orden_id
+                        WHERE k.cliente_id=? ORDER BY k.id DESC LIMIT 12""", (SALDO_FAVOR, cid)).fetchall(), c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
                   refirio=refirio, lo_trajo=lo_trajo,
                   packs=packs, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
                   etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack,
