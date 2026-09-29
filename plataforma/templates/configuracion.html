@@ -77,11 +77,6 @@
     <div class="cf-in"><input name="iva" value="{{ iva }}" inputmode="decimal" style="width:80px"><span class="mini">%</span></div>
     <div class="cf-d" style="margin-top:6px">El catálogo muestra el precio con IVA al lado, para Cashea y facturas.</div></div>
   </div>
-  <label style="margin-top:14px;display:block">Viaje a la agencia</label>
-  <div class="cf-ags">{% for ag, m in tarifa_agencia.items() %}
-   <div class="cf-in"><span class="mini" style="min-width:52px">{{ 'cualquier otra' if ag == '*' else ag }}</span>
-    <input name="ag_{{ ag }}" value="{{ '%g'|format(m) }}" inputmode="decimal" style="width:70px"></div>{% endfor %}</div>
-  <div class="cf-d" style="margin-top:6px">Se paga por viaje, no por pedido: lleve 1 o lleve 6, es lo mismo.</div>
   <p><button class="btn chico">Guardar</button></p>
  </form>
  </div>

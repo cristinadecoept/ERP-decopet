@@ -2005,7 +2005,7 @@ def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""
                   despachadores_l=[r["nombre"] for r in con.execute("SELECT nombre FROM despachadores WHERE activo=1 ORDER BY nombre")],
                   equipo=eq, sueldos=sue, ciclo=CICLO_REPUESTO, iva=round(IVA * 100, 2),
                   clave=val("clave_resultados"), ventas_auto=val("ventas_auto", "0") == "1",
-                  cashflow_desde=val("cashflow_desde"), tarifa_agencia=cfg_json(con, "tarifa_agencia", {}) or {},
+                  cashflow_desde=val("cashflow_desde"),
                   respaldos=lista_respaldos(), ok=ok, err=err)
 
 
@@ -2182,11 +2182,7 @@ async def configuracion_guardar(request: Request, con=Depends(db)):
         if 1 <= c <= 365: poner("ciclo_repuesto", str(int(c)))
         i = cifra(f.get("iva", ""))
         if i is not None and 0 <= i <= 100: poner("iva", str(round(i / 100, 4)))
-        t = {}
-        for k in f.keys():
-            if k.startswith("ag_") and (f.get(k) or "").strip():
-                t[k[3:]] = float(cifra(f.get(k)) or 0)
-        if t: poner("tarifa_agencia", json.dumps(t, ensure_ascii=False))
+        # el viaje a la agencia se edita en Logística › Tarifas, no aquí
     elif bloque == "empresa":
         poner("empresa", json.dumps({k: (f.get(k) or "").strip() for k, _ in EMPRESA_CAMPOS}, ensure_ascii=False))
     elif bloque == "equipo":
