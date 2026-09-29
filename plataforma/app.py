@@ -3277,7 +3277,8 @@ def tipo_de_proveedor(nombre):
 
 
 @app.get("/produccion", response_class=HTMLResponse)
-def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str = "", tipo: str = "produccion", con=Depends(db)):
+def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str = "", tipo: str = "produccion",
+               mes: str = "", semana: str = "", anio: str = "", con=Depends(db)):
     """Dos pantallas con la misma mecánica (pedir, pagar, recibir):
       · produccion: la madera que se manda a hacer (Walter, David)
       · proveedor:  lo que se le compra a un proveedor (pega, cinta, tela, placas, bolsas…)"""
@@ -3298,7 +3299,22 @@ def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str
                                AND {saldo_sql} > 0.009 GROUP BY 1 ORDER BY monto DESC""", (tipo,)).fetchall()
     rows = [dict(r) | {"abonado": con.execute("SELECT COALESCE(SUM(monto),0) FROM abonos_produccion WHERE produccion_id=?", (r["id"],)).fetchone()[0],
                        "abonos": con.execute("SELECT * FROM abonos_produccion WHERE produccion_id=? ORDER BY fecha, id", (r["id"],)).fetchall()} for r in rows]
-    quienes = [r[0] for r in con.execute("SELECT nombre FROM proveedores WHERE activo=1 ORDER BY (nombre='Walter') DESC, nombre")
+    # por mes y semana, como en Gastos: la semana 1 son los días 1 al 7, la 2 del 8 al 14…
+    hoy_d = datetime.date.today()
+    anios = sorted({int(r[0]) for r in con.execute("SELECT DISTINCT substr(fecha_pedido,1,4) FROM produccion WHERE fecha_pedido IS NOT NULL")} | {hoy_d.year}, reverse=True)
+    anio = int(mes[:4]) if mes else (int(anio) if anio.isdigit() else hoy_d.year)
+    n_sem = lambda f: (datetime.date.fromisoformat(f).day - 1) // 7 + 1
+    if mes: rows = [r for r in rows if (r["fecha_pedido"] or "")[:7] == mes]
+    if mes and semana.isdigit(): rows = [r for r in rows if n_sem(r["fecha_pedido"]) == int(semana)]
+    rows.sort(key=lambda r: (r["fecha_pedido"] or "", r["id"]), reverse=True)   # lo más nuevo arriba
+    grupos = []
+    for r in rows:
+        d = datetime.date.fromisoformat(r["fecha_pedido"]); ns = n_sem(r["fecha_pedido"])
+        if not grupos or grupos[-1]["clave"] != (d.year, d.month, ns):
+            grupos.append({"clave": (d.year, d.month, ns), "n": ns, "desde": d.replace(day=(ns - 1) * 7 + 1),
+                           "mes": MESES_N[d.month - 1] + (f" {d.year}" if d.year != hoy_d.year else ""), "rows": [], "total": 0.0})
+        grupos[-1]["rows"].append(r); grupos[-1]["total"] += r["costo"] or 0
+    quienes =[r[0] for r in con.execute("SELECT nombre FROM proveedores WHERE activo=1 ORDER BY (nombre='Walter') DESC, nombre")
                if (r[0] in PROVEEDORES_MADERA) == (tipo == "produccion")]
     if tipo == "produccion":
         piezas = [p[0] for p in PIEZAS_PRODUCCION]
@@ -3311,6 +3327,7 @@ def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str
         c: [r[0] for r in con.execute("""SELECT i.item FROM proveedor_items i JOIN proveedores p ON p.id=i.proveedor_id
                                          WHERE p.nombre=? ORDER BY i.item""", (c,))] for c in quienes}
     return render(request, "produccion.html", seccion="produccion" if tipo == "produccion" else "compras", tipo=tipo, rows=rows, piezas=piezas, vende=vende,
+                  grupos=grupos, mes=mes, semana=semana, anio=anio, anios=anios, MESES_N=MESES_N,
                   carpinteros=quienes, ver=ver, n=n, debe=debe, por_pagar=por_pagar, FORMAS_PAGO=FORMAS_PAGO, precios=precios)
 
 
