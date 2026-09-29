@@ -962,6 +962,7 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
         con.execute("UPDATE pagos SET estado='confirmado', confirmado_por=?, confirmado_en=datetime('now','localtime') WHERE orden_id=? AND estado='por_confirmar'", (uid, oid))
         pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
         sets.append("estado_pago=?"); args.append(estado_pago_de(pagado, o["total"]))
+        if sobrante_a_favor(con, oid, uid): registrar(con, oid, uid, "pago", "Pagó de más: el sobrante le queda a favor")
     if estado == "cancelada":
         if not motivo: return volver(oid, request)
         if o["pagado"] > 0: sets.append("estado_pago='reembolsada'")
@@ -979,7 +980,9 @@ def confirmar_pago(request: Request, oid: int, con=Depends(db)):
     o = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()
     pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
     con.execute("UPDATE ordenes SET estado_pago=? WHERE id=?", (estado_pago_de(pagado, o["total"]), oid)); fijar_fecha_pago(con, oid)
-    registrar(con, oid, uid, "pago", f"Pago confirmado por Cristina ({fmt_usd(pagado)})"); con.commit(); return volver(oid, request)
+    sobra = sobrante_a_favor(con, oid, uid)
+    registrar(con, oid, uid, "pago", f"Pago confirmado por Cristina ({fmt_usd(pagado)})" + (f" · {fmt_usd(sobra)} le quedan a favor" if sobra else ""))
+    con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/pago/rechazar")
@@ -1373,6 +1376,8 @@ async def crear_orden(request: Request, con=Depends(db)):
     else: ep = estado_pago_de(digital, total)
     con.execute("UPDATE ordenes SET estado_pago=?, monto_contra_entrega=? WHERE id=?", (ep, round(efectivo, 2) if ep == "contra_entrega" else 0, oid))
     if len(pagos_in) > 1: registrar(con, oid, uid, "pago", "Pago mixto: " + ", ".join(f"{fo} {fmt_usd(m)}" for fo, m, _ in pagos_in))
+    sobra = sobrante_a_favor(con, oid, uid, fp or None)   # pagó de más al crear la orden (no había vuelto)
+    if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
     actualizar_porche_cliente(con, oid); fijar_pago_despachador(con, oid)
     con.commit(); return RedirectResponse(f"/ordenes?abrir={oid}", status_code=303)
 
@@ -2349,6 +2354,13 @@ def revision(request: Request, con=Depends(db)):
         esperado = round(c["saldo_inicial"] + c["ingresos"] - c["gastos"] + c["entradas"] - c["salidas"], 2)
         if abs(esperado - c["saldo"]) > 0.01: desc.append(f"{c['nombre']}: {fmt_usd(c['saldo'])} vs {fmt_usd(esperado)}")
     chequeo("El saldo de cada caja cuadra con sus movimientos", not desc, "; ".join(desc) or f"{len(saldos(con))} cajas revisadas")
+    # lo que se pagó de más tiene que estar como saldo a favor del cliente, no perdido en la orden
+    de_mas = [f"{r['numero']} {r['cliente'] or ''}: pagó {fmt_usd(r['sobra'])} de más sin saldo a favor"
+              for r in con.execute("""SELECT o.numero, cl.nombre cliente,
+                    (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') - o.total
+                    - (SELECT COALESCE(SUM(monto),0) FROM credito_cliente k WHERE k.orden_id=o.id AND k.monto>0) sobra
+                    FROM ordenes o LEFT JOIN clientes cl ON cl.id=o.cliente_id WHERE o.estado!='cancelada'""") if r["sobra"] > 0.009]
+    chequeo("Lo pagado de más quedó como saldo a favor", not de_mas, "; ".join(de_mas[:6]) or "ninguna orden cobrada de más sin su saldo a favor")
 
     # 2 · lo pagado a proveedores debe existir como gasto
     huerf = con.execute("SELECT COUNT(*) FROM abonos_produccion WHERE gasto_id IS NULL").fetchone()[0]
