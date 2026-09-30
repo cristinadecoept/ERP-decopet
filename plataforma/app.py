@@ -806,11 +806,11 @@ def cargar_ordenes(con, filtros, rol):
              (SELECT d.ciudad    FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_ciudad,
              (SELECT d.maps      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_maps,
              COALESCE((SELECT SUM(cc.monto) FROM credito_cliente cc WHERE cc.cliente_id=o.cliente_id),0) credito,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l
+             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
+             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END, ' · ') FROM orden_lineas l
               WHERE l.orden_id=o.id AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio=0)) productos_hoy,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END
+             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END
                  || CASE WHEN EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL) THEN '@PEND' ELSE '' END
                  || COALESCE((SELECT '@PACK' || (k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)) || '/' || k.unidades
                               FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id
@@ -4893,14 +4893,19 @@ def taller_hoy(request: Request, con=Depends(db)):
         # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
         lleva = (o["despachador"] or "").strip() or "Sin despachador"
         a_agencia = o["tipo_entrega"] == "nacional"
-        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku
+        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo,
+                                TRIM(COALESCE(l.personalizacion,'')) perso
                                 FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?""", (o["id"],)):
+            if l["tipo"] == "opcion":   # una opción no es un bulto; si es la placa con nombre, que se vea el nombre
+                if l["perso"]: sale(lleva, f"Placa con el nombre “{l['perso']}”", int(l["cantidad"] or 1), a_agencia)
+                continue
             if (l["sku"] or "").startswith("PACK"):   # de un pack no sale "el pack": salen los repuestos que le tocan
                 k = con.execute("SELECT tamano, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
                                 (o["id"], l["sku"])).fetchone()
                 sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip(), (k["entregadas_inicio"] if k else 1) or 1, a_agencia)
             else:
-                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else ""), int(l["cantidad"]), a_agencia)
+                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else "")
+                     + (f" ✎ personalizado “{l['perso']}”" if l["perso"] else ""), int(l["cantidad"]), a_agencia)
     for k in cargar_packs(con):
         if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= hoy and (k["tipo_programado"] or k["tipo_entrega"]) != "pickup":
             sale((k["despachador_programado"] or "").strip() or "Sin despachador",
