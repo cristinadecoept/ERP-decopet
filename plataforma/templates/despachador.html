@@ -50,8 +50,11 @@
 <table class="lineas"><tr>{% if rol=='admin' %}<th style="width:28px"><input type="checkbox" checked onchange="document.querySelectorAll('#pagar input[name=viaje_id]').forEach(c=>c.checked=this.checked);sumar()"></th>{% endif %}<th>Fecha</th><th>Agencia</th><th>Pedidos</th>{% if 'ver_dinero' in puede %}<th class="num">Le pagas</th>{% endif %}</tr>
 {% for t in viajes %}<tr>{% if rol=='admin' %}<td><input type="checkbox" name="viaje_id" value="{{ t.id }}" data-m="{{ t.monto or 0 }}" checked onchange="sumar()"></td>{% endif %}<td class="mono">{{ t.fecha|dia }}</td><td>{{ t.agencia or '—' }}</td><td class="mini">{{ t.n_ordenes }} pedido{{ 's' if t.n_ordenes!=1 }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ (t.monto or 0)|usd }}</td>{% endif %}</tr>{% endfor %}</table>{% endif %}
 
-{% if rol=='admin' %}<div style="display:flex;gap:10px;align-items:end;margin-top:12px;flex-wrap:wrap"><div><label>Fecha del pago</label><input type="date" name="fecha" value="{{ hoy }}"></div><div><label>Forma de pago</label><select name="forma" id="forma-pago" required><option value="" selected disabled>Elegir…</option>{% for fp in FORMAS_PAGO %}<option>{{ fp }}</option>{% endfor %}</select></div><div><label>¿Cuánto le pagas?</label><div class="cf-in"><span class="mini">$</span><input name="monto_pago" id="monto-pago" inputmode="decimal" style="width:110px" oninput="this.dataset.tocado=1;sumar()"></div></div>
-<div style="flex:1;min-width:150px"><label>Nota <span class="mini">(opcional)</span></label><input name="nota"></div><button class="btn" id="btn-pagar">Marcar pagado · <span id="suma"></span></button></div>{% endif %}
+{% if rol=='admin' %}<div style="display:flex;gap:10px;align-items:end;margin-top:12px;flex-wrap:wrap"><div><label>Fecha del pago</label><input type="date" name="fecha" value="{{ hoy }}"></div><div><label>Forma de pago</label><select name="forma" id="forma-pago" required><option value="" selected disabled>Elegir…</option>{% for fp in FORMAS_PAGO %}<option>{{ fp }}</option>{% endfor %}</select></div><div><label>¿Cuánto le pagas?</label><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+ <label class="chk no-chk-mini act" id="pp-todo"><input type="radio" name="parte" value="" checked onchange="modoPago(false)"> <span>Pago completo</span></label>
+ <label class="chk no-chk-mini" id="pp-parte"><input type="radio" name="parte" value="1" onchange="modoPago(true)"> <span>Solo una parte</span></label>
+ <span class="cf-in" id="pp-monto" hidden><span class="mini">$</span><input name="monto_pago" id="monto-pago" inputmode="decimal" style="width:100px" placeholder="0.00" oninput="sumar()"></span></div></div>
+<div style="flex:1;min-width:150px"><label>Nota <span class="mini">(opcional)</span></label><input name="nota"></div><button class="btn" id="btn-pagar">Pago completo · <span id="suma"></span></button></div>{% endif %}
 </form>{% else %}<div class="vacio">No le debes nada. Cada pedido que le asignes aparece aquí con lo que le pagas por esa zona, hasta que marques pagado.</div>{% endif %}</div>
 {% if rol=='admin' %}<div class="tarjeta" style="margin-bottom:14px"><h3>Todo lo que ha entregado</h3>
 {% if hist %}<div class="rec-t">
@@ -99,11 +102,16 @@
 </div>
 <script>function todos(v){document.querySelectorAll('#pagar input[name=orden_id], #pagar input[name=viaje_id], #pagar input[name=fallido_id]').forEach(c=>c.checked=v);document.querySelectorAll('#pagar thead input, #pagar th input').forEach(c=>c.checked=v);sumar();}
 const ADELANTO={{ (r.adelanto or 0)|round(2) }};
+function modoPago(parte){document.getElementById('pp-monto').hidden=!parte;document.getElementById('pp-todo').classList.toggle('act',!parte);document.getElementById('pp-parte').classList.toggle('act',parte);
+ const mp=document.getElementById('monto-pago');if(!parte)mp.value='';else mp.focus();sumar();}
 function sumar(){let s=0,n=0;document.querySelectorAll('#pagar input[name=orden_id]:checked, #pagar input[name=viaje_id]:checked, #pagar input[name=fallido_id]:checked').forEach(c=>{s+=parseFloat(c.dataset.m)||0;n++});
  const usa=Math.min(ADELANTO,s),paga=s-usa;const e=document.getElementById('suma');
  if(e)e.textContent=usa>0?('$'+paga.toFixed(2)+' (se descuentan $'+usa.toFixed(2)+' de adelanto)'):('$'+s.toFixed(2)+' ('+n+')');
  const f=document.getElementById('forma-pago');if(f)f.required=paga>0.009;
- const mp=document.getElementById('monto-pago');if(mp){if(!mp.dataset.tocado)mp.value=paga>0?paga.toFixed(2):'';const x=parseFloat(mp.value)||0;
-  if(e&&x>0&&x<paga-0.009)e.textContent='$'+x.toFixed(2)+' (una parte · queda debiéndole $'+(paga-x).toFixed(2)+')';}
+ const mp=document.getElementById('monto-pago'),bt=document.getElementById('btn-pagar');
+ if(mp&&!document.getElementById('pp-monto').hidden){const x=parseFloat(mp.value)||0;
+  if(e)e.textContent=x>0&&x<paga-0.009?('$'+x.toFixed(2)+' · queda debiéndole $'+(paga-x).toFixed(2)):'escribe cuánto';
+  if(bt&&bt.firstChild)bt.firstChild.textContent='Pagar una parte · ';}
+ else if(bt&&bt.firstChild)bt.firstChild.textContent='Pago completo · ';
  const b=document.getElementById('btn-pagar');if(b)b.disabled=!n;}sumar();</script>
 {% endblock %}
