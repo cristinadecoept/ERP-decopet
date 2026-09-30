@@ -20,7 +20,6 @@ COPY alembic.ini .
 COPY pyproject.toml .
 
 RUN mkdir -p /data
-VOLUME ["/data"]
 
 EXPOSE 8765
 
