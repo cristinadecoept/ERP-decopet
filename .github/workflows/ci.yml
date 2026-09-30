@@ -1,0 +1,53 @@
+name: pruebas
+
+# El mismo contrato que servidor/publicar.sh: nada se publica con la suite en rojo.
+# Solo que acá corre en cada PR, no al momento de desplegar.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: decopet
+          POSTGRES_PASSWORD: decopet
+          POSTGRES_DB: decopet
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DECOPET_PRUEBAS: "1"
+      DECOPET_DATABASE_URL: postgresql+psycopg://decopet:decopet@localhost:5432/decopet
+      CF_ACCESS_TEAM_DOMAIN: ci.cloudflareaccess.com
+      CF_ACCESS_AUD: ci-test-audience
+      CF_ACCESS_ENFORCE: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Errores que rompen (sintaxis, nombres sin definir)
+        run: python -m ruff check .
+
+      - name: Preparar esquema PostgreSQL
+        run: python -m alembic upgrade head
+
+      - name: Pruebas
+        run: python -m pytest pruebas.py tests -q

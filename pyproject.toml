@@ -1,0 +1,13 @@
+# Herramientas. El estilo del código es deliberadamente denso (una sola línea donde otros
+# pondrían cinco) y la dueña lo lee así: no se reformatea. Lo que se gatea es lo que de
+# verdad puede romper algo — errores de sintaxis, nombres sin definir, f-strings vacías.
+[tool.ruff]
+exclude = ["app", ".venv"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+# mypy entra cuando el código tenga anotaciones de tipos; hoy sería ruido permanente.
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = false

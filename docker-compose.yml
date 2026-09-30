@@ -1,0 +1,49 @@
+# Entorno local de desarrollo: la app + Postgres.
+#   docker compose up -d          # levanta los dos
+#   http://127.0.0.1:8765         # la app
+# En producción la base es Neon y los datos van en un volumen de Railway.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: decopet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-decopet-local}
+      POSTGRES_DB: decopet
+    ports:
+      # 5433 y no 5432: en esta máquina hay un PostgreSQL nativo de Windows
+      # (servicio postgresql-x64-17) que ya tiene el 5432 ocupado.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U decopet -d decopet"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    command: ["sh", "-c", "python -m alembic upgrade head && exec uvicorn plataforma.app:app --host 0.0.0.0 --port 8765 --proxy-headers --forwarded-allow-ips=*"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DECOPET_DATOS: /data
+      DECOPET_DATABASE_URL: postgresql+psycopg://decopet:${POSTGRES_PASSWORD:-decopet-local}@db:5432/decopet
+      DECOPET_STAGING: ${DECOPET_STAGING:-0}
+      CF_ACCESS_ENFORCE: ${CF_ACCESS_ENFORCE:-0}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8765/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8765:8765"
+    volumes:
+      - datos:/data
+
+volumes:
+  pgdata:
+  datos:

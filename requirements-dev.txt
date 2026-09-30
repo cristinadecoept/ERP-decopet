@@ -1,0 +1,7 @@
+# Herramientas de desarrollo y de CI. No van en la imagen de producción:
+#   ./.venv/bin/pip install -r requirements-dev.txt
+-r requirements.txt
+
+pytest==8.4.2
+ruff==0.14.4
+mypy==1.18.2

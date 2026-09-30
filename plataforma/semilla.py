@@ -1,7 +1,8 @@
 """Datos de prueba coherentes (ficticios) para probar la plataforma. Se puede volver a correr: borra y recrea."""
-import random, datetime, sqlite3, json, sys
+import random, datetime, json, os, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from plataforma import base_datos as BD
 
 BASE = Path(__file__).resolve().parent
 DB = BASE / "data" / "plataforma.db"
@@ -32,6 +33,12 @@ PRODUCTOS = [  # sku, nombre, categoria, descripcion, precio, precio_par, costo,
     ("BOWL-G", "Bowl grande", "accesorio", "1 × $10 · 2 × $15", 10, 15, 5, "producto", 0, 0, 0),
     ("PLATO-AZUL", "Plato azul", "accesorio", "plato de alimentación lenta · 1 × $15 · 2 × $25", 15, 25, 6, "producto", 0, 0, 0),
     ("PLATO-ROSA", "Plato rosado", "accesorio", "plato de alimentación lenta · 1 × $15 · 2 × $25", 15, 25, 6, "producto", 0, 0, 0),
+    # Materiales: no se venden, pero se lleva cuánto queda. Son los que pide ITEMS_A_INVENTARIO en app.py.
+    ("INS-PEGA", "Pega amarilla", "insumo", "por litro", None, None, 4.55, "insumo", 0, 0, 0),
+    ("INS-CINTA", "Cinta antideslizante", "insumo", "por rollo", None, None, 1, "insumo", 0, 0, 0),
+    ("INS-TELA", "Tela de rampa", "insumo", "por metro", None, None, None, "insumo", 0, 0, 0),
+    ("INS-BAMBU", "Placas de bambú Decopet", "insumo", "por placa", None, None, None, "insumo", 0, 0, 0),
+    ("INS-BOLSA", "Bolsas negras", "insumo", "por unidad", None, None, None, "insumo", 0, 0, 0),
     # Opciones (se agregan a una línea, no se venden como producto)
     ("OPC-PERSO", "Personalización con nombre", "opcion", None, 10, None, 3, "opcion", 0, 0, 0),
     ("OPC-MALLA", "Malla agregada al porche", "opcion", None, 20, None, 8, "opcion", 0, 0, 0),
@@ -89,11 +96,28 @@ CUENTAS = {"Pago Móvil": "Pago Móvil BVC", "Zelle": "Zelle Decopet", "Efectivo
 TASA = 152.4  # se reemplaza por la tasa real si se pudo leer del BCV
 
 
+def cargar_productos(con):
+    """El catálogo completo. Se usa desde main() y desde las pruebas, para que las dos
+    vean exactamente los mismos productos."""
+    con.executemany("INSERT INTO productos (sku,nombre,categoria,descripcion,precio,precio_par,costo,tipo,requiere_color,permite_malla,permite_personalizacion,orden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    [p + (i,) for i, p in enumerate(PRODUCTOS)])
+
+
 def main():
-    DB.parent.mkdir(exist_ok=True)
-    if DB.exists(): DB.unlink()
-    con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
-    con.executescript((BASE / "modelo.sql").read_text())
+    postgres = BD.usa_postgres()
+    if postgres:
+        if os.environ.get("DECOPET_STAGING") != "1" or not BD.nombre_base().lower().endswith("_staging"):
+            raise SystemExit("La semilla PostgreSQL exige DECOPET_STAGING=1 y un nombre de base que incluya staging.")
+        if os.environ.get("DECOPET_CONFIRMAR_SEMILLA") != "SEMBRAR DECOPET STAGING":
+            raise SystemExit("Confirma el borrado del dataset demo con DECOPET_CONFIRMAR_SEMILLA='SEMBRAR DECOPET STAGING'.")
+        con = BD.conectar()
+        tablas = ["entregas_repuesto", "repuestos_prepagados", "compromisos_pagos", "producto_fotos", "abonos_produccion", "credito_cliente", "mov_inventario", "orden_lineas", "pagos", "historial", "incidencias", "gastos", "packs", "fotos", "ordenes", "notas_cliente", "direcciones", "mascotas", "clientes", "productos", "cuentas", "config", "usuarios", "despachadores", "proveedores", "proveedor_items", "produccion", "tasas", "sesiones", "intentos", "seguimientos", "resultados_mes", "movimientos", "compromisos", "tarifas", "pagos_despachador", "viajes_agencia", "registro_ventas", "notas_taller", "faltas", "receta"]
+        con.execute("TRUNCATE " + ", ".join(tablas) + " RESTART IDENTITY CASCADE")
+    else:
+        DB.parent.mkdir(exist_ok=True)
+        if DB.exists(): DB.unlink()
+        con = BD._sqlite(DB)
+        con.executescript((BASE / "modelo.sql").read_text())
     con.executemany("INSERT INTO usuarios (id,nombre,rol) VALUES (?,?,?)", [(1, "Cristina", "admin"), (2, "Vale (logística)", "logistica"), (3, "Tina", "sistema")])
     # Plantilla de cajas de Cristina (códigos y nombres de su cash flow; saldos en cero)
     CAJAS = [("001", "Caja", "USD", "operativa", 0), ("002", "Juan Despachos", "USD", "operativa", 0), ("003", "Zelle Decopet", "USD", "operativa", 0), ("004", "Binance Cripto Investment", "USDT", "inversion", 0),
@@ -110,7 +134,7 @@ def main():
             "Plataformas": ["Shopify", "Cashea", "Meta", "Tina (KAI)", "Hosting", "Otras"], "Impuestos": ["IVA", "SENIAT", "Otros"], "Vehículo": ["Mantenimiento", "Repuestos"], "Gasolina": ["Gasolina"],
             "Oficina y limpieza": ["Oficina", "Limpieza"], "Contabilidad y legal": ["Contador", "Legal"], "Posventa": ["Reposiciones", "Devoluciones"], "Donaciones": ["Donación"], "Otros gastos": ["Otro"]}
     con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('categorias_gasto', ?)", (json.dumps(CATS, ensure_ascii=False),))
-    con.executemany("INSERT INTO productos (sku,nombre,categoria,descripcion,precio,precio_par,costo,tipo,requiere_color,permite_malla,permite_personalizacion,orden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [p + (i,) for i, p in enumerate(PRODUCTOS)])
+    cargar_productos(con)
     prods = {r["sku"]: dict(r) for r in con.execute("SELECT * FROM productos")}
     global TASA
     from plataforma import bcv

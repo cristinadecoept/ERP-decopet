@@ -32,13 +32,13 @@ probar con datos ficticios: `./.venv/bin/python plataforma/semilla.py`
 ./.venv/bin/python pruebas.py
 ```
 
-21 pruebas, sin pytest y sin dependencias. Cada una arma su propia base
-temporal. Cubren sobre todo **reglas de plata**: fechas de quincena, saldo a
-favor de clientes, deuda a despachadores, cuadre de cajas, parseo de números
-con coma y punto, y que editar un registro parcial no borre campos ausentes.
+37 pruebas, corriendo con **pytest**. Cada una arma su propia base temporal. Cubren sobre
+todo **reglas de plata**: fechas de quincena, saldo a favor de clientes, deuda a
+despachadores, cuadre de cajas, parseo de números con coma y punto, y que editar un registro
+parcial no borre campos ausentes.
 
-Hay una que reconstruye la base desde cero y verifica que quede idéntica a la
-que está en uso. Es la que impide que el esquema se desincronice.
+Hay una que verifica que el esquema se puede reconstruir desde cero sin perder nada. Es la
+que impide que el esquema se desincronice.
 
 `servidor/publicar.sh` las corre antes de desplegar y aborta si alguna falla.
 

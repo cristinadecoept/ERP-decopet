@@ -1,6 +1,8 @@
 """Plataforma Decopet — pantallas. Parte 1: Órdenes."""
-import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, hashlib
+import datetime, json, re, os, subprocess, secrets, threading, time, hashlib
 
+from plataforma import base_datos as BD
+from plataforma import access as CF_ACCESS
 from pathlib import Path
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, PlainTextResponse
@@ -16,10 +18,11 @@ DATOS.mkdir(parents=True, exist_ok=True)
 DB = DATOS / "plataforma.db"
 DOCS_DIR = DATOS / "documentos"
 FOTOS_DIR = DATOS / "fotos"
-for _d in (DOCS_DIR, FOTOS_DIR): _d.mkdir(parents=True, exist_ok=True)
+# Todo se escribe y se sirve del MISMO sitio: FOTOS_DIR. Antes se escribía en BASE/data/fotos
+# y se servía de DATOS/fotos, que son dos carpetas distintas cuando DECOPET_DATOS está definido.
+for _d in (DOCS_DIR, FOTOS_DIR, FOTOS_DIR / "productos"): _d.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Decopet", docs_url=None, redoc_url=None, openapi_url=None)   # sin manual técnico público: nadie necesita ver cómo está hecho por dentro
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
-(BASE / "data" / "fotos").mkdir(parents=True, exist_ok=True)
 app.mount("/fotos", StaticFiles(directory=FOTOS_DIR), name="fotos")
 tpl = Jinja2Templates(directory=BASE / "templates")
 
@@ -96,7 +99,7 @@ FORMAS_COBRO = list(FORMAS_PAGO)   # solo las cajas donde un cliente puede pagar
 DESPACHADORES = ["Ingrid", "Cristina", "Fernando"]   # se reemplaza al arrancar con los activos de la tabla despachadores
 
 def cargar_despachadores():
-    con = sqlite3.connect(DB)
+    con = BD.conectar()
     DESPACHADORES[:] = [r[0] for r in con.execute("SELECT nombre FROM despachadores WHERE activo=1 ORDER BY nombre")]
     con.close()
 AGENCIAS = ["Tealca", "MRW", "Zoom", "Domesa", "Liberty Express", "Otra"]
@@ -193,7 +196,7 @@ tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, C
 
 
 def db():
-    con = sqlite3.connect(DB, check_same_thread=False); con.row_factory = sqlite3.Row; con.execute("PRAGMA foreign_keys=ON")
+    con = BD.conectar()
     try: yield con
     finally: con.close()
 
@@ -210,6 +213,11 @@ TALLER_PERMITIDO = PUERTAS["taller"][0]
 
 
 ABIERTO = ("/entrar", "/static", "/favicon", "/salir", "/robots.txt")   # lo único que se puede abrir sin haber entrado
+
+
+@app.get("/health", include_in_schema=False)
+def health():
+    return PlainTextResponse("ok")
 
 MAX_SUBIDA = 25 * 1024 * 1024        # nadie necesita subir más de 25 MB de una vez
 
@@ -245,8 +253,18 @@ async def puerta(request: Request, call_next):
         for k, v in ESCUDOS.items(): r.headers[k] = v
         return r
 
+    access_exigido = os.environ.get("CF_ACCESS_ENFORCE") == "1" or os.environ.get("DECOPET_STAGING") == "1"
+    if ruta == "/health":
+        return con_escudos(PlainTextResponse("ok"))
+    if access_exigido:
+        token = request.headers.get("cf-access-jwt-assertion", "")
+        try:
+            if not token: raise ValueError("JWT ausente")
+            request.state.cf_access = CF_ACCESS.validar(token)
+        except Exception:
+            return con_escudos(PlainTextResponse("Forbidden", status_code=403))
     if ruta == "/robots.txt":
-        return con_escudos(PlainTextResponse("User-agent: *\nDisallow: /\n"))
+        return con_escudos(PlainTextResponse("User-agent: *\nDisallow: /"))
     if viene_de_fuera(request):
         return con_escudos(JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403))
     try:
@@ -312,10 +330,11 @@ COLUMNAS = (
 )
 
 
-def preparar_base(ruta):
-    """Deja una base lista para usar: crea las tablas y agrega las columnas que falten.
-    Sirve igual para la base en uso y para una recién creada."""
-    con = sqlite3.connect(ruta)
+def preparar_base(ruta=None):
+    """SQLite legado: crea las tablas y aplica COLUMNAS. Postgres: el esquema viene de Alembic."""
+    if BD.usa_postgres() and (ruta is None or Path(ruta) == DB):
+        return BD.conectar()
+    con = BD._sqlite(ruta or DB)
     con.executescript((BASE / "modelo.sql").read_text())
     hay = {}
     for tabla, col, tipo in COLUMNAS:
@@ -334,8 +353,9 @@ def _arranque():
             con.execute("INSERT OR IGNORE INTO despachadores (nombre, activo) VALUES (?,0)", (n,))
         con.commit()
     con.close(); cargar_despachadores(); cargar_formas_pago(); cargar_ajustes()
-    if os.environ.get("DECOPET_PRUEBAS") != "1": arrancar_respaldo()   # las pruebas no respaldan
-    bcv.programar(DB)
+    if os.environ.get("DECOPET_PRUEBAS") != "1":
+        arrancar_respaldo()
+        bcv.programar(DB)
 
 
 def tasa_hoy(con):
@@ -428,7 +448,7 @@ def quien_es(request: Request):
     """El usuario conectado, o None. Se lee de la ficha del navegador, no de un rol escrito a mano."""
     ficha = request.cookies.get("sesion")
     if not ficha: return None
-    con = sqlite3.connect(DB, timeout=0.5); con.row_factory = sqlite3.Row
+    con = BD.conectar()
     try:
         u = con.execute("""SELECT u.* FROM sesiones s JOIN usuarios u ON u.id=s.usuario_id
                            WHERE s.ficha=? AND s.vence_en >= datetime('now','localtime') AND u.activo=1""", (ficha,)).fetchone()
@@ -438,7 +458,7 @@ def quien_es(request: Request):
             try:
                 con.execute("""UPDATE sesiones SET visto_en=datetime('now','localtime') WHERE ficha=?
                                AND (visto_en IS NULL OR visto_en < datetime('now','localtime','-5 minutes'))""", (ficha,)); con.commit()
-            except sqlite3.OperationalError:
+            except BD.ErrorBaseDatos:
                 pass
         return dict(u) if u else None
     finally:
@@ -448,10 +468,10 @@ def quien_es(request: Request):
 def hay_claves(con=None):
     """¿Ya se puso alguna clave? Si no, el ERP todavía no tiene dueño."""
     propio = con is None
-    if propio: con = sqlite3.connect(DB)
+    if propio: con = BD.conectar()
     try:
         return bool(con.execute("SELECT 1 FROM usuarios WHERE clave_hash IS NOT NULL AND activo=1").fetchone())
-    except sqlite3.OperationalError:
+    except BD.ErrorBaseDatos:
         return False
     finally:
         if propio: con.close()
@@ -488,7 +508,7 @@ def render(request, nombre, **ctx):
     rol = rol_de(request)
     ctx["v_css"] = int((BASE / "static" / "estilo.css").stat().st_mtime)  # evita que el navegador use una copia vieja del estilo
     if "tasa" not in ctx:
-        con = sqlite3.connect(DB); con.row_factory = sqlite3.Row; ctx["tasa"] = tasa_hoy(con); con.close()
+        con = BD.conectar(); ctx["tasa"] = tasa_hoy(con); con.close()
     ctx.update(request=request, rol=rol, puede=PERMISOS[rol], hoy=datetime.date.today().isoformat(),
                seccion=ctx.get("seccion", ""), usuario=ctx.get("usuario") or quien_es(request),
                viendo_como=request.cookies.get("ver_como") or "")
@@ -592,7 +612,7 @@ def inicio(request: Request, con=Depends(db)):
     # miembros que cruzaron el umbral hoy (36 días exactos sin repuesto)
     toca = con.execute("""SELECT COUNT(*) FROM (SELECT c.id, MAX(CASE WHEN p.categoria='repuesto' OR p.sku LIKE 'PRO-%' THEN substr(o.creado_en,1,10) END) ult
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
-        GROUP BY c.id HAVING SUM(CASE WHEN p.sku LIKE 'PRO-%' THEN 1 ELSE 0 END) > 0 AND julianday(?) - julianday(ult) BETWEEN 36 AND 42)""", (h,)).fetchone()[0]
+        GROUP BY c.id HAVING SUM(CASE WHEN p.sku LIKE 'PRO-%' THEN 1 ELSE 0 END) > 0 AND (CAST(? AS date) - CAST(MAX(CASE WHEN p.categoria='repuesto' OR p.sku LIKE 'PRO-%' THEN substr(o.creado_en,1,10) END) AS date)) BETWEEN 36 AND 42)""", (h,)).fetchone()[0]
     cumples_todos = cumples_proximos(con, 2)
     segs = [s for s in cumples_todos if not s["hecho"]] + [s for s in seguimientos_pendientes(con) if s.get("fase", "hoy") == "hoy"]
     c["toca"] = toca; c["seguimientos"] = len(segs)
@@ -641,8 +661,8 @@ def inicio(request: Request, con=Depends(db)):
         c["quincena_n"] = len(c["quincena_falta"])
 
     deuda_desp = con.execute("""SELECT despachador, SUM(COALESCE(delivery, 0)) m, COUNT(*) n FROM ordenes
-                                WHERE despachador IS NOT NULL AND despachador!='' AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 HAVING m>0""").fetchall() if rol == "admin" else []
-    viajes_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_agencia WHERE pagado=0 GROUP BY 1 HAVING m>0").fetchall() if rol == "admin" else []
+                                WHERE despachador IS NOT NULL AND despachador!='' AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 HAVING SUM(COALESCE(delivery, 0)) > 0""").fetchall() if rol == "admin" else []
+    viajes_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_agencia WHERE pagado=0 GROUP BY 1 HAVING SUM(monto)>0").fetchall() if rol == "admin" else []
     c["desp_debe"] = sum(r["m"] for r in deuda_desp) + sum(r["m"] for r in viajes_desp)   # entregas + viajes a la agencia
     # pedidos cuyo día de pago llegó (la grama se paga los viernes aunque llegue el lunes)
     # El resto se paga el día de pago si se puso uno; si no, el día de entrega; y si no tiene
@@ -777,11 +797,11 @@ def cargar_ordenes(con, filtros, rol):
              (SELECT d.ciudad    FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_ciudad,
              (SELECT d.maps      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_maps,
              COALESCE((SELECT SUM(cc.monto) FROM credito_cliente cc WHERE cc.cliente_id=o.cliente_id),0) credito,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l
+             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
+             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l
               WHERE l.orden_id=o.id AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio=0)) productos_hoy,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END
+             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END
                  || CASE WHEN EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL) THEN '@PEND' ELSE '' END
                  || COALESCE((SELECT '@PACK' || (k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)) || '/' || k.unidades
                               FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id
@@ -1263,13 +1283,13 @@ def cargar_ajustes():
     """Trae de Configuración las reglas que antes estaban clavadas en el código.
     Se llama al arrancar y cada vez que Cristina guarda, para que el cambio valga sin reiniciar."""
     global CICLO_REPUESTO, IVA
-    con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
+    con = BD.conectar()
     try:
         r = con.execute("SELECT clave, valor FROM config WHERE clave IN ('ciclo_repuesto','iva')").fetchall()
         v = {x["clave"]: x["valor"] for x in r}
         if v.get("ciclo_repuesto"): CICLO_REPUESTO = int(float(v["ciclo_repuesto"]))
         if v.get("iva"): IVA = float(v["iva"])
-    except sqlite3.OperationalError:
+    except BD.ErrorBaseDatos:
         pass
     finally:
         con.close()
@@ -1620,7 +1640,7 @@ MONEDA_CAJA = {}   # nombre de caja → moneda, para saber cuándo el monto vien
 
 
 def _monedas_cajas():
-    con = sqlite3.connect(DB); r = con.execute("SELECT nombre, moneda FROM cuentas").fetchall(); con.close(); return r
+    con = BD.conectar(); r = con.execute("SELECT nombre, moneda FROM cuentas").fetchall(); con.close(); return r
 
 
 def es_bolivares(forma):
@@ -1630,7 +1650,7 @@ def es_bolivares(forma):
 
 def cargar_formas_pago():
     """Las formas de pago son las cajas: así nunca falta una ni sobra una que ya no usas."""
-    con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
+    con = BD.conectar()
     filas = con.execute("SELECT nombre, COALESCE(cobra,1) cobra FROM cuentas WHERE activa=1 ORDER BY orden").fetchall()
     cajas = [r["nombre"] for r in filas]
     con.close()
@@ -1752,7 +1772,7 @@ def saldos(con):
         corte = c["fecha_corte"] or "1900-01-01"
         desde = (con.execute("SELECT valor FROM config WHERE clave='cashflow_desde'").fetchone() or [None])[0]
         ing = 0 if not ventas_automaticas(con) else con.execute("""SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p JOIN ordenes o ON o.id=p.orden_id
-                             WHERE p.estado='confirmado' AND p.cuenta=? AND o.origen_excel=0 AND ?2 IS NOT NULL AND substr(COALESCE(p.confirmado_en,p.fecha),1,10)>=? AND substr(COALESCE(p.confirmado_en,p.fecha),1,10)>=?2""", (c["nombre"], desde, corte)).fetchone()[0]
+                             WHERE p.estado='confirmado' AND p.cuenta=? AND o.origen_excel=0 AND CAST(?2 AS TEXT) IS NOT NULL AND substr(COALESCE(p.confirmado_en,p.fecha),1,10)>=? AND substr(COALESCE(p.confirmado_en,p.fecha),1,10)>=?2""", (c["nombre"], desde, corte)).fetchone()[0]
         gas = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM gastos WHERE cuenta_id=? AND fecha>=?", (c["id"], corte)).fetchone()[0]
         m_in = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM movimientos WHERE cuenta_destino_id=? AND fecha>=?", (c["id"], corte)).fetchone()[0]
         m_out = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM movimientos WHERE cuenta_origen_id=? AND fecha>=?", (c["id"], corte)).fetchone()[0]
@@ -1817,7 +1837,7 @@ def cashflow(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
     }
     # lo que Cristina escribió alguna vez queda como opción para la próxima
     for r in con.execute("""SELECT DISTINCT categoria, proveedor FROM gastos WHERE categoria IS NOT NULL AND TRIM(COALESCE(proveedor,''))!=''
-                            UNION SELECT DISTINCT categoria, notas FROM movimientos WHERE 0"""):
+                            UNION SELECT DISTINCT categoria, notas FROM movimientos WHERE FALSE"""):
         A_QUIEN.setdefault(r["categoria"], []).append(r["proveedor"])
     # en una entrada la pregunta es de quién viene la plata
     A_QUIEN_ENT = {
@@ -1929,7 +1949,7 @@ def libro_caja(con, caja_id=None, mes=None):
     desde = (con.execute("SELECT valor FROM config WHERE clave='cashflow_desde'").fetchone() or [None])[0]
     if ventas_automaticas(con):
         for pa in con.execute("""SELECT pa.*, o.numero, o.id oid, c.nombre cliente FROM pagos pa JOIN ordenes o ON o.id=pa.orden_id JOIN clientes c ON c.id=o.cliente_id
-                                 WHERE pa.estado='confirmado' AND o.origen_excel=0 AND ?1 IS NOT NULL AND substr(COALESCE(pa.confirmado_en,pa.fecha),1,10) >= ?1""", (desde,)):
+                                 WHERE pa.estado='confirmado' AND o.origen_excel=0 AND CAST(?1 AS TEXT) IS NOT NULL AND substr(COALESCE(pa.confirmado_en,pa.fecha),1,10) >= ?1""", (desde,)):
             cj = cajas.get(pa["cuenta"])
             lineas.append(dict(fecha=(pa["confirmado_en"] or pa["fecha"])[:10], cuando=(pa["confirmado_en"] or pa["fecha"] or ""), concepto="Venta",
                                detalle=f"{pa['numero']} · {pa['cliente']} · {pa['forma']}", caja=cj,
@@ -2278,13 +2298,13 @@ def _resultados_meses(con, anio):
     DIA_VENTA = "substr(COALESCE(NULLIF(o.fecha_pago,''), o.creado_en),1,10)"
     vivo = con.execute(f"""SELECT substr({DIA_VENTA},1,7) m, SUM(o.total) facturacion, COUNT(*) n
                            FROM ordenes o WHERE o.estado!='cancelada' AND o.origen_excel=0
-                           AND ? IS NOT NULL AND {DIA_VENTA}>=? AND substr({DIA_VENTA},1,4)=? GROUP BY 1""", (desde, desde, anio)).fetchall()
+                           AND CAST(? AS TEXT) IS NOT NULL AND {DIA_VENTA}>=? AND substr({DIA_VENTA},1,4)=? GROUP BY 1""", (desde, desde, anio)).fetchall()
     unidades = {r[0]: r[1] for r in con.execute(f"""SELECT substr({DIA_VENTA},1,7), SUM(l.cantidad) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
                                                     WHERE o.estado!='cancelada' AND o.origen_excel=0
-                                                    AND ? IS NOT NULL AND {DIA_VENTA}>=? AND substr({DIA_VENTA},1,4)=? GROUP BY 1""", (desde, desde, anio))}
+                                                    AND CAST(? AS TEXT) IS NOT NULL AND {DIA_VENTA}>=? AND substr({DIA_VENTA},1,4)=? GROUP BY 1""", (desde, desde, anio))}
     # el sueldo de Cristina va en su propia columna, así que NO se cuenta dentro de Gastos (si no, se restaría dos veces)
     SUELDO = "categoria='Sueldo Cristina'"
-    ACTIVO = "? IS NOT NULL AND fecha>=?"   # antes de la fecha de arranque manda el historial, no la plataforma
+    ACTIVO = "CAST(? AS TEXT) IS NOT NULL AND fecha>=?"   # antes de la fecha de arranque manda el historial, no la plataforma
     gastos_m = {r[0]: r[1] for r in con.execute(f"SELECT substr(fecha,1,7), SUM(monto_usd) FROM gastos WHERE NOT ({SUELDO}) AND {ACTIVO} AND substr(fecha,1,4)=? GROUP BY 1", (desde, desde, anio))}
     sueldos = {r[0]: r[1] for r in con.execute(f"SELECT substr(fecha,1,7), SUM(monto_usd) FROM gastos WHERE {SUELDO} AND {ACTIVO} AND substr(fecha,1,4)=? GROUP BY 1", (desde, desde, anio))}
     grandes = {r[0]: r[1] for r in con.execute(f"SELECT substr(fecha,1,7), SUM(monto_usd) FROM gastos WHERE compra_grande=1 AND {ACTIVO} AND substr(fecha,1,4)=? GROUP BY 1", (desde, desde, anio))}
@@ -2957,7 +2977,7 @@ def miembros(request: Request, q: str = "", ver: str = "todos", con=Depends(db))
       FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada'
       JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
       WHERE (c.nombre LIKE ? OR c.telefono LIKE ?)
-      GROUP BY c.id HAVING desde IS NOT NULL ORDER BY COALESCE(ultimo_repuesto, desde) DESC""", (f"%{q}%", f"%{q}%")).fetchall()
+      GROUP BY c.id HAVING MIN(CASE WHEN p.sku LIKE 'PRO-%' THEN substr(o.creado_en,1,10) END) IS NOT NULL ORDER BY COALESCE(ultimo_repuesto, desde) DESC""", (f"%{q}%", f"%{q}%")).fetchall()
     hoy = datetime.date.today()
     lista = []
     for r in rows:
@@ -3018,7 +3038,7 @@ async def producto_foto(request: Request, pid: int, con=Depends(db)):
     if a and getattr(a, "filename", None):
         ext = (a.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]; rosado = f.get("variante") == "rosado"
         nombre = f"producto-{pid}{'-rosado' if rosado else ''}.{ext}"
-        (BASE / "data" / "fotos" / nombre).write_bytes(await a.read())
+        (FOTOS_DIR / nombre).write_bytes(await a.read())
         con.execute(f"UPDATE productos SET {'foto_rosado' if rosado else 'foto'}=? WHERE id=?", (nombre, pid)); con.commit()
     return RedirectResponse("/productos", status_code=303)
 
@@ -3111,7 +3131,7 @@ async def galeria_subir(request: Request, con=Depends(db)):
         if not getattr(a, "filename", None): continue
         ext = (a.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]
         nombre = f"{pid}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{abs(hash(a.filename)) % 100000}.{ext}"
-        (BASE / "data" / "fotos" / "productos" / nombre).write_bytes(await a.read())
+        (FOTOS_DIR / "productos" / nombre).write_bytes(await a.read())
         con.execute("INSERT INTO producto_fotos (producto_id, archivo, tipo, etiqueta) VALUES (?,?,?,?)", (pid, nombre, tipo, f.get("etiqueta") or None))
     con.commit(); return RedirectResponse(f"/galeria?producto={pid}", status_code=303)
 
@@ -3123,7 +3143,7 @@ def galeria_borrar(request: Request, fid: int, con=Depends(db)):
     if r:
         con.execute("DELETE FROM producto_fotos WHERE id=?", (fid,))
         if not con.execute("SELECT 1 FROM producto_fotos WHERE archivo=?", (r["archivo"],)).fetchone():   # el mismo archivo puede servir a varios productos
-            try: (BASE / "data" / "fotos" / "productos" / r["archivo"]).unlink()
+            try: (FOTOS_DIR / "productos" / r["archivo"]).unlink()
             except FileNotFoundError: pass
         con.commit()
     return RedirectResponse(f"/galeria?producto={r['producto_id']}" if r else "/galeria", status_code=303)
@@ -3527,8 +3547,8 @@ async def produccion_crear(request: Request, con=Depends(db)):
 
 def llegada_repetida(con, pid, uid):
     """¿Se acaba de anotar una llegada de este mismo pedido? Un doble clic manda el formulario dos veces."""
-    return bool(con.execute("""SELECT 1 FROM mov_inventario WHERE nota LIKE ? AND usuario_id IS ? AND tipo='entrada'
-                               AND creado_en >= datetime('now','localtime','-8 seconds')""", (f"producción #{pid} %", uid)).fetchone())
+    return bool(con.execute("""SELECT 1 FROM mov_inventario WHERE nota LIKE ? AND (usuario_id=? OR (usuario_id IS NULL AND ? IS NULL)) AND tipo='entrada'
+                               AND creado_en >= datetime('now','localtime','-8 seconds')""", (f"producción #{pid} %", uid, uid)).fetchone())
 
 
 def entrar_al_inventario(con, r, n, nota, uid, colores=None):
@@ -3740,7 +3760,7 @@ def seguimientos_pendientes(con, umbral=None, ventana=7):
         MAX(CASE WHEN p.sku='PRO-G' THEN 'Grande' WHEN p.sku='PRO-M' THEN 'Mediano' END) tamano,
         MAX(CASE WHEN p.categoria='repuesto' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) ult_rep
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
-        GROUP BY c.id HAVING porche IS NOT NULL"""):
+        GROUP BY c.id HAVING MAX(CASE WHEN p.sku LIKE 'PRO-%' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) IS NOT NULL"""):
         # fechas de repuesto (compras + retiros de pack) → ritmo propio
         # Lo que cuenta es el día que el cliente RECIBIÓ un repuesto, no el día que lo pagó.
         # Por eso las líneas que quedaron prepagadas se excluyen aquí y entran abajo con su fecha de entrega.
@@ -3775,7 +3795,7 @@ def seguimientos_pendientes(con, umbral=None, ventana=7):
         MAX(CASE WHEN p.sku LIKE 'BAS%' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) basico,
         MAX(CASE WHEN p.sku LIKE 'PRO-%' THEN 1 ELSE 0 END) tiene_pro
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
-        GROUP BY c.id HAVING basico IS NOT NULL AND tiene_pro=0"""):
+        GROUP BY c.id HAVING MAX(CASE WHEN p.sku LIKE 'BAS%' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) IS NOT NULL AND MAX(CASE WHEN p.sku LIKE 'PRO-%' THEN 1 ELSE 0 END)=0"""):
         dias = (hoy - datetime.date.fromisoformat(b["basico"][:10])).days
         if dias < CICLO_REPUESTO or dias > 120: continue
         clave = f"basico:{b['id']}:{b['basico'][:10]}"
@@ -5039,7 +5059,9 @@ def analitica(request: Request, con=Depends(db)):
     quietos = con.execute("""SELECT p.nombre, (SELECT MAX(substr(o.creado_en,1,10)) FROM orden_lineas l
                              JOIN ordenes o ON o.id=l.orden_id WHERE l.producto_id=p.id AND o.estado!='cancelada') ultima
                              FROM productos p WHERE p.activo=1 AND p.tipo='producto' AND p.categoria NOT IN ('opcion')
-                             ORDER BY ultima IS NOT NULL, ultima LIMIT 12""").fetchall()
+                             ORDER BY (SELECT MAX(substr(o.creado_en,1,10)) FROM orden_lineas l
+                                       JOIN ordenes o ON o.id=l.orden_id WHERE l.producto_id=p.id AND o.estado!='cancelada') IS NOT NULL,
+                                      ultima LIMIT 12""").fetchall()
     tot_u = sum(p["u"] for p in productos); tot_f = sum(p["fact"] for p in productos)
     return render(request, "analitica.html", seccion="analitica", productos=productos, quietos=quietos,
                   tot_u=tot_u, tot_f=tot_f)

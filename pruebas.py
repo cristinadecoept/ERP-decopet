@@ -4,34 +4,40 @@
 Se ejecutan en segundos y no tocan tus datos: cada prueba arma su propia base
 de datos de mentira. Correrlas antes y después de cualquier cambio:
 
-    ./.venv/bin/python pruebas.py
+    ./.venv/bin/python pruebas.py                 # como siempre (así las corre publicar.sh)
+    ./.venv/bin/python -m pytest pruebas.py -q    # lo mismo, con pytest
+    ./.venv/bin/python -m pytest pruebas.py -k quincena   # solo una parte
 """
-import os, sqlite3, datetime, tempfile, pathlib, traceback
+import os, sqlite3, datetime, tempfile, pathlib
 os.environ["DECOPET_PRUEBAS"] = "1"
 
+import pytest
+import functools
 import plataforma.app as A
+from plataforma import base_datos as BD
 
 BASE = pathlib.Path(__file__).resolve().parent / "plataforma"
-_ok = _mal = 0
-_fallos = []
 
 
 def prueba(titulo):
+    """Aísla cada caso y conserva el título para el reporte de pytest."""
     def deco(f):
-        global _ok, _mal
-        try:
-            f(); _ok += 1; print(f"  ✓ {titulo}")
-        except Exception as e:
-            _mal += 1; _fallos.append((titulo, e, traceback.format_exc()))
-            print(f"  ✗ {titulo}\n      {e}")
-        return f
+        @functools.wraps(f)
+        def envuelta():
+            with BD.esquema_prueba():
+                return f()
+        envuelta.__doc__ = titulo
+        return envuelta
     return deco
 
 
 def base_limpia():
-    """Una base vacía con la estructura real del ERP, por el mismo camino que usa el ERP al arrancar."""
-    con = A.preparar_base(tempfile.mktemp(suffix=".db"))
-    con.row_factory = sqlite3.Row
+    """Crea un esquema/base temporal con el usuario administrador de prueba."""
+    if BD.usa_postgres():
+        con = BD.conectar()
+    else:
+        con = A.preparar_base(tempfile.mktemp(suffix=".db"))
+        con.row_factory = sqlite3.Row
     con.execute("INSERT INTO usuarios (id,nombre,rol) VALUES (1,'Cristina','admin')")
     con.commit()
     return con
@@ -41,63 +47,63 @@ def d(s): return datetime.date.fromisoformat(s)
 
 
 # ─────────────────────────────────────────────── días de pago del equipo
-print("\nDÍAS DE PAGO")
+# ── DÍAS DE PAGO
 
 @prueba("Si la quincena cae sábado o domingo, se paga el viernes")
-def _():
+def test_01_si_la_quincena_cae_sabado_o_domingo_se_paga_el_viern():
     assert A.dia_de_pago(d("2026-10-31")) == d("2026-10-30"), "sábado"
     assert A.dia_de_pago(d("2026-11-15")) == d("2026-11-13"), "domingo"
 
 @prueba("Si cae lunes, se paga el lunes (no se corre)")
-def _():
+def test_02_si_cae_lunes_se_paga_el_lunes_no_se_corre():
     assert A.dia_de_pago(d("2026-11-30")) == d("2026-11-30")
 
 @prueba("El último día del mes se ajusta al mes (febrero 28, diciembre 31)")
-def _():
+def test_03_el_ultimo_dia_del_mes_se_ajusta_al_mes_febrero_28_di():
     assert d("2026-02-28") in [x for x in A.dias_de_pago(2026, 2)] or A.dia_de_pago(d("2026-02-28")) in A.dias_de_pago(2026, 2)
     assert A.dias_de_pago(2026, 12)[1] == d("2026-12-31")
 
 @prueba("La próxima quincena cruza bien de un mes al siguiente")
-def _():
+def test_04_la_proxima_quincena_cruza_bien_de_un_mes_al_siguient():
     assert A.proxima_quincena(d("2026-09-27")) == d("2026-09-30")
     assert A.proxima_quincena(d("2026-10-01")) == d("2026-10-15")
     assert A.proxima_quincena(d("2026-12-31")) == d("2026-12-31")
 
 @prueba("El recordatorio aguanta hasta 2 días después, aunque se pague el viernes")
-def _():
+def test_05_el_recordatorio_aguanta_hasta_2_dias_despues_aunque_():
     v = dict(A.ventana_pago(2026, 2))
     assert v[d("2026-02-13")] == d("2026-02-17"), "el 15 cae domingo: paga el 13, recuerda hasta el 17"
 
 
 # ─────────────────────────────────────────────── ritmo del cliente
-print("\nRITMO DEL CLIENTE")
+# ── RITMO DEL CLIENTE
 
 @prueba("Con menos de dos repuestos no inventa un ritmo")
-def _():
+def test_06_con_menos_de_dos_repuestos_no_inventa_un_ritmo():
     assert A.ritmo_cliente(["2026-08-01"]) == (None, 0)
     assert A.ciclo_de(None) == A.CICLO_REPUESTO
 
 @prueba("Usa la mediana: un hueco raro no le cambia el ritmo")
-def _():
+def test_07_usa_la_mediana_un_hueco_raro_no_le_cambia_el_ritmo():
     r, _n = A.ritmo_cliente(["2026-07-02", "2026-07-12", "2026-08-21", "2026-08-31"])
     assert r == 10, r
 
 @prueba("Descarta los huecos de más de 120 días")
-def _():
+def test_08_descarta_los_huecos_de_mas_de_120_dias():
     r, _n = A.ritmo_cliente(["2025-08-01", "2026-08-01", "2026-08-15"])
     assert r == 14, r
 
 @prueba("Nunca espera más de lo normal: solo puede acortar")
-def _():
+def test_09_nunca_espera_mas_de_lo_normal_solo_puede_acortar():
     assert A.ciclo_de(31) == A.CICLO_REPUESTO
     assert A.ciclo_de(10) == 10
 
 
 # ─────────────────────────────────────────────── dinero
-print("\nDINERO")
+# ── DINERO
 
 @prueba("Un cobro extra sube el total de la orden y deja su pago")
-def _():
+def test_10_un_cobro_extra_sube_el_total_de_la_orden_y_deja_su_p():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',100)")
@@ -110,7 +116,7 @@ def _():
     assert con.execute("SELECT COUNT(*) FROM orden_lineas WHERE orden_id=1").fetchone()[0] == 1
 
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
-def _():
+def test_11_al_despachador_se_le_paga_el_delivery_y_no_se_guarda():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,delivery,despachador,pago_despachador) VALUES (1,'#1',1,'pendiente',5,'Juan',5)")
@@ -123,7 +129,7 @@ def _():
     assert debe == 12, debe
 
 @prueba("Reasignar la orden a otro despachador le mueve la deuda")
-def _():
+def test_12_reasignar_la_orden_a_otro_despachador_le_mueve_la_de():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,delivery,despachador) VALUES (1,'#1',1,'pendiente',12,'Juan')")
@@ -136,14 +142,14 @@ def _():
     assert (debe("Juan"), debe("Ingrid")) == (0, 12)
 
 @prueba("El viaje a la agencia se cobra por viaje: Tealca 10, cualquier otra 5")
-def _():
+def test_13_el_viaje_a_la_agencia_se_cobra_por_viaje_tealca_10_c():
     con = base_limpia()
     con.execute("INSERT INTO config (clave,valor) VALUES ('tarifa_agencia','{\"Tealca\":10,\"*\":5}')"); con.commit()
     assert A.tarifa_agencia(con, "Tealca") == 10
     assert A.tarifa_agencia(con, "Zoom") == 5
 
 @prueba("El saldo de una caja baja con cada gasto que sale de ella")
-def _():
+def test_14_el_saldo_de_una_caja_baja_con_cada_gasto_que_sale_de():
     con = base_limpia()
     con.execute("INSERT INTO cuentas (id,codigo,nombre,moneda,tipo,saldo_inicial,activa) VALUES (1,'Z','Zelle','USD','operativa',100,1)")
     con.commit()
@@ -157,20 +163,20 @@ def _():
 
 
 # ─────────────────────────────────────────────── números escritos a mano
-print("\nNÚMEROS ESCRITOS A MANO")
+# ── NÚMEROS ESCRITOS A MANO
 
 @prueba("Acepta comas y puntos igual (1.234,56 y 1234.56)")
-def _():
+def test_15_acepta_comas_y_puntos_igual_1_234_56_y_1234_56():
     assert A.cifra("1.234,56") == 1234.56
     assert A.cifra("1234.56") == 1234.56
     assert A.cifra("") in (None, 0)
 
 
 # ─────────────────────────────────────────────── saldo a favor
-print("\nSALDO A FAVOR")
+# ── SALDO A FAVOR
 
 @prueba("Pagar de más deja saldo a favor del cliente, no se pierde")
-def _():
+def test_16_pagar_de_mas_deja_saldo_a_favor_del_cliente_no_se_pi():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',22)")
@@ -181,7 +187,7 @@ def _():
     assert A.credito_de(con, 1) == 3, A.credito_de(con, 1)
 
 @prueba("No se duplica si se vuelve a mirar la misma orden")
-def _():
+def test_17_no_se_duplica_si_se_vuelve_a_mirar_la_misma_orden():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',22)")
@@ -192,7 +198,7 @@ def _():
     assert A.credito_de(con, 1) == 3, "se duplicó: " + str(A.credito_de(con, 1))
 
 @prueba("Pagar con saldo a favor no infla ninguna caja")
-def _():
+def test_18_pagar_con_saldo_a_favor_no_infla_ninguna_caja():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',22)")
@@ -208,7 +214,7 @@ def _():
 
 
 @prueba("Cuando lo usa, el saldo baja")
-def _():
+def test_19_cuando_lo_usa_el_saldo_baja():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
     con.commit()
@@ -218,10 +224,10 @@ def _():
 
 
 # ─────────────────────────────────────────────── no perder datos sin querer
-print("\nNO BORRAR LO QUE NO SE TOCÓ")
+# ── NO BORRAR LO QUE NO SE TOCÓ
 
 @prueba("Editar un cliente sin mandar todos los campos no borra los demás")
-def _():
+def test_20_editar_un_cliente_sin_mandar_todos_los_campos_no_bor():
     import asyncio
     con = base_limpia()
     con.execute("""INSERT INTO clientes (id,nombre,nombre_pila,apellido,telefono,correo)
@@ -242,7 +248,7 @@ def _():
 
 
 # ─────────────────────────────────────────────── poder reconstruir el ERP
-print("\nPAGOS A PRODUCCIÓN")
+# ── PAGOS A PRODUCCIÓN
 
 def _pedido(con, recibido=0):
     con.execute("INSERT INTO produccion (id,pieza,cantidad,recibido,costo,estado,responsable,fecha_pedido) VALUES (1,'El Bar Gigante',10,?,105,'en_proceso','Walter','2026-09-28')", (recibido,))
@@ -252,27 +258,27 @@ def _concepto(con):
     return con.execute("SELECT descripcion FROM gastos ORDER BY id DESC LIMIT 1").fetchone()[0]
 
 @prueba("Pagar una parte antes de que llegue es un adelanto")
-def _():
+def test_21_pagar_una_parte_antes_de_que_llegue_es_un_adelanto():
     con = base_limpia(); _pedido(con)
     A.pagar_produccion(con, 1, 100, "", "2026-09-28", "", 1)
     assert _concepto(con) == "El Bar Gigante · adelanto de pedido 10 unidades", _concepto(con)
 
 @prueba("El pago que salda el pedido es el pago final, aunque no haya llegado")
-def _():
+def test_22_el_pago_que_salda_el_pedido_es_el_pago_final_aunque_():
     con = base_limpia(); _pedido(con)
     A.pagar_produccion(con, 1, 100, "", "2026-09-28", "", 1)
     A.pagar_produccion(con, 1, 5, "", "2026-09-28", "", 1)
     assert _concepto(con) == "El Bar Gigante · pago final de pedido 10 unidades", _concepto(con)
 
 @prueba("Pagar todo de una vez es un pago, no un adelanto")
-def _():
+def test_23_pagar_todo_de_una_vez_es_un_pago_no_un_adelanto():
     con = base_limpia(); _pedido(con)
     A.pagar_produccion(con, 1, 105, "", "2026-09-28", "", 1)
     assert _concepto(con) == "El Bar Gigante · pago de pedido 10 unidades", _concepto(con)
 
 
 @prueba("Las cajas de madera que llegan entran al inventario, que es de donde las saca el porche")
-def _():
+def test_24_las_cajas_de_madera_que_llegan_entran_al_inventario_():
     # el porche descuenta la caja del insumo (receta); al recibirla tiene que entrar a ese mismo insumo
     for nom, sku, entra in A.PIEZAS_PRODUCCION:
         if nom.startswith("Caja de madera"):
@@ -281,14 +287,17 @@ def _():
 
 
 @prueba("Lo que se compra para vender tal cual (bowls, platos) tiene a qué producto entrar")
-def _():
-    con = sqlite3.connect(str(A.DB))
+def test_25_lo_que_se_compra_para_vender_tal_cual_bowls_platos_t():
+    # Contra el catálogo que siembra semilla.py, no contra la base de producción: así la suite
+    # pasa en una máquina recién clonada.
+    from plataforma import semilla as S
+    con = base_limpia(); S.cargar_productos(con); con.commit()
     for item, sku in A.ITEMS_A_INVENTARIO.items():
         assert con.execute("SELECT 1 FROM productos WHERE sku=?", (sku,)).fetchone(), f"{item} apunta a {sku}, que no existe"
 
 
 @prueba("La pega se compra por cuñete o galón y entra al inventario en litros")
-def _():
+def test_26_la_pega_se_compra_por_cunete_o_galon_y_entra_al_inve():
     con = base_limpia()
     con.execute("INSERT INTO proveedores (id,nombre) VALUES (8,'Ferretería')")
     con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (8,'Pega amarilla',86,'cuñete')")
@@ -300,7 +309,7 @@ def _():
 
 
 @prueba("Sin nadie conectado (ERP recién instalado) se puede guardar y queda a nombre de un usuario")
-def _():
+def test_27_sin_nadie_conectado_erp_recien_instalado_se_puede_gu():
     class R:   # una petición sin sesión
         cookies = {}; headers = {}
     con = base_limpia()
@@ -309,7 +318,7 @@ def _():
 
 
 @prueba("Un pedido a proveedor dice en qué se pidió: 2 cuñetes, no 2 unidades")
-def _():
+def test_28_un_pedido_a_proveedor_dice_en_que_se_pidio_2_cunetes():
     con = base_limpia()
     con.execute("INSERT INTO proveedores (id,nombre) VALUES (8,'Ferretería')")
     con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (8,'Pega amarilla',86,'cuñete')")
@@ -320,7 +329,7 @@ def _():
 
 
 @prueba("Si el proveedor no entregó todo y ya se le pagó, te debe la diferencia; al devolverla entra a la caja")
-def _():
+def test_29_si_el_proveedor_no_entrego_todo_y_ya_se_le_pago_te_d():
     con = base_limpia()
     con.execute("INSERT INTO cuentas (id,nombre,activa,saldo_inicial) VALUES (1,'Efectivo',1,100)")
     con.execute("INSERT INTO produccion (id,pieza,cantidad,recibido,costo,estado,responsable,fecha_pedido,tipo_pedido,faltaron) VALUES (5,'Grama',18,18,54,'recibido','Yovanny','2026-09-28','proveedor',2)")
@@ -338,7 +347,7 @@ def _():
 
 
 @prueba("El retiro de un pack dice qué número es: 1/3, no 'le quedan 3'")
-def _():
+def test_30_el_retiro_de_un_pack_dice_que_numero_es_1_3_no_le_qu():
     k = lambda saldo, n=1: {"retiro_programado": n, "unidades": 3, "saldo": saldo, "tamano": "Mediano"}
     assert A.repuesto_de_pack(k(3)) == ("Repuesto Mediano", "1/3"), A.repuesto_de_pack(k(3))
     assert A.repuesto_de_pack(k(1)) == ("Repuesto Mediano", "3/3")
@@ -346,7 +355,7 @@ def _():
 
 
 @prueba("Las notas del cliente llegan a quien entrega, menos las privadas")
-def _():
+def test_31_las_notas_del_cliente_llegan_a_quien_entrega_menos_l():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Alejandra Ramos','Alejandra')")
     con.execute("INSERT INTO notas_cliente (cliente_id,tipo,texto,mostrar_en_orden,mostrar_logistica) VALUES (1,'general','Solo recibe hasta las 3pm',1,1)")
@@ -359,20 +368,23 @@ def _():
 
 
 @prueba("Eliminar una orden funciona aunque haya dejado o usado saldo a favor, y todo lo que referencia una orden se borra")
-def _():
-    con = base_limpia(); con.execute("PRAGMA foreign_keys=ON")
-    # cualquier tabla nueva que apunte a ordenes tiene que estar en la lista de eliminar_orden
+def test_32_eliminar_una_orden_funciona_aunque_haya_dejado_o_usa():
+    con = base_limpia()
+    # Cualquier tabla nueva que apunte a ordenes/clientes debe figurar en la limpieza explícita.
     import inspect
+    from plataforma import modelo
     fuente = inspect.getsource(A.borrar_orden)
-    for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE '%REFERENCES ordenes%'"):
-        assert f'"{t}"' in fuente or t in ("entregas_repuesto",), f"borrar_orden no borra {t}"
+    tablas_orden = {fk.parent.table.name for tabla in modelo.metadata.tables.values() for fk in tabla.foreign_keys if fk.column.table.name == "ordenes" and fk.parent.table.name != "ordenes"}
+    for t in tablas_orden:
+        assert f'"{t}"' in fuente or t == "entregas_repuesto", f"borrar_orden no borra {t}"
     fuente = inspect.getsource(A.eliminar_cliente)
-    for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name!='clientes' AND sql LIKE '%REFERENCES clientes%'"):
+    tablas_cliente = {fk.parent.table.name for tabla in modelo.metadata.tables.values() for fk in tabla.foreign_keys if fk.column.table.name == "clientes" and fk.parent.table.name != "clientes"}
+    for t in tablas_cliente:
         assert f'"{t}"' in fuente or t == "ordenes", f"eliminar_cliente no borra {t}"
 
 
 @prueba("Logística tiene lista cerrada: no llega a plata, catálogo, exportes ni al manual técnico")
-def _():
+def test_33_logistica_tiene_lista_cerrada_no_llega_a_plata_catal():
     permitido, _casa = A.PUERTAS["logistica"]
     for ruta in ("/cashflow", "/finanzas", "/productos", "/historial", "/historial/exportar", "/configuracion", "/produccion", "/equipo", "/revision", "/tarifas", "/docs", "/openapi.json"):
         assert not ruta.startswith(permitido), f"Logística puede abrir {ruta}"
@@ -384,7 +396,7 @@ def _():
 
 
 @prueba("Slow Chow: al confirmar que llegó se dice cuántos azules y rosados; cada uno se lleva su plato")
-def _():
+def test_34_slow_chow_al_confirmar_que_llego_se_dice_cuantos_azu():
     con = base_limpia()
     con.execute("INSERT INTO productos (id,sku,nombre,tipo,requiere_color,activo) VALUES (15,'SLOW-10','Slow Chow Mini','producto',1,1)")
     con.execute("INSERT INTO productos (id,sku,nombre,tipo,activo) VALUES (22,'PLATO-AZUL','Plato azul','producto',1)")
@@ -401,7 +413,7 @@ def _():
 
 
 @prueba("Al despachador se le debe lo entregado, no lo asignado")
-def _():
+def test_35_al_despachador_se_le_debe_lo_entregado_no_lo_asignad():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Ana','Ana')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total,delivery,despachador,origen_excel,despachador_pagado) VALUES (1,'#1',1,'pendiente',20,5,'Juan',0,0)")
@@ -413,7 +425,7 @@ def _():
 
 
 @prueba("Una llegada no se anota dos veces si el formulario se manda dos veces seguidas")
-def _():
+def test_36_una_llegada_no_se_anota_dos_veces_si_el_formulario_s():
     con = base_limpia()
     con.execute("INSERT INTO productos (id,sku,nombre,tipo,activo) VALUES (1,'INS-CAJAM','Caja de madera mediana','insumo',1)")
     con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad,nota,usuario_id,creado_en) VALUES (1,'2026-09-28','entrada',10,'producción #1 · Walter',1,datetime('now','localtime'))")
@@ -421,28 +433,30 @@ def _():
     assert A.llegada_repetida(con, 1, 1) and not A.llegada_repetida(con, 12, 1)
 
 
-print("\nRECONSTRUIR DESDE CERO")
+# ── RECONSTRUIR DESDE CERO
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")
-def _():
-    nueva = A.preparar_base(tempfile.mktemp(suffix=".db"))
-    viva = sqlite3.connect(A.DB)
-    def tablas(c): return {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    faltan_t = tablas(viva) - tablas(nueva)
-    assert not faltan_t, f"tablas que faltarían: {sorted(faltan_t)}"
-    faltan_c = []
-    for t in tablas(viva):
-        cv = {r[1] for r in viva.execute(f"PRAGMA table_info({t})")}
-        cn = {r[1] for r in nueva.execute(f"PRAGMA table_info({t})")}
-        faltan_c += [f"{t}.{c}" for c in cv - cn]
-    assert not faltan_c, f"columnas que faltarían: {sorted(faltan_c)}"
+def test_37_una_base_nueva_queda_igual_que_la_que_esta_en_uso_se():
+    from plataforma import modelo
+    esperadas = {t: [c.name for c in tabla.columns] for t, tabla in modelo.metadata.tables.items()}
+
+    if BD.usa_postgres():
+        con = BD.conectar()
+        filas = con.execute("""SELECT table_name, column_name FROM information_schema.columns
+                                WHERE table_schema=current_schema() ORDER BY table_name, ordinal_position""").fetchall()
+        con.close()
+        actuales = {}
+        for fila in filas: actuales.setdefault(fila["table_name"], []).append(fila["column_name"])
+        assert actuales == esperadas, "El esquema Alembic de prueba no coincide con plataforma/modelo.py"
+        return
+
+    ruta = tempfile.mktemp(suffix=".db")
+    primera = A.preparar_base(ruta)
+    primera.close()
+    nueva = A.preparar_base(ruta)
+    actuales = {t: [r[1] for r in nueva.execute(f"PRAGMA table_info({t})")] for t in esperadas}
+    assert actuales == esperadas, "preparar_base() no reconstruye el esquema de plataforma/modelo.py"
 
 
-print()
-print("─" * 52)
-print(f"  {_ok} bien · {_mal} mal")
-if _fallos:
-    print("\n  DETALLE DE LO QUE FALLÓ:")
-    for t, e, tb in _fallos:
-        print(f"\n  ── {t}\n{tb}")
-raise SystemExit(1 if _mal else 0)
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-v"]))

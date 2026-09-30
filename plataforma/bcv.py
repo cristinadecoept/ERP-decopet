@@ -1,6 +1,7 @@
 """Tasa oficial BCV: se lee de bcv.org.ve (fuente oficial) y, si falla, de un respaldo. Guarda historial diario y nunca recalcula órdenes viejas."""
-import re, json, datetime, sqlite3, threading, time, warnings
+import re, json, datetime, threading, time, warnings
 import requests, urllib3
+from plataforma import base_datos as BD
 urllib3.disable_warnings()
 warnings.filterwarnings("ignore")
 
@@ -26,8 +27,9 @@ def _respaldo():
     return d["fechaActualizacion"][:10], float(d["promedio"]), "Respaldo: dolarapi (replica BCV)"
 
 
-def actualizar(db_path, forzar=False):
-    con = sqlite3.connect(db_path); con.execute(SQL)
+def actualizar(db_path=None, forzar=False):
+    con = BD.conectar()
+    if not BD.usa_postgres(): con.execute(SQL)
     ahora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     estado = {"ultimo_intento": ahora, "error": None}
     for fn in (_bcv_oficial, _respaldo):
@@ -47,7 +49,7 @@ def tasa_actual(con):
     """La tasa que se cobra: la del próximo día hábil con tasa publicada.
     En fin de semana no vale la del viernes, sino la del lunes — que el BCV publica el viernes por la tarde.
     Entre semana esa tasa es la de hoy, así que la misma regla sirve para los dos casos."""
-    con.execute(SQL)
+    if not BD.usa_postgres(): con.execute(SQL)
     hoy = datetime.date.today().isoformat()
     r = con.execute("""SELECT * FROM tasas WHERE fecha_valor >= ?
                        ORDER BY fecha_valor ASC, manual DESC, CASE WHEN fuente LIKE 'BCV%' THEN 0 ELSE 1 END, id DESC LIMIT 1""", (hoy,)).fetchone()
@@ -56,7 +58,7 @@ def tasa_actual(con):
     est = con.execute("SELECT valor FROM config WHERE clave='bcv_estado'").fetchone()
     estado = json.loads(est[0]) if est else {}
     if not r: return {"valor": None, "fecha_valor": None, "fuente": None, "estado": estado, "alerta": "Sin tasa cargada"}
-    d = dict(zip(r.keys(), r)) if hasattr(r, "keys") else dict(id=r[0], fecha_valor=r[1], valor=r[2], fuente=r[3], obtenido_en=r[4], manual=r[5])
+    d = {k: r[k] for k in r.keys()} if hasattr(r, "keys") else dict(id=r[0], fecha_valor=r[1], valor=r[2], fuente=r[3], obtenido_en=r[4], manual=r[5])
     alerta = None
     if estado.get("error") and not estado.get("valor"): alerta = "No se pudo actualizar en el último intento"
     elif (datetime.date.today() - datetime.date.fromisoformat(d["fecha_valor"])).days > 4: alerta = "La tasa tiene más de 4 días"
