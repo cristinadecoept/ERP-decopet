@@ -185,8 +185,9 @@ function validar(){const fp=document.getElementById('f-pago');
  // repuesto o pack de otro tamaño que el porche que tiene registrado: preguntar antes de crear
  const tam=(([...document.getElementById('cl').options].find(o=>o.dataset.id===document.getElementById('cl-id').value)||{dataset:{}}).dataset.tam||'');
  const lins=[...document.querySelectorAll('#lin .no-linea')].map(d=>+d.dataset.i);
- if(tam&&!lins.some(i=>(PN[i]||'').startsWith('El Porche'))){const suyo=tam.startsWith('G')?'G':(tam.startsWith('M')?'M':'');
-  const otros=lins.filter(i=>/^(REP|PACK\d+)-[MG]$/.test(PS[i]||'')&&suyo&&!(PS[i]||'').endsWith('-'+suyo)).map(i=>PN[i]);
+ if(tam&&!lins.some(i=>(PN[i]||'').startsWith('El Porche'))){// puede tener dos porches ("Mediano, Grande"): solo se pregunta por un tamaño que no tiene
+  const suyos=(tam.includes('Mediano')?'M':'')+(tam.includes('Grande')?'G':'');
+  const otros=lins.filter(i=>{const m=/^(?:REP|PACK\d+)-([MG])$/.exec(PS[i]||'');return m&&suyos&&!suyos.includes(m[1]);}).map(i=>PN[i]);
   if(otros.length&&!window._tamOk){preguntar('Este cliente tiene el porche '+tam.toLowerCase()+'. ¿Seguro que quieres '+otros.join(' y ')+'?',{si:'Sí, crear la orden',no:'Corregir'})
    .then(ok=>{if(ok){window._tamOk=true;document.getElementById('fn').requestSubmit();}});return false;}}
  return true;}
