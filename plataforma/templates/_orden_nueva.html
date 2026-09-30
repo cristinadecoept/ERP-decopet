@@ -78,9 +78,9 @@
 <div class="no-pie"><div class="no-tot"><div><span>Subtotal</span><b id="t-sub">$0.00</b></div><div id="r-iva" hidden><span>IVA 16 %</span><b id="t-iva">$0.00</b></div><div id="r-deliv" hidden><span>Delivery</span><b id="t-deliv">$0.00</b></div><div id="r-desc" hidden><span>Descuento</span><b id="t-desc">$0.00</b></div><div class="g"><span>Total</span><b id="t-tot">$0.00</b></div><div class="mini" id="t-bs"></div></div><button class="btn no-crear">Crear orden</button></div>
 </form>
 <script>
-const PR={{ productos|map(attribute='id')|list|tojson }},PN={{ productos|map(attribute='nombre')|list|tojson }},PP={{ productos|map(attribute='precio')|list|tojson }},P2={{ productos|map(attribute='precio_par')|list|tojson }},
+var PR={{ productos|map(attribute='id')|list|tojson }},PN={{ productos|map(attribute='nombre')|list|tojson }},PP={{ productos|map(attribute='precio')|list|tojson }},P2={{ productos|map(attribute='precio_par')|list|tojson }},
  PC={{ productos|map(attribute='requiere_color')|list|tojson }},PM={{ productos|map(attribute='permite_malla')|list|tojson }},PZ={{ productos|map(attribute='permite_personalizacion')|list|tojson }},PS={{ productos|map(attribute='sku')|list|tojson }},PF={{ productos|map(attribute='foto')|list|tojson }},PFR={{ productos|map(attribute='foto_rosado')|list|tojson }};
-const OP_PERSO={{ opciones['OPC-PERSO'].precio }},OP_MALLA={{ opciones['OPC-MALLA'].precio }};const TASA={{ tasa.valor }};const FORMAS={{ FORMAS_COBRO|tojson }};
+var OP_PERSO={{ opciones['OPC-PERSO'].precio }},OP_MALLA={{ opciones['OPC-MALLA'].precio }};var TASA={{ tasa.valor }};var FORMAS={{ FORMAS_COBRO|tojson }};
 function abrirPicker(){document.getElementById('picker').hidden=!document.getElementById('picker').hidden;}
 function agregar(i){document.getElementById('picker').hidden=true;const d=document.createElement('div');d.className='no-linea';d.dataset.i=i;
  let ops='';
@@ -151,7 +151,7 @@ document.getElementById('cl-in').addEventListener('input',e=>{const op=[...docum
  document.getElementById('cl-buscar').hidden=true;document.getElementById('cl-existente').hidden=false;faltanDatos();mostrarCredito(+op.dataset.credito||0);
  const nt=document.getElementById('cl-ex-notas');nt.hidden=!op.dataset.notas;nt.textContent=op.dataset.notas?'📌 '+op.dataset.notas:'';});
 // saldo a favor del cliente: se ofrece para pagar con él (nunca más de lo que tiene)
-let CRED=0,TOT=0;
+var CRED=0,TOT=0;
 function mostrarCredito(c){CRED=c;document.getElementById('cred-w').hidden=!(c>0.009);document.getElementById('cred-m').innerText='$'+c.toFixed(2);}
 function usarCredito(){
  let filas=[...document.querySelectorAll('#pagos .no-pago')];
@@ -163,7 +163,7 @@ function usarCredito(){
  const puesto=[...document.querySelectorAll('#pagos [name=pago_monto]')].reduce((s,i)=>s+(+i.value||0),0);
  if(TOT-puesto>0.009)agregarPago();   // lo que falte se escribe a mano, con lo que de verdad pagó
  document.getElementById('cred-w').hidden=true;calc();}
-const sirve=v=>!!(v&&v.trim()&&v.trim().toLowerCase()!=='pendiente');
+var sirve=v=>!!(v&&v.trim()&&v.trim().toLowerCase()!=='pendiente');
 function esTercero(){return document.getElementById('rec-ter').classList.contains('act');}
 function faltanDatos(){   // un cliente que ya existe puede no tener correo, teléfono o cédula: se completan aquí
  const id=document.getElementById('cl-id').value,w=document.getElementById('cl-faltan');
