@@ -200,6 +200,7 @@ orden_lineas = Table(
     Column("forma_pago", Text, nullable=True),
     Column("perso_lista", Integer, nullable=False, server_default=text('0')),
     Column("perso_lista_en", Text, nullable=True),
+    Column("extra_en", Text, nullable=True),
 )
 
 pagos = Table(
@@ -274,6 +275,7 @@ packs = Table(
     Column("nota_programada", Text, nullable=True),
     Column("retiro_programado", Integer, nullable=True),
     Column("tipo_programado", Text, nullable=True),
+    Column("en_ruta", Integer, nullable=False, server_default=text('0')),
 )
 
 entregas_repuesto = Table(
@@ -585,6 +587,23 @@ viajes_agencia = Table(
     Column("pagado", Integer, nullable=False, server_default=text('0')),
     Column("pago_id", Integer, ForeignKey("pagos_despachador.id"), nullable=True),
     Column("nota", Text, nullable=True),
+    Column("usuario_id", Integer, nullable=True),
+    Column("creado_en", Text, nullable=True, server_default=AHORA),
+)
+
+viajes_despachador = Table(
+    "viajes_despachador", metadata,
+    Column("id", Integer, nullable=True, primary_key=True),
+    Column("tipo", Text, nullable=False, server_default=text("'fallido'")),
+    Column("orden_id", Integer, ForeignKey("ordenes.id"), nullable=True),
+    Column("pack_id", Integer, nullable=True),
+    Column("prepagado_id", Integer, nullable=True),
+    Column("fecha", Text, nullable=False),
+    Column("despachador", Text, nullable=False),
+    Column("monto", Float, nullable=False, server_default=text('0')),
+    Column("motivo", Text, nullable=True),
+    Column("pagado", Integer, nullable=False, server_default=text('0')),
+    Column("pago_id", Integer, ForeignKey("pagos_despachador.id"), nullable=True),
     Column("usuario_id", Integer, nullable=True),
     Column("creado_en", Text, nullable=True, server_default=AHORA),
 )

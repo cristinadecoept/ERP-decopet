@@ -251,7 +251,7 @@ tr.fila.e-entregada td{opacity:.9}tr.fila.e-cancelada td{opacity:.5}
 .op-selects{display:flex;gap:8px;margin-left:auto}.op-selects select{width:auto;padding:7px 30px 7px 12px;border-radius:10px;font-size:13px;background:var(--sup)}
 .op-tabla td{vertical-align:top}.op-grupo-t td{background:var(--fondo);font-weight:600;font-size:12.5px;color:var(--tinta-2);padding:8px 16px}.op-grupo-t td span{margin-left:6px;background:var(--linea);border-radius:99px;padding:0 7px;font-size:11px}
 .op-prod{max-width:240px}.op-nota{color:#8a5a2b;background:var(--crema);border-radius:8px;padding:3px 8px;margin-top:4px;font-size:12px;white-space:normal}
-.op-donde{max-width:260px}.op-dir{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.op-pago{white-space:nowrap;font-size:12.5px}.op-accion{text-align:right;white-space:nowrap}
+.op-donde{max-width:260px}.op-dir{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.op-pago{white-space:nowrap;font-size:12.5px}.op-accion{text-align:center;white-space:nowrap}.op-estado{white-space:nowrap}
 .falta{font-style:normal;color:#b45a1c;font-weight:500}
 html.oscuro .segm a.act,html.oscuro .segm label.act{background:var(--tinta);color:#121614}html.oscuro .segm a.act span{background:rgba(0,0,0,.15);color:#121614}html.oscuro .segm label.act input{color:#121614;color-scheme:light}
 html.oscuro .chip-select.act{color:#121614}html.oscuro .chip-select.act select{color:#121614}html.oscuro .op-filtros .chip-select.act{color:#121614}
@@ -888,3 +888,6 @@ html.oscuro .no-pago input.falta-monto{background:rgba(225,120,46,.14)}
 .no-pago input.falta-monto::placeholder{color:#b45a1c;opacity:1}
 .no-pago input[name=pago_monto]{-moz-appearance:textfield;min-width:120px}
 .no-pago input[name=pago_monto]::-webkit-inner-spin-button,.no-pago input[name=pago_monto]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+/* Volvió de la calle sin entregar: en rojo */
+.est.no_entregado{background:#fbe9e5;color:#b3321b}.est.no_entregado:before{background:#c94a2f}
+html.oscuro .est.no_entregado{background:rgba(201,74,47,.25);color:#ffb8a4}
