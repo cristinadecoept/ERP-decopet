@@ -5020,7 +5020,7 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                                  WHERE despachador=? AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 ORDER BY 2 DESC""", (d["nombre"],)).fetchall()
     viajes = con.execute("""SELECT v.*, (SELECT COUNT(*) FROM ordenes o WHERE o.viaje_id=v.id) n_ordenes
                             FROM viajes_agencia v WHERE v.despachador=? AND v.pagado=0 ORDER BY v.fecha DESC, v.id DESC""", (d["nombre"],)).fetchall()
-    fallidos = con.execute("""SELECT f.*, o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente FROM viajes_despachador f
+    fallidos = con.execute("""SELECT f.*, o.numero, c.nombre cliente, o.zona, o.ciudad FROM viajes_despachador f
                               LEFT JOIN ordenes o ON o.id=f.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
                               WHERE f.despachador=? AND f.pagado=0 ORDER BY f.fecha DESC, f.id DESC""", (d["nombre"],)).fetchall()
     ruta = ruta_despachador(con, d["nombre"], hoy.isoformat())
