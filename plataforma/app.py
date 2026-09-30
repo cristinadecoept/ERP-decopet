@@ -1224,23 +1224,12 @@ def orden_cobro_extra(request: Request, oid: int, concepto: str = Form(""), conc
 
 @app.post("/ordenes/{oid}/cobrar")
 async def cobrar_saldo(request: Request, oid: int, con=Depends(db)):
-    """Cristina registra un cobro y lo deja confirmado de una (sin pasar por 'por revisar')."""
+    """Cristina o logística registran un cobro y queda confirmado de una. ('Por revisar' es solo para lo que reporta un despachador.)"""
     rol = rol_de(request); f = await request.form(); uid = uid_de(request)
     if "confirmar_pago" not in PERMISOS[rol] and "ver_cobros" not in PERMISOS[rol]: return volver(oid, request)
     o = con.execute("SELECT total, cliente_id FROM ordenes WHERE id=?", (oid,)).fetchone()
     monto = float(cifra(f.get("monto_usd")) or 0); forma = f.get("forma") or "Efectivo USD"
     if monto <= 0: return volver(oid, request)
-    if "confirmar_pago" not in PERMISOS[rol]:
-        # logística anota el cobro, pero el dinero lo confirma Cristina: queda "por revisar"
-        if forma == SALDO_FAVOR: return volver(oid, request)
-        en_bs = es_bolivares(forma); tasa = tasa_hoy(con)["valor"]
-        con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado)
-                       VALUES (?,?,?,?,?,?,?,?,?,'por_confirmar')""",
-                    (oid, forma, monto, monto * tasa if en_bs else monto, "VES" if en_bs else "USD", tasa if en_bs else None,
-                     FORMA_CUENTA.get(forma, forma), f.get("referencia") or None, datetime.date.today().isoformat()))
-        con.execute("UPDATE ordenes SET estado_pago='por_confirmar' WHERE id=?", (oid,))
-        registrar(con, oid, uid, "pago", f"Logística anotó un cobro: {forma} {fmt_usd(monto)} · por revisar")
-        con.commit(); return volver(oid, request)
     # Pagar con lo que ya tenía a favor: no entra plata nueva, se gasta la que ya había entrado
     if forma == SALDO_FAVOR:
         disponible = credito_de(con, o["cliente_id"])
