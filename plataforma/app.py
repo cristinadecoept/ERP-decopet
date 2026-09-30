@@ -78,9 +78,9 @@ def estado_pago_de(pagado, total):
     if pagado >= total - 0.01: return "pagada"
     return "abonada" if pagado > 0.009 else "sin_pago"
 
-P_LABEL = {"sin_pago": "Por pagar", "por_confirmar": "Por revisar", "rechazado": "Pago rechazado", "abonada": "Pago parcial", "pagada": "Pagada", "contra_entrega": "Contra entrega",
+P_LABEL = {"sin_pago": "Por pagar", "por_confirmar": "Por revisar", "rechazado": "Pago rechazado", "abonada": "Pago parcial", "pagada": "Pagada", "contra_entrega": "Falta pagar",
            "por_cobrar": "Cashea · cuotas pendientes", "reembolsada": "Reembolsada"}
-P_SUB = {"sin_pago": "por pagar", "por_confirmar": "por revisar", "rechazado": "PAGO RECHAZADO", "abonada": "pago parcial", "pagada": "", "contra_entrega": "CONTRA ENTREGA", "por_cobrar": "cuotas pendientes", "reembolsada": "reembolsada"}
+P_SUB = {"sin_pago": "por pagar", "por_confirmar": "por revisar", "rechazado": "PAGO RECHAZADO", "abonada": "pago parcial", "pagada": "", "contra_entrega": "falta pagar", "por_cobrar": "cuotas pendientes", "reembolsada": "reembolsada"}
 RAZAS = ["Mestizo", "Akita", "Basset Hound", "Beagle", "Bichón Frisé", "Border Collie", "Boston Terrier", "Bóxer", "Bulldog Francés", "Bulldog Inglés", "Bull Terrier", "Caniche / Poodle",
          "Cavalier King Charles", "Chihuahua", "Chow Chow", "Cocker Spaniel", "Corgi", "Dálmata", "Doberman", "Dogo Argentino", "Golden Retriever", "Gran Danés", "Husky Siberiano", "Jack Russell",
          "Labrador", "Lhasa Apso", "Maltés", "Mastín", "Pastor Alemán", "Pastor Australiano", "Pequinés", "Pinscher", "Pitbull", "Pomerania", "Pug", "Rottweiler", "Salchicha / Dachshund",
@@ -191,6 +191,8 @@ def fmt_cant(v, unidad=None):
     if not unidad: return n
     return f"{n} {unidad}" if v == 1 else f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
 tpl.env.filters["cant"] = fmt_cant
+# "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
+tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
 tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
@@ -302,6 +304,8 @@ COLUMNAS = (
     ("notas_taller", "produccion_id", "INTEGER"),
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
+    ("orden_lineas", "perso_lista", "INTEGER NOT NULL DEFAULT 0"), ("orden_lineas", "perso_lista_en", "TEXT"),
+    ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"),
     ("ordenes", "despachador_pago_id", "INTEGER"), ("ordenes", "en_registro", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_fecha", "TEXT"), ("ordenes", "factura_hecha", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_numero", "TEXT"), ("ordenes", "factura_por", "INTEGER"),
@@ -586,12 +590,43 @@ def ver_como(request: Request, rol: str, volver: str = "/ordenes", quien: str = 
 def raiz(): return RedirectResponse("/inicio", status_code=303)
 
 
+def por_personalizar(con):
+    """Pedidos con algo que hay que personalizar y que nadie ha marcado como listo todavía."""
+    out = []
+    for l in con.execute("""SELECT l.id, l.orden_id, o.numero, l.nombre, l.personalizacion, p.tipo,
+                            COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente
+                            FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
+                            LEFT JOIN productos p ON p.id=l.producto_id
+                            WHERE TRIM(COALESCE(l.personalizacion,''))!='' AND COALESCE(l.perso_lista,0)=0
+                              AND o.estado NOT IN ('cancelada','entregada') AND COALESCE(o.origen_excel,0)=0
+                            ORDER BY o.id, l.id"""):
+        producto = l["nombre"]
+        if l["tipo"] == "opcion":   # la personalización se cobró aparte: va en los productos del pedido que se pueden personalizar
+            en = [r[0] for r in con.execute("""SELECT l2.nombre FROM orden_lineas l2 JOIN productos p2 ON p2.id=l2.producto_id
+                                               WHERE l2.orden_id=? AND p2.permite_personalizacion=1 ORDER BY l2.id""", (l["orden_id"],))]
+            producto = " o ".join(en) if en else ""
+        out.append(dict(l) | {"producto": producto})
+    return out
+
+
+@app.post("/ordenes/{oid}/personalizacion/{lid}")
+def personalizacion_estado(request: Request, oid: int, lid: int, lista: str = Form("1"), volver: str = Form("/inicio"), con=Depends(db)):
+    """Ya se personalizó (o no, me equivoqué). Lo marcan Cristina o logística."""
+    if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/inicio", status_code=303)
+    hecho = lista == "1"
+    con.execute("UPDATE orden_lineas SET perso_lista=?, perso_lista_en=? WHERE id=? AND orden_id=?",
+                (1 if hecho else 0, datetime.datetime.now().strftime("%Y-%m-%d %H:%M") if hecho else None, lid, oid))
+    con.commit()
+    return RedirectResponse(volver if volver.startswith("/") else "/inicio", status_code=303)
+
+
 @app.get("/inicio", response_class=HTMLResponse)
 def inicio(request: Request, con=Depends(db)):
     rol = rol_de(request); hoy = datetime.date.today(); h = hoy.isoformat(); mes = hoy.strftime("%Y-%m")
     activas = cargar_ordenes(con, {"estado": "activas"}, rol)
     c = {
-        "por_revisar": sum(1 for o in activas if o["estado_pago"] == "por_confirmar"),
+        # también los de órdenes ya entregadas: el despachador anota un Pago Móvil en la puerta y hay que revisarlo
+        "por_revisar": con.execute("SELECT COUNT(*) FROM ordenes WHERE estado_pago='por_confirmar' AND estado!='cancelada'").fetchone()[0],
         "incidencias": con.execute("SELECT COUNT(*) FROM incidencias WHERE estado='abierta'").fetchone()[0],
         "sin_coordinar": sum(1 for o in activas if not o["coordinada"]),
         "hoy": sum(1 for o in activas if (o["fecha_prometida"] or h) <= h),
@@ -605,6 +640,7 @@ def inicio(request: Request, con=Depends(db)):
     deudas = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(total - (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado')),0) s
                             FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado')""").fetchone()
     c["con_saldo"], c["saldo_total"] = deudas["n"], deudas["s"]
+    c["personalizar"] = por_personalizar(con)
     # retiros de pack y repuestos prepagados PROGRAMADOS para hoy (o atrasados): los que de verdad se entregan
     packs = sum(1 for k in cargar_packs(con) if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= h)
     packs += sum(1 for r in cargar_prepagados(con) if r["fecha_programada"] and r["fecha_programada"] <= h)
@@ -648,22 +684,18 @@ def inicio(request: Request, con=Depends(db)):
     c["efectivo_total"] = round(sum(x["monto_usd"] or 0 for x in efectivo), 2)
     # quincena del equipo: el 15 y el último día del mes, corridos al viernes si caen domingo
     if rol == "admin":
-        ant = datetime.date(hoy.year, hoy.month, 1) - datetime.timedelta(days=1)
-        # el día de pago que toca ahora: el más reciente que ya llegó, hasta 2 días después
-        tocan = [p for p, fin in ventana_pago(ant.year, ant.month) + ventana_pago(hoy.year, hoy.month) if p <= hoy <= fin]
-        c["es_quincena"] = any(f == hoy for f in tocan)
-        c["quincena_falta"] = []
-        if tocan:
-            f = max(tocan); desde = (f - datetime.timedelta(days=3)).isoformat()
-            c["quincena_falta"] = [n for n in (cfg_json(con, "sueldos", {}) or {})
-                                   if not con.execute("""SELECT 1 FROM gastos WHERE categoria='Equipo' AND subcategoria='Quincena'
-                                                         AND TRIM(COALESCE(proveedor,''))=? AND fecha>=?""", (n, desde)).fetchone()]
+        c["es_quincena"], c["quincena_falta"] = quincena_pendiente(con, hoy)
         c["quincena_n"] = len(c["quincena_falta"])
 
     deuda_desp = con.execute("""SELECT despachador, SUM(COALESCE(delivery, 0)) m, COUNT(*) n FROM ordenes
                                 WHERE despachador IS NOT NULL AND despachador!='' AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 HAVING SUM(COALESCE(delivery, 0)) > 0""").fetchall() if rol == "admin" else []
     viajes_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_agencia WHERE pagado=0 GROUP BY 1 HAVING SUM(monto)>0").fetchall() if rol == "admin" else []
-    c["desp_debe"] = sum(r["m"] for r in deuda_desp) + sum(r["m"] for r in viajes_desp)   # entregas + viajes a la agencia
+    por_desp = {}
+    for r_ in list(deuda_desp) + list(viajes_desp): por_desp[r_["despachador"]] = por_desp.get(r_["despachador"], 0) + r_["m"]
+    # entregas + viajes a la agencia, menos lo que ya se le adelantó a cada uno
+    por_desp = {n: m - adelanto_despachador(con, n)[1] for n, m in por_desp.items()}
+    por_desp = {n: m for n, m in por_desp.items() if m > 0.009}
+    c["desp_debe"] = round(sum(por_desp.values()), 2)
     # pedidos cuyo día de pago llegó (la grama se paga los viernes aunque llegue el lunes)
     # El resto se paga el día de pago si se puso uno; si no, el día de entrega; y si no tiene
     # ninguna de las dos, cuando llega algo. Un aviso por pedido, con lo que falta pagar.
@@ -686,7 +718,7 @@ def inicio(request: Request, con=Depends(db)):
     atrasado = bool(viejo and datetime.date.fromisoformat(viejo[:10]) < lunes and hoy.weekday() != 0)
     c["toca_pagar_desp"] = hoy.weekday() == 0 or atrasado          # el lunes, o si ya se pasó el lunes sin pagar
     c["desp_atrasado"] = atrasado
-    c["desp_n"] = len({r["despachador"] for r in deuda_desp} | {r["despachador"] for r in viajes_desp}); c["es_lunes"] = hoy.weekday() == 0
+    c["desp_n"] = len(por_desp); c["es_lunes"] = hoy.weekday() == 0
     # porches que el taller ya dejó armados, esperando venta
     armados = con.execute("""SELECT p.nombre, (SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario m WHERE m.producto_id=p.id) listos
                              FROM productos p WHERE p.activo=1 AND p.categoria='porche'
@@ -797,14 +829,15 @@ def cargar_ordenes(con, filtros, rol):
              (SELECT d.ciudad    FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_ciudad,
              (SELECT d.maps      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_maps,
              COALESCE((SELECT SUM(cc.monto) FROM credito_cliente cc WHERE cc.cliente_id=o.cliente_id),0) credito,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END, ' · ') FROM orden_lineas l
+             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
+             (SELECT GROUP_CONCAT(COALESCE((SELECT 'Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || ' · ' || l.nombre FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END), ' · ') FROM orden_lineas l
               WHERE l.orden_id=o.id AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio=0)) productos_hoy,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN l.personalizacion IS NOT NULL THEN ' ✎' ELSE '' END
+             (SELECT GROUP_CONCAT(COALESCE((SELECT 'Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || ' · ' || l.nombre FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla != 0 THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END)
                  || CASE WHEN EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL) THEN '@PEND' ELSE '' END
                  || COALESCE((SELECT '@PACK' || (k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)) || '/' || k.unidades
                               FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id
+                              AND (o.estado='entregada' OR k.entregadas_inicio=0)   -- antes de entregar no se adelanta cuántos le quedan
                               AND k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) > 0 LIMIT 1), ''), '||') FROM orden_lineas l WHERE l.orden_id=o.id) lineas_txt,
              (SELECT COUNT(*) FROM incidencias i WHERE i.orden_id=o.id AND i.estado='abierta') incidencias,
              (SELECT forma FROM pagos p WHERE p.orden_id=o.id ORDER BY id LIMIT 1) forma_pago,
@@ -875,7 +908,8 @@ def cargar_orden(con, oid):
                        FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id LEFT JOIN usuarios u ON u.id=o.creada_por WHERE o.id=?""", (oid,)).fetchone()
     if not o: return None
     o = dict(o); o["alertas"] = alertas(o); o["coordinada"] = coordinada(o)
-    o["lineas"] = con.execute("SELECT * FROM orden_lineas WHERE orden_id=?", (oid,)).fetchall()
+    o["lineas"] = con.execute("""SELECT l.*, k.unidades pack_unidades, k.entregadas_inicio pack_hoy FROM orden_lineas l
+                                 LEFT JOIN packs k ON k.orden_id=l.orden_id AND k.producto_id=l.producto_id WHERE l.orden_id=?""", (oid,)).fetchall()
     o["pagos"] = con.execute("SELECT p.*, u.nombre confirmado_por_nombre FROM pagos p LEFT JOIN usuarios u ON u.id=p.confirmado_por WHERE orden_id=? ORDER BY id", (oid,)).fetchall()
     o["pagado"] = sum(p["monto_usd"] for p in o["pagos"] if p["estado"] == "confirmado")
     o["historial"] = con.execute("SELECT h.*, u.nombre usuario FROM historial h LEFT JOIN usuarios u ON u.id=h.usuario_id WHERE orden_id=? ORDER BY h.id DESC", (oid,)).fetchall()
@@ -909,6 +943,10 @@ def precio_linea(p, cantidad):
 
 
 def descripcion_linea(l):
+    ks = l.keys() if hasattr(l, "keys") else []
+    if "pack_unidades" in ks and l["pack_unidades"]:   # de un pack no sale el pack: salen los que se lleva hoy
+        hoy_ = l["pack_hoy"] or 0
+        return f"Lleva {hoy_} de {l['pack_unidades']} · {l['nombre']}" if hoy_ else f"{l['nombre']} · hoy no se lleva ninguno"
     partes = [f"{int(l['cantidad'])} × {l['nombre']}"]
     if l["color"]: partes.append(f"plato {l['color']}")
     if l["malla"]: partes.append("+ malla")
@@ -930,14 +968,10 @@ def resumen_despacho(o, con_plata=True):
         L.append(f"📍 {o['zona'] + ', ' if o['zona'] else ''}{o['direccion']}" + (f" — recibe {o['receptor_nombre']}" + (f" {o['receptor_telefono']}" if o["receptor_telefono"] else "") if o["receptor_nombre"] else ""))
         if o["maps"]: L.append(f"🗺 {o['maps']}")
     if not con_plata:   # para quien no ve dinero: qué hacer, sin montos (el despachador ve el suyo en su pantalla)
-        if o["estado_pago"] == "contra_entrega": L.append("💵 CONTRA ENTREGA: se cobra en efectivo")
-        elif o["estado_pago"] in ("abonada", "sin_pago", "rechazado"): L.append("💵 Falta cobrar: lo coordina Cristina")
+        if o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado"): L.append("💵 Falta pagar")
         else: L.append("✅ Pagado, no cobrar nada")
-    elif o["estado_pago"] == "contra_entrega":
-        pend = o["monto_contra_entrega"] or (o["total"] - o["pagado"])
-        L.append(f"💵 CONTRA ENTREGA: cobrar {fmt_usd(pend)} en efectivo" + (f" (ya pagó {fmt_usd(o['pagado'])} por {o['forma_pago_prevista'].split(' + ')[0]})" if o["pagado"] > 0 else ""))
-    elif o["estado_pago"] == "abonada": L.append(f"💵 Abonó {fmt_usd(o['pagado'])}; falta {fmt_usd(o['total'] - o['pagado'])}")
-    elif o["estado_pago"] == "sin_pago": L.append(f"💵 Por cobrar {fmt_usd(o['total'])}")
+    elif o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado") and o["total"] - o["pagado"] > 0.009:
+        L.append(f"💵 Falta pagar {fmt_usd(o['total'] - o['pagado'])}")
     else: L.append("✅ Pagado, no cobrar nada")
     if o["notas_entrega"]: L.append(f"📝 {o['notas_entrega']}")
     for n in o.get("notas_cliente") or []:   # lo que siempre hay que saber de este cliente
@@ -977,7 +1011,7 @@ def volver(oid, request):
 
 
 @app.post("/ordenes/{oid}/estado")
-def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), con=Depends(db)):
+def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), forma_recibida: str = Form(""), con=Depends(db)):
     rol = rol_de(request); uid = uid_de(request)
     if PERMISO_ESTADO.get(estado) not in PERMISOS[rol]: return volver(oid, request)
     o = cargar_orden(con, oid)
@@ -991,7 +1025,27 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
     if estado == "entregada":
         fe = fecha.strip() or datetime.date.today().isoformat()   # se puede registrar una entrega de otro día
         sets.append("fecha_entrega=?"); args.append(fe if fe != datetime.date.today().isoformat() else datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-        if o["estado_pago"] == "contra_entrega":
+        # lo que el despachador cobró en la puerta: contra entrega, o el resto de una orden que quedó con saldo
+        cobro_puerta = o["estado_pago"] == "contra_entrega" or (
+            o["estado_pago"] in ("abonada", "sin_pago", "rechazado") and (str(monto_recibido).strip() != "" or forma_recibida))
+        despues = forma_recibida == "despues"   # cliente de la casa: se le entrega y Cristina le cobra después
+        digital = forma_recibida and not despues and not forma_recibida.startswith("Efectivo")
+        if cobro_puerta and (despues or digital):
+            falta = round(o["total"] - o["pagado"], 2)
+            monto = 0.0 if despues else max(0.0, round(float(cifra(monto_recibido) or 0) if str(monto_recibido).strip() else falta, 2))
+            if monto:   # pagó por Zelle, Pago Móvil…: lo dice el despachador, Cristina confirma que llegó
+                tasa = tasa_hoy(con)["valor"] or 0; en_bs = es_bolivares(forma_recibida) and tasa
+                con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,fecha,estado)
+                               VALUES (?,?,?,?,?,?,?,?,'por_confirmar')""",
+                            (oid, forma_recibida, monto, round(monto * tasa, 2) if en_bs else monto, "VES" if en_bs else "USD",
+                             tasa if en_bs else None, FORMA_CUENTA.get(forma_recibida, forma_recibida), fe))
+                sets.append("estado_pago=?"); args.append("por_confirmar")
+                registrar(con, oid, uid, "pago", f"Al entregar pagó {fmt_usd(monto)} por {forma_recibida}: por revisar"
+                          + (f" · quedan {fmt_usd(falta - monto)}" if falta - monto > 0.009 else ""))
+            else:
+                sets.append("estado_pago=?"); args.append(estado_pago_de(o["pagado"], o["total"]))
+                registrar(con, oid, uid, "pago", f"Entregado sin cobrar: quedan {fmt_usd(falta)} · lo cobra Cristina después")
+        elif cobro_puerta:
             falta = round(o["total"] - o["pagado"], 2)
             monto = float(cifra(monto_recibido)) if str(monto_recibido).strip() else float(o["monto_contra_entrega"] or falta)
             monto = max(0.0, round(monto, 2))
@@ -1009,9 +1063,9 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
             if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
             if monto:
                 falto = round(o["total"] - o["pagado"] - monto, 2)
-                registrar(con, oid, uid, "pago", f"Cobrado contra entrega {fmt_usd(monto)} en efectivo el {fe} → {caja_efectivo(con)}"
+                registrar(con, oid, uid, "pago", f"Cobrado al entregar {fmt_usd(monto)} en efectivo el {fe} → {caja_efectivo(con)}"
                           + (f" · quedan {fmt_usd(falto)} por cobrar" if falto > 0.009 else ""))
-            else:
+            elif falta > 0.009:
                 registrar(con, oid, uid, "pago", f"Entregado sin cobrar: quedan {fmt_usd(falta)} por cobrar")
             if monto and not o["fecha_pago"] and nuevo_estado == "pagada":
                 sets.append("fecha_pago=?"); args.append(fe)   # el día que se entrega es el día que pagaron
@@ -1056,7 +1110,7 @@ def contra_entrega(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request)
     if "contra_entrega" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE ordenes SET estado_pago='contra_entrega' WHERE id=? AND estado_pago IN ('sin_pago','rechazado','por_confirmar')", (oid,))
-    registrar(con, oid, uid_de(request), "estado", "Autorizada salida contra entrega (efectivo) → Confirmada"); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "estado", "Autorizado que pague al recibir → Confirmada"); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/pago")
@@ -3214,6 +3268,19 @@ def proxima_quincena(hoy):
     return dias_de_pago(sig.year, sig.month)[0]
 
 
+def quincena_pendiente(con, hoy):
+    """(¿hoy es día de pago?, a quién le falta cobrar la quincena que toca ahora)."""
+    ant = datetime.date(hoy.year, hoy.month, 1) - datetime.timedelta(days=1)
+    # el día de pago que toca ahora: el más reciente que ya llegó, hasta 2 días después
+    tocan = [p for p, fin in ventana_pago(ant.year, ant.month) + ventana_pago(hoy.year, hoy.month) if p <= hoy <= fin]
+    if not tocan: return False, []
+    desde = (max(tocan) - datetime.timedelta(days=3)).isoformat()
+    falta = [n for n in (cfg_json(con, "sueldos", {}) or {})
+             if not con.execute("""SELECT 1 FROM gastos WHERE categoria='Equipo' AND subcategoria='Quincena'
+                                   AND TRIM(COALESCE(proveedor,''))=? AND fecha>=?""", (n, desde)).fetchone()]
+    return any(f == hoy for f in tocan), falta
+
+
 def ficha_equipo(con, nombre, hoy):
     """Lo que le has pagado a una persona del equipo, y qué adelantos quedan por descontar."""
     mensual = (cfg_json(con, "sueldos", {}) or {}).get(nombre)   # el sueldo se guarda por mes; se paga en dos quincenas
@@ -3267,6 +3334,25 @@ def equipo_falta_borrar(request: Request, fid: int, con=Depends(db)):
     return RedirectResponse("/equipo", status_code=303)
 
 
+@app.post("/equipo/pagar")
+def equipo_pagar(request: Request, nombre: str = Form(...), que: str = Form("Quincena"), monto: str = Form(""),
+                 cuenta_id: str = Form(""), fecha: str = Form(""), nota: str = Form(""), con=Depends(db)):
+    """Pagarle a alguien del equipo desde su ficha: sale de la caja elegida y queda en gastos (Equipo)."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    usd = cifra(monto) if monto else 0
+    cu = con.execute("SELECT * FROM cuentas WHERE id=? AND activa=1", (int(cuenta_id),)).fetchone() if cuenta_id.isdigit() else None
+    if not usd or usd <= 0 or not cu: return RedirectResponse("/equipo", status_code=303)   # sin monto o sin caja no se anota
+    tasa = tasa_hoy(con)["valor"] or 0
+    en_bs = cu["moneda"] == "VES" and tasa
+    que = que if que in ("Quincena", "Adelanto", "Bono", "Día extra") else "Quincena"
+    con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, tasa, categoria, subcategoria, descripcion, proveedor,
+                   cuenta_id, usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                ((fecha or "").strip() or datetime.date.today().isoformat(), round(usd, 2), round(usd * tasa, 2) if en_bs else round(usd, 2),
+                 "VES" if en_bs else "USD", tasa if en_bs else None, "Equipo", que,
+                 f"{que} {nombre}" + (f" · {nota.strip()}" if nota.strip() else ""), nombre, cu["id"], uid_de(request)))
+    con.commit(); return RedirectResponse("/equipo", status_code=303)
+
+
 @app.get("/equipo", response_class=HTMLResponse)
 def equipo(request: Request, con=Depends(db)):
     """Isaías, Manawa y Víctor: lo que se les ha pagado. Solo Cristina — el taller no llega aquí."""
@@ -3274,7 +3360,9 @@ def equipo(request: Request, con=Depends(db)):
     hoy = datetime.date.today()
     gente = [ficha_equipo(con, n, hoy) for n in cfg_json(con, "equipo", ["Víctor", "Isaías", "Manawa"])]
     return render(request, "equipo.html", seccion="equipo", gente=gente, hoy_iso=hoy.isoformat(),
-                  CUENTAS=con.execute("SELECT * FROM cuentas WHERE activa=1 ORDER BY orden").fetchall())
+                  falta_quincena=quincena_pendiente(con, hoy)[1],
+                  CUENTAS=con.execute("""SELECT * FROM cuentas WHERE activa=1 AND tipo='operativa' AND moneda IN ('USD','VES')
+                                         ORDER BY orden""").fetchall())
 
 
 @app.post("/finanzas/recurrentes/{cid}/saltar")
@@ -3974,13 +4062,16 @@ def cargar_packs(con):
     cols = [r[1] for r in con.execute("PRAGMA table_info(packs)")]
     for c, tp in (("fecha_programada", "TEXT"), ("tipo_programado", "TEXT"), ("despachador_programado", "TEXT"), ("nota_programada", "TEXT"), ("retiro_programado", "INTEGER"), ("delivery_programado", "REAL"), ("delivery_pagado", "INTEGER"), ("deliveries_prepagados", "INTEGER")):
         if c not in cols: con.execute(f"ALTER TABLE packs ADD COLUMN {c} {tp}")
-    rows = con.execute("""SELECT k.*, c.nombre cliente, c.telefono, c.ciudad, o.numero orden, o.tipo_entrega,
+    rows = con.execute("""SELECT k.*, c.nombre cliente, c.telefono, c.ciudad, o.numero orden, o.tipo_entrega, o.estado orden_estado,
         (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregas_posteriores,
         (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ultima_entrega
         FROM packs k JOIN clientes c ON c.id=k.cliente_id LEFT JOIN ordenes o ON o.id=k.orden_id ORDER BY k.creado_en DESC""").fetchall()
     hoy = datetime.date.today(); lista = []
     for r in rows:
-        d = dict(r); d["entregadas"] = d["entregadas_inicio"] + d["entregas_posteriores"]; d["saldo"] = d["unidades"] - d["entregadas"]
+        d = dict(r)
+        # los que se lleva el día de la compra cuentan cuando esa orden se entrega, no antes
+        if d.get("orden_estado") not in (None, "entregada"): d["entregadas_inicio"] = 0
+        d["entregadas"] = d["entregadas_inicio"] + d["entregas_posteriores"]; d["saldo"] = d["unidades"] - d["entregadas"]
         ref = d["ultima_entrega"] or d["creado_en"][:10]
         d["dias_ultima"] = (hoy - datetime.date.fromisoformat(ref)).days
         d["entregas"] = con.execute("SELECT e.*, u.nombre usuario FROM entregas_repuesto e LEFT JOIN usuarios u ON u.id=e.usuario_id WHERE pack_id=? ORDER BY fecha", (d["id"],)).fetchall()
@@ -4420,6 +4511,16 @@ def tarifa_agencia(con, agencia):
     return float(t.get(agencia, t.get("*", 5)))
 
 
+def adelanto_despachador(con, nombre):
+    """Los adelantos que se le dieron (gasto Despachadores › Adelanto a su nombre, desde su ficha o desde Gastos)
+    y cuánto de eso queda por descontar de sus entregas."""
+    lista = con.execute("""SELECT g.id, g.fecha, g.monto_usd, g.notas, cu.nombre caja FROM gastos g LEFT JOIN cuentas cu ON cu.id=g.cuenta_id
+                           WHERE g.categoria='Despachadores' AND g.subcategoria='Adelanto' AND TRIM(COALESCE(g.proveedor,''))=?
+                           ORDER BY g.fecha DESC, g.id DESC""", (nombre,)).fetchall()
+    usado = con.execute("SELECT COALESCE(SUM(adelanto_usado),0) FROM pagos_despachador WHERE despachador=?", (nombre,)).fetchone()[0]
+    return lista, round(max(sum(a["monto_usd"] or 0 for a in lista) - usado, 0), 2)
+
+
 def resumen_despachador(con, nombre, hoy):
     """Lo que se le debe: cada orden asignada (no cancelada) suma su pago hasta que la marcas pagada (los lunes)."""
     # se le debe lo que ya ENTREGÓ: asignado no es ganado (se puede cambiar el despachador, o pasar a pick-up)
@@ -4434,6 +4535,12 @@ def resumen_despachador(con, nombre, hoy):
     r = dict(s)
     r["debe"] = (r["debe"] or 0) + v["m"]          # los viajes a la agencia se le pagan igual que las entregas
     r["n_viajes"] = v["n"]; r["debe_viajes"] = v["m"]   # se cuentan aparte: son viajes, no entregas
+    # lo que se le adelantó se descuenta de lo que se le debe; si adelantaste más de lo que ha hecho, queda a favor tuyo
+    r["adelantos"], r["adelanto"] = adelanto_despachador(con, nombre)
+    r["debe_bruto"] = r["debe"]
+    r["adelanto_resta"] = round(min(r["adelanto"], r["debe"]), 2)
+    r["debe"] = round(r["debe"] - r["adelanto_resta"], 2)
+    r["adelanto_libre"] = round(r["adelanto"] - r["adelanto_resta"], 2)
     return r | {"zonas": zonas, "ultimo_pago": ult}
 
 
@@ -4453,12 +4560,14 @@ def mis_entregas(request: Request, con=Depends(db)):
     ruta = ruta_despachador(con, nombre, hoy.isoformat())
     hist = con.execute("""SELECT o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
                           COALESCE(o.delivery,0) pago, o.estado, o.despachador_pagado,
-                          COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien
+                          COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(o.zona),'') zona,
+                          COALESCE(NULLIF(TRIM(o.direccion),''), (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id
+                                                                  ORDER BY d.principal DESC, d.id LIMIT 1)) direccion
                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
                           ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
     mes = hoy.strftime("%Y-%m")
-    pagos = con.execute("SELECT fecha, monto, entregas FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC LIMIT 12", (nombre,)).fetchall()
+    pagos = con.execute("SELECT fecha, monto, entregas, adelanto_usado FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC LIMIT 12", (nombre,)).fetchall()
     for f in ruta:
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
@@ -4591,6 +4700,23 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                   hist=hist, record=record)
 
 
+@app.post("/despachadores/{did}/adelanto")
+def despachador_adelanto(request: Request, did: int, monto: str = Form(""), forma: str = Form(""), fecha: str = Form(""),
+                         nota: str = Form(""), con=Depends(db)):
+    """Le adelantaste plata: sale de la caja ya, y se le va descontando de las entregas que haga."""
+    if not solo_admin(request): return RedirectResponse(f"/despachadores/{did}", status_code=303)
+    d = con.execute("SELECT * FROM despachadores WHERE id=?", (did,)).fetchone()
+    usd = cifra(monto) if monto else 0
+    cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma, forma),)).fetchone()
+    if d and usd and usd > 0 and cuenta:
+        con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
+                       cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Adelanto',?,?,?,?,?)""",
+                    ((fecha or "").strip() or datetime.date.today().isoformat(), round(usd, 2), round(usd, 2),
+                     f"Adelanto {d['nombre']}", d["nombre"], cuenta["id"], nota.strip() or None, uid_de(request)))
+        con.commit()
+    return RedirectResponse(f"/despachadores/{did}", status_code=303)
+
+
 @app.post("/despachadores/{did}/pagar")
 async def despachador_pagar(request: Request, did: int, con=Depends(db)):
     """Le pagaste al despachador: las entregas marcadas quedan saldadas y se guarda el pago."""
@@ -4608,19 +4734,23 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
             monto += con.execute(f"SELECT COALESCE(SUM(monto),0) FROM viajes_agencia WHERE id IN ({qv}) AND despachador=? AND pagado=0", (*vids, d["nombre"])).fetchone()[0]
         uid = uid_de(request); fecha = f.get("fecha") or datetime.date.today().isoformat()
         nota = (f.get("nota") or "").strip() or None
-        cur = con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, usuario_id) VALUES (?,?,?,?,?,?)",
-                          (d["nombre"], fecha, monto, len(ids) + len(vids), nota, uid))
+        # primero se descuenta lo que se le adelantó: eso ya salió de caja cuando se lo diste
+        usado = round(min(adelanto_despachador(con, d["nombre"])[1], monto), 2)
+        forma = f.get("forma") or ""
+        cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma, forma),)).fetchone()
+        if monto - usado > 0.009 and not cuenta: return RedirectResponse(f"/despachadores/{did}", status_code=303)   # falta decir de qué caja
+        cur = con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, usuario_id, adelanto_usado) VALUES (?,?,?,?,?,?,?)",
+                          (d["nombre"], fecha, monto, len(ids) + len(vids), nota, uid, usado))
         if ids: con.execute(f"UPDATE ordenes SET despachador_pagado=1, despachador_pago_id=? WHERE id IN ({','.join('?' * len(ids))}) AND despachador=? AND estado='entregada'", (cur.lastrowid, *ids, d["nombre"]))
         if vids: con.execute(f"UPDATE viajes_agencia SET pagado=1, pago_id=? WHERE id IN ({','.join('?' * len(vids))}) AND despachador=?", (cur.lastrowid, *vids, d["nombre"]))
-        if monto > 0:   # pagarle a un despachador es un gasto: tiene que llegar a Gastos y al libro de caja
-            forma = f.get("forma") or ""
-            cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma),)).fetchone()
+        if monto - usado > 0.009:   # pagarle a un despachador es un gasto: tiene que llegar a Gastos y al libro de caja
             det = []
             if ids: det.append(f"{len(ids)} entrega{'s' if len(ids) != 1 else ''}")
             if vids: det.append(f"{len(vids)} viaje{'s' if len(vids) != 1 else ''} a agencia")
             con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                            cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Pago semanal',?,?,?,?,?,?)""",
-                        (fecha, monto, monto, " · ".join(det), d["nombre"], len(ids) + len(vids),
+                        (fecha, round(monto - usado, 2), round(monto - usado, 2),
+                         " · ".join(det) + (f" · menos ${usado:.2f} de adelanto" if usado else ""), d["nombre"], len(ids) + len(vids),
                          cuenta["id"] if cuenta else None, nota, uid))
         con.commit()
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
@@ -4813,14 +4943,19 @@ def taller_hoy(request: Request, con=Depends(db)):
         # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
         lleva = (o["despachador"] or "").strip() or "Sin despachador"
         a_agencia = o["tipo_entrega"] == "nacional"
-        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku
+        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo,
+                                TRIM(COALESCE(l.personalizacion,'')) perso
                                 FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?""", (o["id"],)):
+            if l["tipo"] == "opcion":   # una opción no es un bulto; si es la placa con nombre, que se vea el nombre
+                if l["perso"]: sale(lleva, f"Placa con el nombre “{l['perso']}”", int(l["cantidad"] or 1), a_agencia)
+                continue
             if (l["sku"] or "").startswith("PACK"):   # de un pack no sale "el pack": salen los repuestos que le tocan
                 k = con.execute("SELECT tamano, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
                                 (o["id"], l["sku"])).fetchone()
                 sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip(), (k["entregadas_inicio"] if k else 1) or 1, a_agencia)
             else:
-                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else ""), int(l["cantidad"]), a_agencia)
+                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else "")
+                     + (f" ✎ personalizado “{l['perso']}”" if l["perso"] else ""), int(l["cantidad"]), a_agencia)
     for k in cargar_packs(con):
         if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= hoy and (k["tipo_programado"] or k["tipo_entrega"]) != "pickup":
             sale((k["despachador_programado"] or "").strip() or "Sin despachador",

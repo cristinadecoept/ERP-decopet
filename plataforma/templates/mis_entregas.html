@@ -4,16 +4,19 @@
 
 <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
  <div class="tile"><b style="color:{{ '#b45a1c' if r.debe else 'var(--verde-osc)' }}">{{ (r.debe or 0)|usd }}</b><span>Te deben</span>
-  <i>{% if r.n_debe %}{{ r.n_debe }} entrega{{ 's' if r.n_debe != 1 }}{% if r.n_viajes %} y {{ r.n_viajes }} viaje{{ 's' if r.n_viajes != 1 }}{% endif %} sin pagar{% else %}estás al día{% endif %}</i></div>
+  <i>{% if r.n_debe %}{{ r.n_debe }} entrega{{ 's' if r.n_debe != 1 }}{% if r.n_viajes %} y {{ r.n_viajes }} viaje{{ 's' if r.n_viajes != 1 }}{% endif %} sin pagar{% else %}estás al día{% endif %}{% if r.adelanto_resta %} · menos {{ r.adelanto_resta|usd }} de adelanto{% endif %}</i></div>
+ {% if r.adelanto_libre %}<div class="tile"><b>{{ r.adelanto_libre|usd }}</b><span>Adelanto recibido</span><i>se descuenta de tus próximas entregas</i></div>{% endif %}
  {% if 'ver_dinero' in puede %}<div class="tile"><b>{{ ganado_mes|usd }}</b><span>Ganado este mes</span></div>{% endif %}
  <div class="tile"><b>{{ n_entregadas }}</b><span>Entregas hechas</span>{% if 'ver_dinero' in puede %}<i>{{ ganado_todo|usd }} en total</i>{% endif %}</div>
 </div>
 
 <h2 class="seccion-t">Lo que te toca hoy</h2>
 <div class="tabla">
-{% if ruta %}<table><tr><th>Quién</th><th>Qué lleva</th><th class="num">Cobrar</th><th></th></tr>
+{% if ruta %}<table><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th class="num">Falta pagar</th><th></th></tr>
 {% for f in ruta %}<tr>
  <td style="width:160px"><b>{{ f.quien }}</b></td>
+ <td style="max-width:260px">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}
+  <div><button type="button" class="no-link" style="font-size:12px" data-dir="{{ f.direccion }}{% if f.maps %}&#10;{{ f.maps }}{% endif %}" onclick="navigator.clipboard.writeText(this.dataset.dir).then(()=>{this.textContent='✓ Copiada';setTimeout(()=>this.textContent='Copiar dirección',1500)})">Copiar dirección</button></div>{% else %}<span class="mini">—</span>{% endif %}</td>
  <td class="mini">{{ f.que_lleva }}{% for t in f.indicaciones %}<div class="op-nota">📌 {{ t }}</div>{% endfor %}</td>
  <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}</td>
  <td style="text-align:right;width:250px">{% if f.id %}
@@ -24,9 +27,12 @@
    <form method="post" action="/ordenes/{{ f.id }}/estado" class="cobro-f" style="min-width:230px">
     <input type="hidden" name="estado" value="entregada">
     {% if f.cobrar %}<input type="hidden" name="moneda_recibida" value="USD">
-     <label style="margin-top:0">¿Cuánto cobraste en efectivo? <span class="mini">tenías que cobrar {{ f.cobrar|usd }}</span></label>
-     <div class="cf-in"><span class="mini">$</span><input name="monto_recibido" inputmode="decimal" value="{{ '%g'|format(f.cobrar) }}" style="width:110px"></div>
-     <div class="mini">Si te dio menos, pon lo que te dio de verdad. Si no te dio nada, pon 0.</div>
+     <label style="margin-top:0">¿Cómo pagó? <span class="mini">falta pagar {{ f.cobrar|usd }}</span></label>
+     <select name="forma_recibida" onchange="this.form.querySelector('.me-monto').hidden=this.value==='despues'">
+      <option value="Efectivo USD">Efectivo</option>{% for x in FORMAS_COBRO if not x.startswith('Efectivo') %}<option>{{ x }}</option>{% endfor %}
+      <option value="despues">No pagó · se le cobra después</option></select>
+     <div class="me-monto"><label>¿Cuánto?</label><div class="cf-in"><span class="mini">$</span><input name="monto_recibido" inputmode="decimal" value="{{ '%g'|format(f.cobrar) }}" style="width:110px"></div>
+     <div class="mini">Si pagó menos, pon lo que pagó de verdad.</div></div>
     {% else %}<div class="mini" style="margin-bottom:6px">Ya está pagada, no hay que cobrar nada.</div>{% endif %}
     <p style="margin:8px 0 0"><button class="btn chico">Marcar entregado</button></p></form></details>
   <details class="cobro"><summary class="btn sec chico">Hubo un problema</summary>
@@ -38,23 +44,24 @@
     <p style="margin:8px 0 0"><button class="btn chico">Avisar a Cristina</button></p></form></details>
  {% endif %}</td>
 </tr>{% endfor %}
-{% if ruta_cobrar is defined and ruta_cobrar %}<tr><td colspan="2" class="num mini">Tienes que cobrar</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td><td></td></tr>{% endif %}</table>
+{% if ruta_cobrar is defined and ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td><td></td></tr>{% endif %}</table>
 {% else %}<div class="vacio">Hoy no tienes entregas asignadas.</div>{% endif %}</div>
 
 <div class="g2" style="align-items:start;margin-top:16px">
  <div class="tarjeta"><h3>Lo que has entregado</h3>
   <div class="cf-cuerpo">
-  {% if hist %}<table class="lineas"><tr><th>Fecha</th><th>Quién</th><th>Estado</th><th class="num">Te toca</th></tr>
+  {% if hist %}<table class="lineas"><tr><th>Fecha</th><th>Quién</th><th>Dónde</th><th>Estado</th><th class="num">Te toca</th></tr>
   {% for h in hist[:20] %}<tr>
-   <td class="mono mini" style="width:100px">{{ h.fecha|dia }}</td><td>{{ h.quien }}</td>
+   <td class="mono mini" style="width:100px">{{ h.fecha|dia }}</td><td>{{ h.quien }}</td><td class="mini">{% if h.zona %}<b>{{ h.zona }}</b>{% if h.direccion %} · {% endif %}{% endif %}{{ h.direccion or ('' if h.zona else '—') }}</td>
    <td><span class="est {{ h.estado }}">{{ E_LABEL[h.estado] }}</span></td>
    <td class="num">{% if h.estado == 'entregada' %}{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">sin pagar</div>{% endif %}{% else %}<span class="mini">{{ h.pago|usd }} al entregar</span>{% endif %}</td>
   </tr>{% endfor %}</table>{% else %}<div class="vacio">Todavía no tienes entregas.</div>{% endif %}</div></div>
 
  <div class="tarjeta"><h3>Lo que te han pagado</h3>
   <div class="cf-cuerpo">
-  {% if pagos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th></tr>
-  {% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num"><b>{{ p.monto|usd }}</b></td></tr>{% endfor %}</table>
+  {% if pagos or r.adelantos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th></tr>
+  {% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td class="num mini">adelanto</td><td class="num"><b>{{ a.monto_usd|usd }}</b></td></tr>{% endfor %}
+  {% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num"><b>{{ (p.monto - (p.adelanto_usado or 0))|usd }}</b>{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} ya te lo habían adelantado</div>{% endif %}</td></tr>{% endfor %}</table>
   {% else %}<div class="vacio">Todavía no hay pagos registrados.</div>{% endif %}</div></div>
 </div>
 {% endblock %}

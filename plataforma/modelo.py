@@ -198,6 +198,8 @@ orden_lineas = Table(
     Column("extras", Float, nullable=True, server_default=text('0')),
     Column("total", Float, nullable=True, server_default=text('0')),
     Column("forma_pago", Text, nullable=True),
+    Column("perso_lista", Integer, nullable=False, server_default=text('0')),
+    Column("perso_lista_en", Text, nullable=True),
 )
 
 pagos = Table(
@@ -517,6 +519,7 @@ pagos_despachador = Table(
     Column("nota", Text, nullable=True),
     Column("usuario_id", Integer, nullable=True),
     Column("creado_en", Text, nullable=True, server_default=AHORA),
+    Column("adelanto_usado", Float, nullable=False, server_default=text('0')),
 )
 
 proveedores = Table(

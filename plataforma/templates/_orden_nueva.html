@@ -5,11 +5,11 @@
 
 <!-- 2 · FECHA DE PAGO -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">1</span><b>Fecha de pago</b> <span class="obl" id="f-pago-obl">*</span></div><input type="date" name="fecha_pago" id="f-pago" value="{{ hoy }}" style="max-width:220px">
-<div class="nota-log" id="f-pago-ce" hidden style="margin-top:0">💵 <b>Contra entrega:</b> la fecha de pago se pone sola el día que marques la entrega.</div></section>
+<div class="nota-log" id="f-pago-ce" hidden style="margin-top:0">💵 La fecha de pago se pone sola el día que se entregue y se cobre.</div></section>
 
 <!-- 1 · CLIENTE -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">2</span><b>Cliente</b></div>
-<div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-credito="{{ c.credito or 0 }}" data-notas="{{ c.notas or '' }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
+<div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-credito="{{ c.credito or 0 }}" data-tam="{{ c.porche_tamano if c.porche_version=='PRO' else '' }}" data-notas="{{ c.notas or '' }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
 <div class="mini" style="margin-top:6px">Si no aparece, <a href="#" onclick="clienteNuevo();return false">crear cliente nuevo</a></div></div>
 <div id="cl-existente" hidden class="no-cliente"><div class="no-avatar" id="cl-ex-ini">C</div><div style="flex:1;min-width:0"><b id="cl-ex-nombre"></b><div class="mini" id="cl-ex-datos"></div><div class="no-perros" id="cl-ex-mascotas"></div><div class="op-nota" id="cl-ex-notas" hidden></div></div><button type="button" class="no-link" onclick="limpiarCliente()">Cambiar</button></div>
 <div id="cl-faltan" hidden class="no-sub"><div class="no-sub-h"><span>Faltan datos de este cliente</span></div>
@@ -38,8 +38,8 @@
 <div id="lin"></div>
 <button type="button" class="no-add" onclick="abrirPicker()">+ Agregar producto</button>
 <div id="picker" hidden class="no-picker">{% set cats = {'porche':'El Porche','repuesto':'Repuestos y packs','comedor':'Comedores','rampa':'Rampas','kit':'Kits','accesorio':'Accesorios'} %}{% for ck,cv in cats.items() %}{% set ps = productos|selectattr('categoria','eq',ck)|list %}{% if ps %}<div class="no-picker-cat">{{ cv }}</div><div class="no-picker-grid">{% for p in ps %}<button type="button" class="no-prod" onclick="agregar({{ productos.index(p) }})"><span>{{ p.nombre }}</span><b>${{ '%.0f'|format(p.precio) }}</b></button>{% endfor %}</div>{% endif %}{% endfor %}</div>
-<div class="no-ajustes"><div><label>Descuento USD</label><input type="number" step="0.01" name="descuento" id="desc" value="0" oninput="calc()"></div><div id="perso-w"><label>Personalización</label><label class="chk no-chk-caja"><input type="checkbox" id="perso-btn" onchange="togPersoOrden()"> <span>Sí</span><b id="perso-mas" hidden style="margin-left:auto;color:var(--verde-osc)">+ ${{ opciones['OPC-PERSO'].precio|int }}</b></label><input type="hidden" name="personalizacion_extra" id="perso-x" value="0"></div></div>
-<div id="perso-nom-w" hidden style="margin-top:2px"><label>Nombre a grabar</label><input name="personalizacion_nombre" id="perso-nom" placeholder="nombre del perro"></div>
+<div class="no-ajustes"><div><label class="chk no-chk-caja"><input type="checkbox" id="desc-si" onchange="togDesc(this)"> <span>Descuento</span></label>
+ <div id="desc-w" hidden style="margin-top:8px"><label>¿Cuánto? (USD)</label><input type="number" step="0.01" min="0" name="descuento" id="desc" value="0" oninput="calc()"></div></div><input type="hidden" name="personalizacion_extra" id="perso-x" value="0"></div>
 <div id="motivo-w" hidden style="margin-top:2px"><label>Motivo del descuento</label><select name="motivo_descuento"><option value="">—</option><option>Promoción</option><option>Referido</option><option>Cortesía</option><option>Cliente frecuente</option></select></div>
 </section>
 
@@ -70,7 +70,7 @@
 <div id="cred-w" hidden class="ahora-ln nar" style="margin-bottom:8px"><span class="ahora-dot"></span><span style="flex:1">Tiene <b id="cred-m" style="margin:0"></b> a favor</span><button type="button" class="btn chico" onclick="usarCredito()">Usarlo</button></div>
 <div id="pagos"></div>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px"><button type="button" class="no-link" onclick="agregarPago()">+ Otra forma de pago</button><span class="mini" id="p-falta"></span></div>
-<div class="no-saldo"><span>Monto pagado</span><b id="p-pagado">$0.00</b><span>Saldo pendiente</span><b id="p-saldo">$0.00</b></div>
+<div class="no-saldo"><span>Monto pagado</span><b id="p-pagado">$0.00</b><span id="p-saldo-t">Saldo pendiente</span><b id="p-saldo">$0.00</b></div>
 <div class="nota-log" id="p-efectivo" hidden style="margin-top:10px"></div>
 </section>
 
@@ -85,7 +85,7 @@ function agregar(i){document.getElementById('picker').hidden=true;const d=docume
  let ops='';
  if(PC[i]==1)ops+=`<span class="no-opt-g"><span class="mini">Plato:</span><button type="button" class="no-mini" onclick="setColor(this,'azul')">Azul</button><button type="button" class="no-mini" onclick="setColor(this,'rosado')">Rosado</button><input type="hidden" name="color" value=""></span>`;else ops+='<input type="hidden" name="color" value="">';
  if(PM[i]==1)ops+=`<label class="chk no-chk-mini"><input type="checkbox" onchange="togChk(this)"> <span>Agregar malla · $${OP_MALLA}</span></label><input type="hidden" name="malla" value="">`;else ops+='<input type="hidden" name="malla" value="">';
- ops+='<input type="hidden" name="personalizacion" value="">';
+ if(PZ[i]==1)ops+=`<span class="no-opt-g perso-lin" ${persoOk()?'':'hidden'}><label class="chk no-chk-mini"><input type="checkbox" onchange="togPersoLin(this)"> <span>Personalizar · $${OP_PERSO}</span></label><input name="personalizacion" placeholder="nombre a grabar" hidden oninput="calc()" style="width:170px;padding:5px 10px;font-size:13px;margin:0"></span>`;else ops+='<input type="hidden" name="personalizacion" value="">';
  if((PS[i]||'').startsWith('REP-'))ops+=`<label class="chk no-chk-mini"><input type="checkbox" onchange="togPrepago(this)"> <span>Lo deja pagado · se entrega después</span></label><input type="hidden" name="prepagar" value="0">`;else ops+='<input type="hidden" name="prepagar" value="0">';
  const U={'PACK3-M':3,'PACK3-G':3,'PACK4-M':4,'PACK4-G':4,'PACK8-M':8,'PACK8-G':8}[PS[i]];
  if(U){let so='';for(let n=0;n<=U;n++)so+=`<option value="${n}" ${n===1?'selected':''}>${n===0?'ninguno · los pide después':n===U?n+' (todos)':n}</option>`;let dso='';for(let n=0;n<=U;n++)dso+=`<option value="${n}" ${n===0?'selected':''}>${n===0?'ninguno':n===U?n+' (todos)':n+(n===1?' retiro':' retiros')}</option>`;
@@ -97,7 +97,10 @@ function qty(b,n){const i=b.parentElement.querySelector('input');i.value=Math.ma
 function togPrepago(c){const h=c.closest('label').nextElementSibling;h.value=c.checked?'1':'0';c.closest('label').classList.toggle('act',c.checked);calc();}
 function togChk(c){const h=c.closest('label').nextElementSibling;h.value=c.checked?'1':'';c.closest('label').classList.toggle('act',c.checked);calc();}
 function tog(b){const h=b.nextElementSibling;const on=!b.classList.contains('act');b.classList.toggle('act',on);h.value=on?'1':(h.name==='prepagar'?'0':'');calc();}
-function togPersoOrden(){const on=document.getElementById('perso-btn').checked;document.getElementById('perso-x').value=on?OP_PERSO:0;document.getElementById('perso-mas').hidden=!on;document.getElementById('perso-nom-w').hidden=!on;if(on)document.getElementById('perso-nom').focus();else document.getElementById('perso-nom').value='';calc();}
+// la personalización se marca en el producto que la lleva: así el taller sabe a cuál pegarle la placa
+function togDesc(cb){const w=document.getElementById('desc-w'),d=document.getElementById('desc');w.hidden=!cb.checked;if(cb.checked){if(d.value==='0')d.value='';d.focus();}else d.value=0;calc();}
+function persoOk(){const c=document.getElementById('canal');return !c||['whatsapp','instagram','presencial','web'].includes(c.value);}
+function togPersoLin(cb){const inp=cb.closest('.perso-lin').querySelector('[name=personalizacion]');inp.hidden=!cb.checked;inp.required=cb.checked;if(cb.checked)inp.focus();else inp.value='';calc();}
 function setColor(b,c){b.parentElement.querySelectorAll('.no-mini').forEach(x=>x.classList.toggle('act',x===b));b.parentElement.querySelector('[name=color]').value=c;
  const d=b.closest('.no-linea'),i=+d.dataset.i,img=d.querySelector('.no-linea-foto'),f=(c==='rosado'&&PFR[i])?PFR[i]:PF[i];if(img&&f)img.src='/fotos/'+f;calc();}
 function lineaTotal(d){const i=+d.dataset.i,c=Math.max(1,+d.querySelector('[name=cantidad]').value||1);let base=P2[i]&&c>=2?Math.floor(c/2)*P2[i]+(c%2)*PP[i]:PP[i]*c;
@@ -109,17 +112,19 @@ function calc(){let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{
  document.getElementById('t-sub').innerText='$'+s.toFixed(2);document.getElementById('t-iva').innerText='$'+iva.toFixed(2);document.getElementById('t-deliv').innerText='$'+dl.toFixed(2);document.getElementById('t-desc').innerText='− $'+ds.toFixed(2);
  const tot=s-ds+iva+dl;document.getElementById('t-tot').innerText='$'+tot.toFixed(2);document.getElementById('t-bs').innerText='≈ Bs '+(tot*TASA).toLocaleString('es-VE',{maximumFractionDigits:0});pagos(tot);}
 function agregarPago(){const d=document.createElement('div');d.className='no-pago';let o='<option value="">forma de pago…</option>';FORMAS.forEach(x=>o+=`<option>${x}</option>`);
- d.innerHTML=`<select name="pago_forma" onchange="calc()">${o}</select><input type="number" step="0.01" name="pago_monto" placeholder="monto" oninput="this.dataset.tocado=1;calc()"><input name="pago_ref" placeholder="referencia"><button type="button" class="no-x-sm" onclick="this.parentElement.remove();calc()">×</button>`;document.getElementById('pagos').appendChild(d);}
-function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');if(filas.length===1&&!m.dataset.tocado)m.value=tot.toFixed(2);s+=+m.value||0;
+ d.innerHTML=`<select name="pago_forma" onchange="calc()">${o}</select><input type="number" step="0.01" name="pago_monto" placeholder="monto pagado" oninput="this.dataset.tocado=1;calc()"><input name="pago_ref" placeholder="referencia"><button type="button" class="no-x-sm" onclick="this.parentElement.remove();calc()">×</button>`;document.getElementById('pagos').appendChild(d);}
+function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');s+=+m.value||0;
+  m.classList.toggle('falta-monto',!!d.querySelector('[name=pago_forma]').value&&!(+m.value>0));   // eligió forma: falta escribir cuánto   // el monto no se pone solo: se escribe lo que de verdad pagó
   if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
- document.getElementById('p-pagado').innerText='$'+s.toFixed(2);document.getElementById('p-saldo').innerText='$'+Math.max(tot-s,0).toFixed(2);document.getElementById('p-saldo').style.color=(tot-s)>0.01?'#b45a1c':'var(--verde-osc)';
- const f=document.getElementById('p-falta');const d=tot-s;f.innerText=Math.abs(d)<0.01?'':(d>0&&d<tot-0.01?'pago parcial':(d>0?'sin pagar todavía':'sobran $'+(-d).toFixed(2)));f.style.color='#b45a1c';
+ // el efectivo todavía no está pagado: se cobra al entregar, así que cuenta como saldo pendiente
+ const pag=s-efe,sal=Math.max(tot-pag,0);document.getElementById('p-pagado').innerText='$'+pag.toFixed(2);document.getElementById('p-saldo').innerText='$'+sal.toFixed(2);document.getElementById('p-saldo').style.color=sal>0.01?'#b45a1c':'var(--verde-osc)';document.getElementById('p-saldo-t').innerText=efe>=0.01&&s>=tot-0.01?'Se cobra en efectivo al entregar':'Saldo pendiente';
+ const f=document.getElementById('p-falta');const d=tot-s;f.innerText=Math.abs(d)<0.01?'':(d>0&&d<tot-0.01?'pago parcial':(d>0?'':'sobran $'+(-d).toFixed(2)));f.style.color='#b45a1c';
  const n=document.getElementById('p-efectivo');n.hidden=efe<0.01;   // el efectivo se cobra al entregar, no hoy
- if(efe>=0.01)n.innerHTML='💵 <b>Contra entrega:</b> los $'+efe.toFixed(2)+' en efectivo se registran cuando marques la entrega, no hoy.';
+ if(efe>=0.01)n.innerHTML='💵 Los $'+efe.toFixed(2)+' en efectivo los cobra el despachador al entregar.';
  const fp=document.getElementById('f-pago'),ce=efe>=0.01&&s>=tot-0.01;   // todo en efectivo: la fecha de pago la pone la entrega
  fp.disabled=ce;fp.style.opacity=ce?.45:1;document.getElementById('f-pago-ce').hidden=!ce;document.getElementById('f-pago-obl').hidden=ce;}
 function setCanal(c){document.getElementById('canal').value=c;document.querySelectorAll('#canal-pills .no-pill').forEach(b=>b.classList.toggle('act',b.dataset.v===c));const cash=c==='cashea',chk=document.getElementById('factura-chk');document.getElementById('iva-nota').hidden=true;chk.dataset.lock=cash?'1':'';if(cash){chk.checked=true;document.getElementById('factura').value='1';}else{if(chk.dataset.was==='1'){chk.checked=false;chk.dataset.was='';}document.getElementById('factura').value=chk.checked?'1':'';}if(cash)chk.dataset.was='1';
- const sinPerso=!['whatsapp','instagram','presencial','web'].includes(c),pb=document.getElementById('perso-btn');if(sinPerso&&pb.checked){pb.checked=false;togPersoOrden();}document.getElementById('perso-w').hidden=sinPerso;   // solo se personaliza por WhatsApp, Instagram, presencial y página web
+ const sinPerso=!['whatsapp','instagram','presencial','web'].includes(c);document.querySelectorAll('.perso-lin').forEach(w=>{w.hidden=sinPerso;if(sinPerso){const cb=w.querySelector('input[type=checkbox]');if(cb.checked){cb.checked=false;togPersoLin(cb);}}});   // solo se personaliza por WhatsApp, Instagram, presencial y página web
  calc();}
 document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.dataset.lock){e.preventDefault();e.target.checked=true;}});
 function setEntrega(k){document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
@@ -153,7 +158,7 @@ function usarCredito(){
  if(![...sel.options].some(o=>o.value==='Saldo a favor'))sel.insertAdjacentHTML('beforeend','<option>Saldo a favor</option>');
  sel.value='Saldo a favor';mi.value=usa.toFixed(2);mi.max=CRED.toFixed(2);mi.dataset.tocado=1;
  const puesto=[...document.querySelectorAll('#pagos [name=pago_monto]')].reduce((s,i)=>s+(+i.value||0),0);
- if(TOT-puesto>0.009){agregarPago();const r=[...document.querySelectorAll('#pagos .no-pago')].pop().querySelector('[name=pago_monto]');r.value=(TOT-puesto).toFixed(2);r.dataset.tocado=1;}
+ if(TOT-puesto>0.009)agregarPago();   // lo que falte se escribe a mano, con lo que de verdad pagó
  document.getElementById('cred-w').hidden=true;calc();}
 const sirve=v=>!!(v&&v.trim()&&v.trim().toLowerCase()!=='pendiente');
 function esTercero(){return document.getElementById('rec-ter').classList.contains('act');}
@@ -167,7 +172,7 @@ function faltanDatos(){   // un cliente que ya existe puede no tener correo, tel
  document.getElementById('add-tel-w').hidden=!ft;document.getElementById('add-cor-w').hidden=!fc;document.getElementById('add-ced-w').hidden=!fd;
  w.hidden=!(ft||fc||fd);}
 function validar(){const fp=document.getElementById('f-pago');
- if(!fp.disabled&&!fp.value){alert('Falta la fecha de pago. Solo se puede dejar vacía si es contra entrega.');fp.focus();return false;}
+ if(!fp.disabled&&!fp.value){alert('Falta la fecha de pago. Solo se puede dejar vacía si lo paga en efectivo al recibir.');fp.focus();return false;}
  if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if(!document.getElementById('te').value){alert('Elige el tipo de entrega.');return false;}
  const val=n=>((document.querySelector('[name='+n+']')||{}).value||'').trim(),nuevo=!document.getElementById('cl-id').value,nac=document.getElementById('te').value==='nacional';
  const pedir=(id,n,msg)=>{const w=document.getElementById(id);if(!w.hidden&&!val(n)){alert(msg);w.querySelector('input').focus();return false;}return true;};
@@ -178,6 +183,17 @@ function validar(){const fp=document.getElementById('f-pago');
  if(nac){if(esTercero()){if(!val('receptor_cedula')){alert('Para un envío nacional hace falta la cédula de quien recibe.');return false;}}
          else if(nuevo){if(!val('cliente_cedula')){alert('Para un envío nacional hace falta la cédula del cliente.');return false;}}
          else if(!pedir('add-ced-w','cl_add_cedula','Para un envío nacional hace falta la cédula del cliente.'))return false;}
+ for(const d of document.querySelectorAll('#pagos .no-pago')){const fo=d.querySelector('[name=pago_forma]'),m=d.querySelector('[name=pago_monto]');
+  if(fo.value&&!(+m.value>0)){alert('¿Cuánto pagó por '+fo.value+'? Escribe el monto, o quita esa forma de pago si todavía no ha pagado.');m.focus();return false;}}
+ // repuesto o pack de otro tamaño que su porche PRO: no encaja en la caja de madera. Preguntar antes de crear.
+ // El Básico no cuenta: no tiene caja, puede comprar cualquier tamaño.
+ const tam=(([...document.getElementById('cl').options].find(o=>o.dataset.id===document.getElementById('cl-id').value)||{dataset:{}}).dataset.tam||'');
+ const lins=[...document.querySelectorAll('#lin .no-linea')].map(d=>+d.dataset.i);
+ if(tam&&!lins.some(i=>(PN[i]||'').startsWith('El Porche'))){// puede tener dos porches ("Mediano, Grande"): solo se pregunta por un tamaño que no tiene
+  const suyos=(tam.includes('Mediano')?'M':'')+(tam.includes('Grande')?'G':'');
+  const otros=lins.filter(i=>{const m=/^(?:REP|PACK\d+)-([MG])$/.exec(PS[i]||'');return m&&suyos&&!suyos.includes(m[1]);}).map(i=>PN[i]);
+  if(otros.length&&!window._tamOk){preguntar('Este cliente tiene el porche '+tam.toLowerCase()+'. ¿Seguro que quieres '+otros.join(' y ')+'?',{si:'Sí, crear la orden',no:'Corregir'})
+   .then(ok=>{if(ok){window._tamOk=true;document.getElementById('fn').requestSubmit();}});return false;}}
  return true;}
 agregarPago();setCanal('whatsapp');
 {% if precliente %}(()=>{const i=document.getElementById('cl-in');i.value={{ precliente|tojson }};i.dispatchEvent(new Event('input'));})();{% endif %}

@@ -333,7 +333,7 @@ html.oscuro .tabla td{border-bottom-color:var(--linea)}html.oscuro .op-card-h{bo
 .no-opts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}.no-opt-g{display:inline-flex;align-items:center;gap:4px}.no-mini{border:1px solid var(--linea);background:#fff;border-radius:99px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--tinta-2);font-family:inherit}.no-mini.act{background:var(--verde);border-color:var(--verde);color:#fff}
 .no-perso{flex:1;min-width:140px;padding:6px 10px;font-size:12.5px;margin:0}
 .no-ajustes{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:0 10px;margin-top:12px}
-.no-pago{display:grid;grid-template-columns:1.4fr .8fr 1fr auto;gap:6px;align-items:center;margin-bottom:6px}.no-pago select,.no-pago input{margin:0}
+.no-pago{display:grid;grid-template-columns:1.3fr 1fr .9fr auto;gap:6px;align-items:center;margin-bottom:6px}.no-pago select,.no-pago input{margin:0}
 .no-pie{position:sticky;bottom:-40px;margin:16px -26px -40px;padding:14px 26px 18px;background:var(--sup);border-top:1px solid var(--linea);display:flex;justify-content:space-between;align-items:flex-end;gap:16px;box-shadow:0 -10px 24px -18px rgba(27,35,32,.25)}
 .no-tot{font-size:12.5px;color:var(--tinta-2)}.no-tot>div{display:flex;gap:14px;justify-content:space-between;min-width:200px}.no-tot>div b{font-weight:500;color:var(--tinta)}.no-tot .g{font-size:18px;margin-top:4px}.no-tot .g b{font-weight:700}.no-tot .g span{color:var(--tinta)}
 .no-crear{padding:13px 26px;font-size:14.5px;border-radius:14px}
@@ -734,6 +734,7 @@ html.oscuro .falta-p{background:rgba(255,255,255,.12)}
 .falta-p button{border:0;background:none;cursor:pointer;color:inherit;opacity:.55;font-size:14px;padding:0 3px}
 .falta-p button:hover{opacity:1}
 .fal-w{margin-bottom:12px}
+.eq-pagar{margin-bottom:12px}.eq-pagar>summary{list-style:none;width:max-content}.eq-pagar>summary::-webkit-details-marker{display:none}.eq-pagar[open]>summary{display:none}.eq-pagar .fal-f select,.eq-pagar .fal-f input{width:auto}.eq-pagar .cf-in{display:inline-flex;align-items:center;gap:4px}
 .fal-w summary{cursor:pointer;font-size:13px;opacity:.75;width:max-content}
 .fal-f{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .fal-f input[name=nota]{min-width:200px}
@@ -876,3 +877,14 @@ select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color
 
 
 
+
+/* Pregunta "¿seguro?" del ERP */
+.dlg{border:0;border-radius:18px;padding:26px 26px 20px;max-width:min(440px,calc(100vw - 32px));background:var(--sup);color:var(--tinta);box-shadow:0 30px 80px -20px rgba(0,0,0,.45)}
+.dlg::backdrop{background:rgba(20,24,22,.45);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.dlg-txt{margin:0 0 22px;font-size:16px;line-height:1.45;font-weight:500}
+.dlg-b{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.no-pago input.falta-monto{border-color:#E1782E;background:#fdf0e7;box-shadow:0 0 0 3px rgba(225,120,46,.18)}
+html.oscuro .no-pago input.falta-monto{background:rgba(225,120,46,.14)}
+.no-pago input.falta-monto::placeholder{color:#b45a1c;opacity:1}
+.no-pago input[name=pago_monto]{-moz-appearance:textfield;min-width:120px}
+.no-pago input[name=pago_monto]::-webkit-inner-spin-button,.no-pago input[name=pago_monto]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}

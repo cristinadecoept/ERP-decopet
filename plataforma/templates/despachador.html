@@ -3,21 +3,30 @@
 <div class="fila-titulo"><div><h1>{{ d.nombre }}</h1><div class="sub">{% if d.telefono %}{{ d.telefono }} · <a class="wa-link" href="{{ d.telefono|wa }}" target="_blank" style="font-size:inherit">WhatsApp ↗</a>{% else %}sin teléfono{% endif %}{% if not d.activo %} · <span class="canal">ya no entrega</span>{% endif %}{% if d.notas %} · {{ d.notas }}{% endif %}</div></div></div>
 
 {% if 'ver_dinero' in puede %}<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:16px">
- <div class="tile"><b style="color:{{ '#b45a1c' if r.debe else 'var(--verde-osc)' }}">{{ (r.debe or 0)|usd }}</b><span>Le debes</span><i>{% set det = [] %}{% if r.n_debe %}{% set _ = det.append(r.n_debe ~ ' entrega' ~ ('s' if r.n_debe!=1 else '')) %}{% endif %}{% if r.n_viajes %}{% set _ = det.append(r.n_viajes ~ ' viaje' ~ ('s' if r.n_viajes!=1 else '') ~ ' a la agencia') %}{% endif %}{% if det %}{{ det|join(' · ') }} desde el último pago{% else %}al día{% endif %}</i></div>
+ <div class="tile"><b style="color:{{ '#b45a1c' if r.debe else 'var(--verde-osc)' }}">{{ (r.debe or 0)|usd }}</b><span>Le debes</span><i>{% set det = [] %}{% if r.n_debe %}{% set _ = det.append(r.n_debe ~ ' entrega' ~ ('s' if r.n_debe!=1 else '')) %}{% endif %}{% if r.n_viajes %}{% set _ = det.append(r.n_viajes ~ ' viaje' ~ ('s' if r.n_viajes!=1 else '') ~ ' a la agencia') %}{% endif %}{% if det %}{{ det|join(' · ') }} desde el último pago{% else %}al día{% endif %}{% if r.adelanto_resta %} · ya le descontaste {{ r.adelanto_resta|usd }} de adelanto{% endif %}</i></div>
+ {% if r.adelanto_libre %}<div class="tile"><b style="color:var(--verde-osc)">{{ r.adelanto_libre|usd }}</b><span>Adelanto por descontar</span><i>se le resta de las próximas entregas</i></div>{% endif %}
  <div class="tile"><b>{% if r.ultimo_pago %}{{ r.ultimo_pago.monto|usd }}{% else %}—{% endif %}</b><span>Último pago</span><i>{% if r.ultimo_pago %}{{ r.ultimo_pago.fecha|dia }}{% else %}todavía ninguno{% endif %}</i></div>
 </div>{% endif %}
+{% if rol=='admin' %}<details class="eq-pagar" style="margin:-4px 0 16px"><summary class="btn sec chico">Darle un adelanto</summary>
+ <form method="post" action="/despachadores/{{ d.id }}/adelanto" class="fal-f">
+  <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
+  <select name="forma" required><option value="" selected disabled>¿De qué caja?</option>{% for fp in FORMAS_PAGO %}<option>{{ fp }}</option>{% endfor %}</select>
+  <input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}">
+  <input name="nota" placeholder="nota (opcional)" style="min-width:180px">
+  <button class="btn chico">Registrar adelanto</button></form>
+ <div class="mini" style="margin-top:6px">Sale de esa caja ya y queda en gastos. Después se le va descontando de lo que le debas por sus entregas.</div></details>{% endif %}
 
 <div class="desp-grid">
 <div>
 {% if rol=='admin' %}<div class="tarjeta" style="margin-bottom:14px"><h3>Lo que le toca hoy</h3>
-{% if ruta %}<table class="lineas"><tr><th>Quién</th><th>Dónde</th><th>Qué lleva</th><th class="num">Cobrar</th></tr>
+{% if ruta %}<table class="lineas"><tr><th>Quién</th><th>Dónde</th><th>Qué lleva</th><th class="num">Falta pagar</th></tr>
 {% for f in ruta %}<tr>
  <td style="width:130px"><b>{{ f.quien }}</b>{% if f.telefono %}<div class="mini mono">{{ f.telefono }}</div>{% endif %}</td>
  <td>{{ f.direccion or '—' }}{% if f.maps %} <a href="{{ f.maps }}" target="_blank" rel="noreferrer" class="mini">mapa</a>{% endif %}</td>
  <td class="mini">{{ f.que_lleva }}</td>
  <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}</td>
 </tr>{% endfor %}
-{% if ruta_cobrar %}<tr><td colspan="3" class="num mini">Tiene que cobrar</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td></tr>{% endif %}</table>
+{% if ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td></tr>{% endif %}</table>
 <div class="ruta-b">
  {% if d.telefono %}<a class="btn chico" href="{{ d.telefono|wa }}?text={{ ruta_texto|urlencode }}" target="_blank" rel="noreferrer">Mandárselo por WhatsApp</a>
  {% else %}<span class="mini">Para mandárselo por WhatsApp, agrégale el teléfono abajo en Datos.</span>{% endif %}
@@ -39,7 +48,7 @@
 {% if viajes %}<h4 class="sub-tabla">Viajes a la agencia</h4>
 <table class="lineas"><tr>{% if rol=='admin' %}<th style="width:28px"><input type="checkbox" checked onchange="document.querySelectorAll('#pagar input[name=viaje_id]').forEach(c=>c.checked=this.checked);sumar()"></th>{% endif %}<th>Fecha</th><th>Agencia</th><th>Pedidos</th>{% if 'ver_dinero' in puede %}<th class="num">Le pagas</th>{% endif %}</tr>
 {% for t in viajes %}<tr>{% if rol=='admin' %}<td><input type="checkbox" name="viaje_id" value="{{ t.id }}" data-m="{{ t.monto or 0 }}" checked onchange="sumar()"></td>{% endif %}<td class="mono">{{ t.fecha|dia }}</td><td>{{ t.agencia or '—' }}</td><td class="mini">{{ t.n_ordenes }} pedido{{ 's' if t.n_ordenes!=1 }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ (t.monto or 0)|usd }}</td>{% endif %}</tr>{% endfor %}</table>{% endif %}
-{% if rol=='admin' %}<div style="display:flex;gap:10px;align-items:end;margin-top:12px;flex-wrap:wrap"><div><label>Fecha del pago</label><input type="date" name="fecha" value="{{ hoy }}"></div><div><label>Forma de pago</label><select name="forma" required><option value="" selected disabled>Elegir…</option>{% for fp in FORMAS_PAGO %}<option>{{ fp }}</option>{% endfor %}</select></div>
+{% if rol=='admin' %}<div style="display:flex;gap:10px;align-items:end;margin-top:12px;flex-wrap:wrap"><div><label>Fecha del pago</label><input type="date" name="fecha" value="{{ hoy }}"></div><div><label>Forma de pago</label><select name="forma" id="forma-pago" required><option value="" selected disabled>Elegir…</option>{% for fp in FORMAS_PAGO %}<option>{{ fp }}</option>{% endfor %}</select></div>
 <div style="flex:1;min-width:150px"><label>Nota <span class="mini">(opcional)</span></label><input name="nota"></div><button class="btn" id="btn-pagar">Marcar pagado · <span id="suma"></span></button></div>{% endif %}
 </form>{% else %}<div class="vacio">No le debes nada. Cada pedido que le asignes aparece aquí con lo que le pagas por esa zona, hasta que marques pagado.</div>{% endif %}</div>
 {% if rol=='admin' %}<div class="tarjeta" style="margin-bottom:14px"><h3>Todo lo que ha entregado</h3>
@@ -64,8 +73,9 @@
 <div class="tarjeta"><h3>Zonas de esta semana</h3>{% if zonas %}<table class="lineas"><tr><th>Zona</th><th class="num">Entregas</th>{% if 'ver_dinero' in puede %}<th class="num">Le pagas</th>{% endif %}</tr>
 {% for z in zonas %}<tr><td>{{ z.z }}</td><td class="num">{{ z.n }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ z.monto|usd }}</td>{% endif %}</tr>{% endfor %}</table>
 {% else %}<div class="vacio">Sin entregas pendientes de pago.</div>{% endif %}</div>
-{% if 'ver_dinero' in puede %}<div class="tarjeta"><h3>Pagos que le has hecho</h3>{% if pagos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th>Nota</th></tr>
-{% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num">{{ p.monto|usd }}</td><td class="mini">{{ p.nota or '' }}</td></tr>{% endfor %}</table>{% else %}<div class="vacio">Todavía no has registrado pagos.</div>{% endif %}</div>{% endif %}
+{% if 'ver_dinero' in puede %}<div class="tarjeta"><h3>Pagos que le has hecho</h3>{% if pagos or r.adelantos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th>Nota</th></tr>
+{% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td class="num mini">adelanto</td><td class="num">{{ a.monto_usd|usd }}</td><td class="mini">{{ a.caja or '' }}{% if a.notas %} · {{ a.notas }}{% endif %}</td></tr>{% endfor %}
+{% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num">{{ p.monto|usd }}{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} de adelanto · {{ (p.monto - p.adelanto_usado)|usd }} en plata</div>{% endif %}</td><td class="mini">{{ p.nota or '' }}</td></tr>{% endfor %}</table>{% else %}<div class="vacio">Todavía no has registrado pagos.</div>{% endif %}</div>{% endif %}
 </div>
 </div>
 <div>
@@ -76,5 +86,10 @@
 </div>
 </div>
 <script>function todos(v){document.querySelectorAll('#pagar input[name=orden_id], #pagar input[name=viaje_id]').forEach(c=>c.checked=v);document.querySelectorAll('#pagar thead input, #pagar th input').forEach(c=>c.checked=v);sumar();}
-function sumar(){let s=0,n=0;document.querySelectorAll('#pagar input[name=orden_id]:checked, #pagar input[name=viaje_id]:checked').forEach(c=>{s+=parseFloat(c.dataset.m)||0;n++});const e=document.getElementById('suma');if(e)e.textContent='$'+s.toFixed(2)+' ('+n+')';const b=document.getElementById('btn-pagar');if(b)b.disabled=!n;}sumar();</script>
+const ADELANTO={{ (r.adelanto or 0)|round(2) }};
+function sumar(){let s=0,n=0;document.querySelectorAll('#pagar input[name=orden_id]:checked, #pagar input[name=viaje_id]:checked').forEach(c=>{s+=parseFloat(c.dataset.m)||0;n++});
+ const usa=Math.min(ADELANTO,s),paga=s-usa;const e=document.getElementById('suma');
+ if(e)e.textContent=usa>0?('$'+paga.toFixed(2)+' (se descuentan $'+usa.toFixed(2)+' de adelanto)'):('$'+s.toFixed(2)+' ('+n+')');
+ const f=document.getElementById('forma-pago');if(f)f.required=paga>0.009;
+ const b=document.getElementById('btn-pagar');if(b)b.disabled=!n;}sumar();</script>
 {% endblock %}
