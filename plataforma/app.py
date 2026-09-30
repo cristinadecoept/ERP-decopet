@@ -284,6 +284,7 @@ COLUMNAS = (
     ("notas_taller", "produccion_id", "INTEGER"),
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
+    ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"),
     ("ordenes", "despachador_pago_id", "INTEGER"), ("ordenes", "en_registro", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_fecha", "TEXT"), ("ordenes", "factura_hecha", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_numero", "TEXT"), ("ordenes", "factura_por", "INTEGER"),
@@ -634,7 +635,12 @@ def inicio(request: Request, con=Depends(db)):
     deuda_desp = con.execute("""SELECT despachador, SUM(COALESCE(delivery, 0)) m, COUNT(*) n FROM ordenes
                                 WHERE despachador IS NOT NULL AND despachador!='' AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 HAVING m>0""").fetchall() if rol == "admin" else []
     viajes_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_agencia WHERE pagado=0 GROUP BY 1 HAVING m>0").fetchall() if rol == "admin" else []
-    c["desp_debe"] = sum(r["m"] for r in deuda_desp) + sum(r["m"] for r in viajes_desp)   # entregas + viajes a la agencia
+    por_desp = {}
+    for r_ in list(deuda_desp) + list(viajes_desp): por_desp[r_["despachador"]] = por_desp.get(r_["despachador"], 0) + r_["m"]
+    # entregas + viajes a la agencia, menos lo que ya se le adelantó a cada uno
+    por_desp = {n: m - adelanto_despachador(con, n)[1] for n, m in por_desp.items()}
+    por_desp = {n: m for n, m in por_desp.items() if m > 0.009}
+    c["desp_debe"] = round(sum(por_desp.values()), 2)
     # pedidos cuyo día de pago llegó (la grama se paga los viernes aunque llegue el lunes)
     # El resto se paga el día de pago si se puso uno; si no, el día de entrega; y si no tiene
     # ninguna de las dos, cuando llega algo. Un aviso por pedido, con lo que falta pagar.
@@ -657,7 +663,7 @@ def inicio(request: Request, con=Depends(db)):
     atrasado = bool(viejo and datetime.date.fromisoformat(viejo[:10]) < lunes and hoy.weekday() != 0)
     c["toca_pagar_desp"] = hoy.weekday() == 0 or atrasado          # el lunes, o si ya se pasó el lunes sin pagar
     c["desp_atrasado"] = atrasado
-    c["desp_n"] = len({r["despachador"] for r in deuda_desp} | {r["despachador"] for r in viajes_desp}); c["es_lunes"] = hoy.weekday() == 0
+    c["desp_n"] = len(por_desp); c["es_lunes"] = hoy.weekday() == 0
     # porches que el taller ya dejó armados, esperando venta
     armados = con.execute("""SELECT p.nombre, (SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario m WHERE m.producto_id=p.id) listos
                              FROM productos p WHERE p.activo=1 AND p.categoria='porche'
@@ -4425,6 +4431,16 @@ def tarifa_agencia(con, agencia):
     return float(t.get(agencia, t.get("*", 5)))
 
 
+def adelanto_despachador(con, nombre):
+    """Los adelantos que se le dieron (gasto Despachadores › Adelanto a su nombre, desde su ficha o desde Gastos)
+    y cuánto de eso queda por descontar de sus entregas."""
+    lista = con.execute("""SELECT g.id, g.fecha, g.monto_usd, g.notas, cu.nombre caja FROM gastos g LEFT JOIN cuentas cu ON cu.id=g.cuenta_id
+                           WHERE g.categoria='Despachadores' AND g.subcategoria='Adelanto' AND TRIM(COALESCE(g.proveedor,''))=?
+                           ORDER BY g.fecha DESC, g.id DESC""", (nombre,)).fetchall()
+    usado = con.execute("SELECT COALESCE(SUM(adelanto_usado),0) FROM pagos_despachador WHERE despachador=?", (nombre,)).fetchone()[0]
+    return lista, round(max(sum(a["monto_usd"] or 0 for a in lista) - usado, 0), 2)
+
+
 def resumen_despachador(con, nombre, hoy):
     """Lo que se le debe: cada orden asignada (no cancelada) suma su pago hasta que la marcas pagada (los lunes)."""
     # se le debe lo que ya ENTREGÓ: asignado no es ganado (se puede cambiar el despachador, o pasar a pick-up)
@@ -4439,6 +4455,12 @@ def resumen_despachador(con, nombre, hoy):
     r = dict(s)
     r["debe"] = (r["debe"] or 0) + v["m"]          # los viajes a la agencia se le pagan igual que las entregas
     r["n_viajes"] = v["n"]; r["debe_viajes"] = v["m"]   # se cuentan aparte: son viajes, no entregas
+    # lo que se le adelantó se descuenta de lo que se le debe; si adelantaste más de lo que ha hecho, queda a favor tuyo
+    r["adelantos"], r["adelanto"] = adelanto_despachador(con, nombre)
+    r["debe_bruto"] = r["debe"]
+    r["adelanto_resta"] = round(min(r["adelanto"], r["debe"]), 2)
+    r["debe"] = round(r["debe"] - r["adelanto_resta"], 2)
+    r["adelanto_libre"] = round(r["adelanto"] - r["adelanto_resta"], 2)
     return r | {"zonas": zonas, "ultimo_pago": ult}
 
 
@@ -4463,7 +4485,7 @@ def mis_entregas(request: Request, con=Depends(db)):
                           WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
                           ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
     mes = hoy.strftime("%Y-%m")
-    pagos = con.execute("SELECT fecha, monto, entregas FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC LIMIT 12", (nombre,)).fetchall()
+    pagos = con.execute("SELECT fecha, monto, entregas, adelanto_usado FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC LIMIT 12", (nombre,)).fetchall()
     for f in ruta:
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
@@ -4596,6 +4618,23 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                   hist=hist, record=record)
 
 
+@app.post("/despachadores/{did}/adelanto")
+def despachador_adelanto(request: Request, did: int, monto: str = Form(""), forma: str = Form(""), fecha: str = Form(""),
+                         nota: str = Form(""), con=Depends(db)):
+    """Le adelantaste plata: sale de la caja ya, y se le va descontando de las entregas que haga."""
+    if not solo_admin(request): return RedirectResponse(f"/despachadores/{did}", status_code=303)
+    d = con.execute("SELECT * FROM despachadores WHERE id=?", (did,)).fetchone()
+    usd = cifra(monto) if monto else 0
+    cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma, forma),)).fetchone()
+    if d and usd and usd > 0 and cuenta:
+        con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
+                       cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Adelanto',?,?,?,?,?)""",
+                    ((fecha or "").strip() or datetime.date.today().isoformat(), round(usd, 2), round(usd, 2),
+                     f"Adelanto {d['nombre']}", d["nombre"], cuenta["id"], nota.strip() or None, uid_de(request)))
+        con.commit()
+    return RedirectResponse(f"/despachadores/{did}", status_code=303)
+
+
 @app.post("/despachadores/{did}/pagar")
 async def despachador_pagar(request: Request, did: int, con=Depends(db)):
     """Le pagaste al despachador: las entregas marcadas quedan saldadas y se guarda el pago."""
@@ -4613,19 +4652,23 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
             monto += con.execute(f"SELECT COALESCE(SUM(monto),0) FROM viajes_agencia WHERE id IN ({qv}) AND despachador=? AND pagado=0", (*vids, d["nombre"])).fetchone()[0]
         uid = uid_de(request); fecha = f.get("fecha") or datetime.date.today().isoformat()
         nota = (f.get("nota") or "").strip() or None
-        cur = con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, usuario_id) VALUES (?,?,?,?,?,?)",
-                          (d["nombre"], fecha, monto, len(ids) + len(vids), nota, uid))
+        # primero se descuenta lo que se le adelantó: eso ya salió de caja cuando se lo diste
+        usado = round(min(adelanto_despachador(con, d["nombre"])[1], monto), 2)
+        forma = f.get("forma") or ""
+        cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma, forma),)).fetchone()
+        if monto - usado > 0.009 and not cuenta: return RedirectResponse(f"/despachadores/{did}", status_code=303)   # falta decir de qué caja
+        cur = con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, usuario_id, adelanto_usado) VALUES (?,?,?,?,?,?,?)",
+                          (d["nombre"], fecha, monto, len(ids) + len(vids), nota, uid, usado))
         if ids: con.execute(f"UPDATE ordenes SET despachador_pagado=1, despachador_pago_id=? WHERE id IN ({','.join('?' * len(ids))}) AND despachador=? AND estado='entregada'", (cur.lastrowid, *ids, d["nombre"]))
         if vids: con.execute(f"UPDATE viajes_agencia SET pagado=1, pago_id=? WHERE id IN ({','.join('?' * len(vids))}) AND despachador=?", (cur.lastrowid, *vids, d["nombre"]))
-        if monto > 0:   # pagarle a un despachador es un gasto: tiene que llegar a Gastos y al libro de caja
-            forma = f.get("forma") or ""
-            cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma),)).fetchone()
+        if monto - usado > 0.009:   # pagarle a un despachador es un gasto: tiene que llegar a Gastos y al libro de caja
             det = []
             if ids: det.append(f"{len(ids)} entrega{'s' if len(ids) != 1 else ''}")
             if vids: det.append(f"{len(vids)} viaje{'s' if len(vids) != 1 else ''} a agencia")
             con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                            cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Pago semanal',?,?,?,?,?,?)""",
-                        (fecha, monto, monto, " · ".join(det), d["nombre"], len(ids) + len(vids),
+                        (fecha, round(monto - usado, 2), round(monto - usado, 2),
+                         " · ".join(det) + (f" · menos ${usado:.2f} de adelanto" if usado else ""), d["nombre"], len(ids) + len(vids),
                          cuenta["id"] if cuenta else None, nota, uid))
         con.commit()
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
