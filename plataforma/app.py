@@ -4515,7 +4515,9 @@ def mis_entregas(request: Request, con=Depends(db)):
     ruta = ruta_despachador(con, nombre, hoy.isoformat())
     hist = con.execute("""SELECT o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
                           COALESCE(o.delivery,0) pago, o.estado, o.despachador_pagado,
-                          COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien
+                          COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(o.zona),'') zona,
+                          COALESCE(NULLIF(TRIM(o.direccion),''), (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id
+                                                                  ORDER BY d.principal DESC, d.id LIMIT 1)) direccion
                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
                           ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
