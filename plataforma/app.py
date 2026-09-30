@@ -657,6 +657,10 @@ def inicio(request: Request, con=Depends(db)):
                             FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado')""").fetchone()
     c["con_saldo"], c["saldo_total"] = deudas["n"], deudas["s"]
     c["personalizar"] = por_personalizar(con)
+    c["incid_lista"] = [dict(r) for r in con.execute("""SELECT i.id, i.orden_id, i.tipo, i.descripcion, i.responsable, o.numero,
+                            COALESCE(NULLIF(cl.nombre_pila,''), cl.nombre) cliente
+                            FROM incidencias i JOIN ordenes o ON o.id=i.orden_id LEFT JOIN clientes cl ON cl.id=o.cliente_id
+                            WHERE i.estado='abierta' ORDER BY i.id DESC LIMIT 10""")]
     c["reclamos_desp"] = [dict(r) for r in con.execute("""SELECT p.*, d.id did FROM pagos_despachador p LEFT JOIN despachadores d ON d.nombre=p.despachador
                               WHERE p.reclamo_en IS NOT NULL AND p.reclamo_resuelto IS NULL ORDER BY p.reclamo_en""")] if rol == "admin" else []
     # retiros de pack y repuestos prepagados PROGRAMADOS para hoy (o atrasados): los que de verdad se entregan
@@ -4887,12 +4891,14 @@ def mis_entregas_aun_no(request: Request, oid: int, con=Depends(db)):
 def mi_incidencia(request: Request, oid: int, tipo: str = Form("Otro"), descripcion: str = Form(""), con=Depends(db)):
     """El despachador cuenta lo que pasó en la puerta. Es quien lo vio."""
     u = quien_es(request)
-    if not (u and u["despachador"]): return RedirectResponse("/inicio", status_code=303)
+    es_admin = rol_de(request) == "admin" or (u and u["rol"] == "admin")   # Cristina probando "ver como"
+    if not (u and (u["despachador"] or es_admin)): return RedirectResponse("/inicio", status_code=303)
     o = con.execute("SELECT despachador FROM ordenes WHERE id=?", (oid,)).fetchone()
-    if not o or o["despachador"] != u["despachador"]: return RedirectResponse("/mis-entregas", status_code=303)
+    if not o or (not es_admin and o["despachador"] != u["despachador"]): return RedirectResponse("/mis-entregas", status_code=303)
+    quien = u["despachador"] or o["despachador"]
     con.execute("INSERT INTO incidencias (orden_id,clase,tipo,descripcion,responsable,autor_id) VALUES (?,?,?,?,?,?)",
-                (oid, "incidencia", tipo, descripcion.strip(), u["despachador"], u["id"]))
-    registrar(con, oid, u["id"], "incidencia", f"{tipo}: {descripcion.strip()[:120]}")
+                (oid, "incidencia", tipo, descripcion.strip(), quien, u["id"]))
+    registrar(con, oid, u["id"], "incidencia", f"{quien} avisó · {tipo}: {descripcion.strip()[:120]}")
     con.commit(); return RedirectResponse("/mis-entregas", status_code=303)
 
 
@@ -4955,6 +4961,7 @@ def ruta_despachador(con, nombre, hoy):
         d["que_lleva"] = lo_que_lleva(con, d["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
         d["indicaciones"] = indicaciones_cliente(con, d["cid"], d["notas_entrega"])
         d["kind"] = "orden"
+        d["avisos"] = [dict(r) for r in con.execute("SELECT tipo, descripcion FROM incidencias WHERE orden_id=? AND estado='abierta' ORDER BY id", (d["id"],))]
         filas.append(d)
     # retiros de pack y repuestos prepagados que le tocan: son entregas del mismo pedido, con sus mismos pasos
     def cli(cid):
