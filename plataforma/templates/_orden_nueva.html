@@ -70,7 +70,7 @@
 <div id="cred-w" hidden class="ahora-ln nar" style="margin-bottom:8px"><span class="ahora-dot"></span><span style="flex:1">Tiene <b id="cred-m" style="margin:0"></b> a favor</span><button type="button" class="btn chico" onclick="usarCredito()">Usarlo</button></div>
 <div id="pagos"></div>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px"><button type="button" class="no-link" onclick="agregarPago()">+ Otra forma de pago</button><span class="mini" id="p-falta"></span></div>
-<div class="no-saldo"><span>Monto pagado</span><b id="p-pagado">$0.00</b><span>Saldo pendiente</span><b id="p-saldo">$0.00</b></div>
+<div class="no-saldo"><span>Monto pagado</span><b id="p-pagado">$0.00</b><span id="p-saldo-t">Saldo pendiente</span><b id="p-saldo">$0.00</b></div>
 <div class="nota-log" id="p-efectivo" hidden style="margin-top:10px"></div>
 </section>
 
@@ -116,7 +116,7 @@ function agregarPago(){const d=document.createElement('div');d.className='no-pag
 function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');if(filas.length===1&&!m.dataset.tocado)m.value=tot.toFixed(2);s+=+m.value||0;
   if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
  // el efectivo todavía no está pagado: se cobra al entregar, así que cuenta como saldo pendiente
- const pag=s-efe,sal=Math.max(tot-pag,0);document.getElementById('p-pagado').innerText='$'+pag.toFixed(2);document.getElementById('p-saldo').innerText='$'+sal.toFixed(2);document.getElementById('p-saldo').style.color=sal>0.01?'#b45a1c':'var(--verde-osc)';
+ const pag=s-efe,sal=Math.max(tot-pag,0);document.getElementById('p-pagado').innerText='$'+pag.toFixed(2);document.getElementById('p-saldo').innerText='$'+sal.toFixed(2);document.getElementById('p-saldo').style.color=sal>0.01?'#b45a1c':'var(--verde-osc)';document.getElementById('p-saldo-t').innerText=efe>=0.01&&s>=tot-0.01?'Se cobra en efectivo al entregar':'Saldo pendiente';
  const f=document.getElementById('p-falta');const d=tot-s;f.innerText=Math.abs(d)<0.01?'':(d>0&&d<tot-0.01?'pago parcial':(d>0?'sin pagar todavía':'sobran $'+(-d).toFixed(2)));f.style.color='#b45a1c';
  const n=document.getElementById('p-efectivo');n.hidden=efe<0.01;   // el efectivo se cobra al entregar, no hoy
  if(efe>=0.01)n.innerHTML='💵 <b>Contra entrega:</b> los $'+efe.toFixed(2)+' en efectivo se registran cuando marques la entrega, no hoy.';
