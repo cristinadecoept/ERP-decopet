@@ -223,6 +223,14 @@ CREATE TABLE IF NOT EXISTS viajes_agencia (
   pagado INTEGER NOT NULL DEFAULT 0, pago_id INTEGER REFERENCES pagos_despachador(id),
   nota TEXT, usuario_id INTEGER, creado_en TEXT DEFAULT (datetime('now','localtime')));
 
+-- El despachador fue hasta la casa y el cliente no recibió: el viaje se le paga igual,
+-- aunque el pedido vuelva a pendiente. Si no llegó a ir, no se anota nada.
+CREATE TABLE IF NOT EXISTS viajes_fallidos (
+  id INTEGER PRIMARY KEY, orden_id INTEGER REFERENCES ordenes(id), fecha TEXT NOT NULL, despachador TEXT NOT NULL,
+  monto REAL NOT NULL DEFAULT 0, motivo TEXT,
+  pagado INTEGER NOT NULL DEFAULT 0, pago_id INTEGER REFERENCES pagos_despachador(id),
+  usuario_id INTEGER, creado_en TEXT DEFAULT (datetime('now','localtime')));
+
 -- Avisos que deja el taller: "llegaron 2 partidas", "se acabó la cinta". Los lee Cristina en Inicio.
 CREATE TABLE IF NOT EXISTS notas_taller (
   id INTEGER PRIMARY KEY, fecha TEXT NOT NULL, texto TEXT NOT NULL,

@@ -4,7 +4,7 @@
 
 <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
  <div class="tile"><b style="color:{{ '#b45a1c' if r.debe else 'var(--verde-osc)' }}">{{ (r.debe or 0)|usd }}</b><span>Te deben</span>
-  <i>{% if r.n_debe %}{{ r.n_debe }} entrega{{ 's' if r.n_debe != 1 }}{% if r.n_viajes %} y {{ r.n_viajes }} viaje{{ 's' if r.n_viajes != 1 }}{% endif %} sin pagar{% else %}estás al día{% endif %}{% if r.adelanto_resta %} · menos {{ r.adelanto_resta|usd }} de adelanto{% endif %}</i></div>
+  <i>{% if r.n_debe %}{{ r.n_debe }} entrega{{ 's' if r.n_debe != 1 }}{% if r.n_viajes %} y {{ r.n_viajes }} viaje{{ 's' if r.n_viajes != 1 }}{% endif %} sin pagar{% elif r.n_fallidos %}{{ r.n_fallidos }} viaje{{ 's' if r.n_fallidos != 1 }} sin entregar{% else %}estás al día{% endif %}{% if r.n_debe and r.n_fallidos %} · {{ r.n_fallidos }} viaje{{ 's' if r.n_fallidos != 1 }} sin entregar{% endif %}{% if r.adelanto_resta %} · menos {{ r.adelanto_resta|usd }} de adelanto{% endif %}</i></div>
  {% if r.adelanto_libre %}<div class="tile"><b>{{ r.adelanto_libre|usd }}</b><span>Adelanto recibido</span><i>se descuenta de tus próximas entregas</i></div>{% endif %}
  {% if 'ver_dinero' in puede %}<div class="tile"><b>{{ ganado_mes|usd }}</b><span>Ganado este mes</span></div>{% endif %}
  <div class="tile"><b>{{ n_entregadas }}</b><span>Entregas hechas</span>{% if 'ver_dinero' in puede %}<i>{{ ganado_todo|usd }} en total</i>{% endif %}</div>
@@ -22,7 +22,14 @@
  <td style="text-align:right;width:250px">{% if f.id %}
   {% if not f.en_ruta %}<form method="post" action="/ordenes/{{ f.id }}/estado" style="display:inline">
    <input type="hidden" name="estado" value="en_ruta"><button class="btn sec chico">Voy saliendo</button></form>
-  {% else %}<span class="pago por_cobrar">en ruta</span><form method="post" action="/mis-entregas/{{ f.id }}/aun-no" style="display:inline"><button class="no-link" style="font-size:12px" title="Lo tocaste sin querer">↩ todavía no salgo</button></form>{% endif %}
+  {% else %}<span class="pago por_cobrar">en ruta</span><form method="post" action="/mis-entregas/{{ f.id }}/aun-no" style="display:inline"><button class="no-link" style="font-size:12px" title="Lo tocaste sin querer">↩ todavía no salgo</button></form>
+   <details class="cobro"><summary class="btn sec chico">No pude entregar</summary>
+    <form method="post" action="/ordenes/{{ f.id }}/no-recibio" class="cobro-f" style="min-width:260px;text-align:left">
+     <label style="margin-top:0">¿Qué pasó?</label>
+     <label class="chk" style="margin-top:4px"><input type="radio" name="fue" value="1" required> <span>Fui al sitio y no me recibieron</span></label>
+     <label class="chk"><input type="radio" name="fue" value="0"> <span>No llegué a ir</span></label>
+     <label>Cuéntalo <span class="mini">(opcional)</span></label><input name="motivo" placeholder="no contestó, no estaba…">
+     <p style="margin:8px 0 0"><button class="btn chico">Avisar a Cristina</button></p></form></details>{% endif %}
   <details class="cobro"><summary class="btn chico">Entregado</summary>
    <form method="post" action="/ordenes/{{ f.id }}/estado" class="cobro-f" style="min-width:230px">
     <input type="hidden" name="estado" value="entregada">
