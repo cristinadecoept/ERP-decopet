@@ -810,13 +810,14 @@ def cargar_ordenes(con, filtros, rol):
              (SELECT d.maps      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_maps,
              COALESCE((SELECT SUM(cc.monto) FROM credito_cliente cc WHERE cc.cliente_id=o.cliente_id),0) credito,
              (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END, ' · ') FROM orden_lineas l
+             (SELECT GROUP_CONCAT(COALESCE((SELECT 'Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || ' · ' || l.nombre FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END), ' · ') FROM orden_lineas l
               WHERE l.orden_id=o.id AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio=0)) productos_hoy,
-             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END
+             (SELECT GROUP_CONCAT(COALESCE((SELECT 'Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || ' · ' || l.nombre FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END)
                  || CASE WHEN EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL) THEN '@PEND' ELSE '' END
                  || COALESCE((SELECT '@PACK' || (k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)) || '/' || k.unidades
                               FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id
+                              AND (o.estado='entregada' OR k.entregadas_inicio=0)   -- antes de entregar no se adelanta cuántos le quedan
                               AND k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) > 0 LIMIT 1), ''), '||') FROM orden_lineas l WHERE l.orden_id=o.id) lineas_txt,
              (SELECT COUNT(*) FROM incidencias i WHERE i.orden_id=o.id AND i.estado='abierta') incidencias,
              (SELECT forma FROM pagos p WHERE p.orden_id=o.id ORDER BY id LIMIT 1) forma_pago,
@@ -887,7 +888,8 @@ def cargar_orden(con, oid):
                        FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id LEFT JOIN usuarios u ON u.id=o.creada_por WHERE o.id=?""", (oid,)).fetchone()
     if not o: return None
     o = dict(o); o["alertas"] = alertas(o); o["coordinada"] = coordinada(o)
-    o["lineas"] = con.execute("SELECT * FROM orden_lineas WHERE orden_id=?", (oid,)).fetchall()
+    o["lineas"] = con.execute("""SELECT l.*, k.unidades pack_unidades, k.entregadas_inicio pack_hoy FROM orden_lineas l
+                                 LEFT JOIN packs k ON k.orden_id=l.orden_id AND k.producto_id=l.producto_id WHERE l.orden_id=?""", (oid,)).fetchall()
     o["pagos"] = con.execute("SELECT p.*, u.nombre confirmado_por_nombre FROM pagos p LEFT JOIN usuarios u ON u.id=p.confirmado_por WHERE orden_id=? ORDER BY id", (oid,)).fetchall()
     o["pagado"] = sum(p["monto_usd"] for p in o["pagos"] if p["estado"] == "confirmado")
     o["historial"] = con.execute("SELECT h.*, u.nombre usuario FROM historial h LEFT JOIN usuarios u ON u.id=h.usuario_id WHERE orden_id=? ORDER BY h.id DESC", (oid,)).fetchall()
@@ -921,6 +923,10 @@ def precio_linea(p, cantidad):
 
 
 def descripcion_linea(l):
+    ks = l.keys() if hasattr(l, "keys") else []
+    if "pack_unidades" in ks and l["pack_unidades"]:   # de un pack no sale el pack: salen los que se lleva hoy
+        hoy_ = l["pack_hoy"] or 0
+        return f"Lleva {hoy_} de {l['pack_unidades']} · {l['nombre']}" if hoy_ else f"{l['nombre']} · hoy no se lleva ninguno"
     partes = [f"{int(l['cantidad'])} × {l['nombre']}"]
     if l["color"]: partes.append(f"plato {l['color']}")
     if l["malla"]: partes.append("+ malla")
@@ -4036,13 +4042,16 @@ def cargar_packs(con):
     cols = [r[1] for r in con.execute("PRAGMA table_info(packs)")]
     for c, tp in (("fecha_programada", "TEXT"), ("tipo_programado", "TEXT"), ("despachador_programado", "TEXT"), ("nota_programada", "TEXT"), ("retiro_programado", "INTEGER"), ("delivery_programado", "REAL"), ("delivery_pagado", "INTEGER"), ("deliveries_prepagados", "INTEGER")):
         if c not in cols: con.execute(f"ALTER TABLE packs ADD COLUMN {c} {tp}")
-    rows = con.execute("""SELECT k.*, c.nombre cliente, c.telefono, c.ciudad, o.numero orden, o.tipo_entrega,
+    rows = con.execute("""SELECT k.*, c.nombre cliente, c.telefono, c.ciudad, o.numero orden, o.tipo_entrega, o.estado orden_estado,
         (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregas_posteriores,
         (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ultima_entrega
         FROM packs k JOIN clientes c ON c.id=k.cliente_id LEFT JOIN ordenes o ON o.id=k.orden_id ORDER BY k.creado_en DESC""").fetchall()
     hoy = datetime.date.today(); lista = []
     for r in rows:
-        d = dict(r); d["entregadas"] = d["entregadas_inicio"] + d["entregas_posteriores"]; d["saldo"] = d["unidades"] - d["entregadas"]
+        d = dict(r)
+        # los que se lleva el día de la compra cuentan cuando esa orden se entrega, no antes
+        if d.get("orden_estado") not in (None, "entregada"): d["entregadas_inicio"] = 0
+        d["entregadas"] = d["entregadas_inicio"] + d["entregas_posteriores"]; d["saldo"] = d["unidades"] - d["entregadas"]
         ref = d["ultima_entrega"] or d["creado_en"][:10]
         d["dias_ultima"] = (hoy - datetime.date.fromisoformat(ref)).days
         d["entregas"] = con.execute("SELECT e.*, u.nombre usuario FROM entregas_repuesto e LEFT JOIN usuarios u ON u.id=e.usuario_id WHERE pack_id=? ORDER BY fecha", (d["id"],)).fetchall()
