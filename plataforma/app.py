@@ -1649,6 +1649,10 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
                               coordinada=bool(r["despachador"] or r["agencia"] or r["tipo_entrega"] == "pickup"), total=0, pagado=0, monto_contra_entrega=None, telefono=r["telefono"],
                               delivery=r["delivery"], delivery_pagado=r["delivery_pagado"]))   # para preguntar si cobró el delivery al entregar
     lista.sort(key=lambda o: (o["fecha_op"], o["franja"] or "", o["id"] or 0))
+    for o in lista:   # volvió de la calle sin entregar: que se note, para no confundirlo con uno nuevo
+        if o.get("id") and o["estado"] == "pendiente":
+            h_ = con.execute("SELECT detalle, creado_en FROM historial WHERE orden_id=? AND accion='estado' ORDER BY id DESC LIMIT 1", (o["id"],)).fetchone()
+            if h_ and (h_["detalle"] or "").startswith("En ruta → Pendiente: no se pudo entregar"): o["no_entregado"] = h_["creado_en"]
     if vista == "status":
         grupos = {"Por coordinar": [], "Pendiente por entregar": [], "En ruta": []}
         for o in lista:
@@ -4664,12 +4668,13 @@ def mis_entregas(request: Request, con=Depends(db)):
         if f.get("kind") != "orden": continue   # los retiros ya traen si van en ruta
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
+    hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre), key=lambda h: h["fecha"] or "", reverse=True)
     return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
-                  hist=hist, pagos=pagos, hoy_iso=hoy.isoformat(),
+                  hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(),
                   ganado_mes=round(sum(h["pago"] for h in hist if h["estado"] == "entregada" and (h["fecha"] or "")[:7] == mes), 2),
                   ganado_todo=round(sum(h["pago"] for h in hist if h["estado"] == "entregada"), 2),
-                  n_entregadas=sum(1 for h in hist if h["estado"] == "entregada"))
+                  n_entregadas=sum(1 for h in hist_todo if h["estado"] == "entregada"))
 
 
 @app.post("/ordenes/{oid}/no-recibio")
@@ -4769,6 +4774,22 @@ def indicaciones_cliente(con, cid, extra=None):
     notas = [r[0] for r in con.execute("SELECT texto FROM notas_cliente WHERE cliente_id=? AND mostrar_logistica=1 ORDER BY id", (cid,)) if r[0]]
     extra = (extra or "").strip()
     return ([extra] if extra and extra not in notas else []) + notas
+
+
+def viajes_hist(con, nombre):
+    """Para su historial: los retiros de repuesto que llevó y los viajes en que no le recibieron,
+    así no desaparecen de su lista aunque el pedido haya vuelto a pendiente o se haya asignado a otro."""
+    out = []
+    for v in con.execute("""SELECT v.*, o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.nombre cliente,
+                            (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) direccion,
+                            (SELECT d.zona FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) zona,
+                            o.ciudad FROM viajes_despachador v LEFT JOIN ordenes o ON o.id=v.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
+                            WHERE v.despachador=? ORDER BY v.fecha DESC, v.id DESC LIMIT 60""", (nombre,)):
+        out.append({"id": v["orden_id"], "numero": v["numero"], "fecha": v["fecha"], "pago": v["monto"], "quien": v["quien"], "cliente": v["cliente"],
+                    "zona": v["zona"], "direccion": v["direccion"], "ciudad": v["ciudad"], "despachador_pagado": v["pagado"],
+                    "estado": "no_entregado" if v["tipo"] == "fallido" else "entregada", "nota": v["motivo"],
+                    "que": "Retiro de repuesto" if v["tipo"] == "retiro" else None})
+    return out
 
 
 def ruta_despachador(con, nombre, hoy):
@@ -4872,6 +4893,7 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     viajes_hechos = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(monto),0) m FROM viajes_agencia
                                    WHERE despachador=?""", (d["nombre"],)).fetchone()
     record["viajes"] = viajes_hechos["n"]; record["viajes_monto"] = round(viajes_hechos["m"], 2)
+    hist = sorted([dict(h) for h in hist] + viajes_hist(con, d["nombre"]), key=lambda h: h["fecha"] or "", reverse=True)
     return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO, d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos,
                   ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist, record=record)

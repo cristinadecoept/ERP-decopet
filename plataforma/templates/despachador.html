@@ -67,7 +67,7 @@
 {% for h in hist %}<tr>
  <td class="mono mini">{{ h.fecha|dia }}</td><td class="mono">{{ h.numero }}</td><td>{{ h.cliente }}</td>
  <td class="mini">{{ h.zona or h.ciudad or '—' }}</td>
- <td><span class="est {{ h.estado }}">{{ E_LABEL[h.estado] }}</span></td>
+ <td><span class="est {{ 'cancelada' if h.estado=='no_entregado' else h.estado }}">{{ 'No se pudo entregar' if h.estado=='no_entregado' else E_LABEL.get(h.estado, h.estado) }}</span>{% if h.que %}<div class="mini">{{ h.que }}</div>{% endif %}{% if h.estado=='no_entregado' %}<div class="mini">fue al sitio{% if h.nota %} · {{ h.nota }}{% endif %}</div>{% endif %}</td>
  <td class="num">{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">por pagarle</div>{% endif %}</td>
 </tr>{% endfor %}</table></details>
 {% else %}<div class="vacio">Todavía no le has asignado ninguna entrega.</div>{% endif %}</div>{% endif %}
