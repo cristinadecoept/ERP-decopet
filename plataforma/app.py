@@ -209,6 +209,8 @@ def fmt_cant(v, unidad=None):
     if not unidad: return n
     return f"{n} {unidad}" if v == 1 else f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
 tpl.env.filters["cant"] = fmt_cant
+# "Pack 3 Repuestos Mediano⟪Lleva 1 de 3⟫" → el producto y, debajo, resaltado cuánto se lleva hoy
+tpl.env.filters["lleva"] = lambda t: Markup(re.sub(r"⟪(.*?)⟫", r'<span class="lleva-tag">\1</span>', str(escape(t or ""))))
 # "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
 tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
@@ -873,10 +875,10 @@ def cargar_ordenes(con, filtros, rol):
              (SELECT d.maps      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_maps,
              COALESCE((SELECT SUM(cc.monto) FROM credito_cliente cc WHERE cc.cliente_id=o.cliente_id),0) credito,
              (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
-             (SELECT GROUP_CONCAT(COALESCE((SELECT 'Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || ' · ' || l.nombre FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END), ' · ') FROM orden_lineas l
+             (SELECT GROUP_CONCAT(COALESCE((SELECT CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || '⟪Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || '⟫' FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END), ' · ') FROM orden_lineas l
               WHERE l.orden_id=o.id AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio=0)) productos_hoy,
-             (SELECT GROUP_CONCAT(COALESCE((SELECT 'Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || ' · ' || l.nombre FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END)
+             (SELECT GROUP_CONCAT(COALESCE((SELECT CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || '⟪Lleva ' || k.entregadas_inicio || ' de ' || k.unidades || '⟫' FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id AND k.entregadas_inicio>0 AND o.estado!='entregada' LIMIT 1), CAST(l.cantidad AS INTEGER) || '× ' || l.nombre || COALESCE(' ' || l.color, '') || CASE WHEN l.malla THEN ' +malla' ELSE '' END || CASE WHEN TRIM(COALESCE(l.personalizacion,''))!='' THEN ' ✎ «' || l.personalizacion || '»' ELSE '' END)
                  || CASE WHEN EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.linea_id=l.id AND rp.entregado_en IS NULL) THEN '@PEND' ELSE '' END
                  || COALESCE((SELECT '@PACK' || (k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)) || '/' || k.unidades
                               FROM packs k WHERE k.orden_id=o.id AND k.producto_id=l.producto_id
@@ -989,7 +991,7 @@ def descripcion_linea(l):
     ks = l.keys() if hasattr(l, "keys") else []
     if "pack_unidades" in ks and l["pack_unidades"]:   # de un pack no sale el pack: salen los que se lleva hoy
         hoy_ = l["pack_hoy"] or 0
-        return f"Lleva {hoy_} de {l['pack_unidades']} · {l['nombre']}" if hoy_ else f"{l['nombre']} · hoy no se lleva ninguno"
+        return f"{int(l['cantidad'])} × {l['nombre']} · lleva {hoy_} de {l['pack_unidades']}" if hoy_ else f"{l['nombre']} · hoy no se lleva ninguno"
     partes = [f"{int(l['cantidad'])} × {l['nombre']}"]
     if l["color"]: partes.append(f"plato {l['color']}")
     if l["malla"]: partes.append("+ malla")
