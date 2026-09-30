@@ -4559,6 +4559,20 @@ def mis_entregas(request: Request, con=Depends(db)):
                   n_entregadas=sum(1 for h in hist if h["estado"] == "entregada"))
 
 
+@app.post("/ordenes/{oid}/no-recibio")
+def orden_no_recibio(request: Request, oid: int, motivo: str = Form(""), fecha: str = Form(""), volver: str = "/operaciones", con=Depends(db)):
+    """Iba en ruta y el cliente no pudo recibir: vuelve a pendiente, con la fecha nueva si ya se sabe."""
+    if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/operaciones", status_code=303)
+    o = con.execute("SELECT estado FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if o and o["estado"] == "en_ruta":
+        f = (fecha or "").strip()
+        con.execute("UPDATE ordenes SET estado='pendiente', fecha_prometida=COALESCE(NULLIF(?,''), fecha_prometida), actualizado_en=datetime('now','localtime') WHERE id=?", (f, oid))
+        registrar(con, oid, uid_de(request), "estado", "En ruta → Pendiente: no pudo recibir" + (f" · se vuelve a llevar {fmt_fecha(f) if fmt_fecha(f) in ('hoy', 'mañana') else 'el ' + fmt_fecha(f)}" if f else ""),
+                  motivo.strip() or None)
+        con.commit()
+    return RedirectResponse(volver if volver.startswith("/") else "/operaciones", status_code=303)
+
+
 @app.post("/mis-entregas/{oid}/aun-no")
 def mis_entregas_aun_no(request: Request, oid: int, con=Depends(db)):
     """Tocó 'Voy saliendo' sin querer: vuelve a pendiente. Solo su propia orden, y solo si está en ruta."""
