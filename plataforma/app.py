@@ -5114,7 +5114,7 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
             con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                            cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Pago semanal',?,?,?,?,?,?)""",
                         (fecha, round(monto - usado, 2), round(monto - usado, 2),
-                         " · ".join(det) + (f" · menos ${usado:.2f} de adelanto" if usado else ""), d["nombre"], len(ids) + len(vids) + len(fids),
+                         " · ".join(det) + (f" · menos ${usado:.2f} de adelanto" if usado else ""), d["nombre"], None,   # sin "c/u": cada entrega vale distinto
                          cuenta["id"] if cuenta else None, nota, uid))
         con.commit()
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
