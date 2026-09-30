@@ -9,7 +9,7 @@
 
 <!-- 1 · CLIENTE -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">2</span><b>Cliente</b></div>
-<div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-credito="{{ c.credito or 0 }}" data-tam="{{ c.porche_tamano or '' }}" data-notas="{{ c.notas or '' }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
+<div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-credito="{{ c.credito or 0 }}" data-tam="{{ c.porche_tamano if c.porche_version=='PRO' else '' }}" data-notas="{{ c.notas or '' }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
 <div class="mini" style="margin-top:6px">Si no aparece, <a href="#" onclick="clienteNuevo();return false">crear cliente nuevo</a></div></div>
 <div id="cl-existente" hidden class="no-cliente"><div class="no-avatar" id="cl-ex-ini">C</div><div style="flex:1;min-width:0"><b id="cl-ex-nombre"></b><div class="mini" id="cl-ex-datos"></div><div class="no-perros" id="cl-ex-mascotas"></div><div class="op-nota" id="cl-ex-notas" hidden></div></div><button type="button" class="no-link" onclick="limpiarCliente()">Cambiar</button></div>
 <div id="cl-faltan" hidden class="no-sub"><div class="no-sub-h"><span>Faltan datos de este cliente</span></div>
@@ -184,7 +184,8 @@ function validar(){const fp=document.getElementById('f-pago');
          else if(!pedir('add-ced-w','cl_add_cedula','Para un envío nacional hace falta la cédula del cliente.'))return false;}
  for(const d of document.querySelectorAll('#pagos .no-pago')){const fo=d.querySelector('[name=pago_forma]'),m=d.querySelector('[name=pago_monto]');
   if(fo.value&&!(+m.value>0)){alert('¿Cuánto pagó por '+fo.value+'? Escribe el monto, o quita esa forma de pago si todavía no ha pagado.');m.focus();return false;}}
- // repuesto o pack de otro tamaño que el porche que tiene registrado: preguntar antes de crear
+ // repuesto o pack de otro tamaño que su porche PRO: no encaja en la caja de madera. Preguntar antes de crear.
+ // El Básico no cuenta: no tiene caja, puede comprar cualquier tamaño.
  const tam=(([...document.getElementById('cl').options].find(o=>o.dataset.id===document.getElementById('cl-id').value)||{dataset:{}}).dataset.tam||'');
  const lins=[...document.querySelectorAll('#lin .no-linea')].map(d=>+d.dataset.i);
  if(tam&&!lins.some(i=>(PN[i]||'').startsWith('El Porche'))){// puede tener dos porches ("Mediano, Grande"): solo se pregunta por un tamaño que no tiene
