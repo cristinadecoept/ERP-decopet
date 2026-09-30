@@ -285,6 +285,7 @@ COLUMNAS = (
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
     ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"),
+    ("orden_lineas", "perso_lista", "INTEGER NOT NULL DEFAULT 0"), ("orden_lineas", "perso_lista_en", "TEXT"),
     ("ordenes", "despachador_pago_id", "INTEGER"), ("ordenes", "en_registro", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_fecha", "TEXT"), ("ordenes", "factura_hecha", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_numero", "TEXT"), ("ordenes", "factura_por", "INTEGER"),
@@ -567,6 +568,36 @@ def ver_como(request: Request, rol: str, volver: str = "/ordenes", quien: str = 
 def raiz(): return RedirectResponse("/inicio", status_code=303)
 
 
+def por_personalizar(con):
+    """Pedidos con algo que hay que personalizar y que nadie ha marcado como listo todavía."""
+    out = []
+    for l in con.execute("""SELECT l.id, l.orden_id, o.numero, l.nombre, l.personalizacion, p.tipo,
+                            COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente
+                            FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
+                            LEFT JOIN productos p ON p.id=l.producto_id
+                            WHERE TRIM(COALESCE(l.personalizacion,''))!='' AND COALESCE(l.perso_lista,0)=0
+                              AND o.estado NOT IN ('cancelada','entregada') AND COALESCE(o.origen_excel,0)=0
+                            ORDER BY o.id, l.id"""):
+        producto = l["nombre"]
+        if l["tipo"] == "opcion":   # la personalización se cobró aparte: va en los productos del pedido que se pueden personalizar
+            en = [r[0] for r in con.execute("""SELECT l2.nombre FROM orden_lineas l2 JOIN productos p2 ON p2.id=l2.producto_id
+                                               WHERE l2.orden_id=? AND p2.permite_personalizacion=1 ORDER BY l2.id""", (l["orden_id"],))]
+            producto = " o ".join(en) if en else ""
+        out.append(dict(l) | {"producto": producto})
+    return out
+
+
+@app.post("/ordenes/{oid}/personalizacion/{lid}")
+def personalizacion_estado(request: Request, oid: int, lid: int, lista: str = Form("1"), volver: str = Form("/inicio"), con=Depends(db)):
+    """Ya se personalizó (o no, me equivoqué). Lo marcan Cristina o logística."""
+    if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/inicio", status_code=303)
+    hecho = lista == "1"
+    con.execute("UPDATE orden_lineas SET perso_lista=?, perso_lista_en=? WHERE id=? AND orden_id=?",
+                (1 if hecho else 0, datetime.datetime.now().strftime("%Y-%m-%d %H:%M") if hecho else None, lid, oid))
+    con.commit()
+    return RedirectResponse(volver if volver.startswith("/") else "/inicio", status_code=303)
+
+
 @app.get("/inicio", response_class=HTMLResponse)
 def inicio(request: Request, con=Depends(db)):
     rol = rol_de(request); hoy = datetime.date.today(); h = hoy.isoformat(); mes = hoy.strftime("%Y-%m")
@@ -586,6 +617,7 @@ def inicio(request: Request, con=Depends(db)):
     deudas = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(total - (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado')),0) s
                             FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado')""").fetchone()
     c["con_saldo"], c["saldo_total"] = deudas["n"], deudas["s"]
+    c["personalizar"] = por_personalizar(con)
     # retiros de pack y repuestos prepagados PROGRAMADOS para hoy (o atrasados): los que de verdad se entregan
     packs = sum(1 for k in cargar_packs(con) if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= h)
     packs += sum(1 for r in cargar_prepagados(con) if r["fecha_programada"] and r["fecha_programada"] <= h)
