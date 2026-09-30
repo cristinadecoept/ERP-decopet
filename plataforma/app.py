@@ -4225,8 +4225,8 @@ def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entre
     if pagado == 2:
         con.execute("UPDATE packs SET delivery_programado=?, delivery_pagado=1 WHERE id=?", (dl_prep, pid))
     if pagado == 1 and k and k["orden_id"]:   # el delivery ya lo pagó: entra a la orden del pack, contado el día de hoy
-        cobro_extra(con, k["orden_id"], "Delivery retiro de pack", dl, pago_forma or "Pago Móvil", datetime.date.today().isoformat(), uid_de(request),
-                    nota=f"retiro programado para el {fmt_fecha(fecha)}" if fecha else None)
+        cobro_extra(con, k["orden_id"], "Delivery entrega de pack", dl, pago_forma or "Pago Móvil", datetime.date.today().isoformat(), uid_de(request),
+                    nota=f"entrega programada para el {fmt_fecha(fecha)}" if fecha else None)
     con.commit(); return RedirectResponse(volver or "/packs", status_code=303)
 
 
@@ -4258,7 +4258,7 @@ def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despach
         con.execute("UPDATE packs SET deliveries_prepagados=deliveries_prepagados-1 WHERE id=?", (pid,)); dc = 0.0
     if dc > 0 and k["orden_id"]:   # el delivery del retiro entra a la orden original del pack, contado el día que se cobra
         forma = pago_forma or ("Efectivo USD" if pago == "confirmado" else "")
-        cobro_extra(con, k["orden_id"], "Delivery retiro de pack", dc, forma, fecha or datetime.date.today().isoformat(), uid, pago=pago)
+        cobro_extra(con, k["orden_id"], "Delivery entrega de pack", dc, forma, fecha or datetime.date.today().isoformat(), uid, pago=pago)
     return True
 
 
@@ -4278,7 +4278,7 @@ def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
     desp = (k["despachador_programado"] if tipo == "pack" else k["despachador"]) or ""
     monto = float((k["delivery_programado"] if tipo == "pack" else k["delivery"]) or 0)
     hoy_ = datetime.date.today().isoformat()
-    texto = f"Retiro de repuesto no entregado"
+    texto = "No se pudo entregar el repuesto"
     if fue == "1" and desp:
         pago_retiro_despachador(con, desp, monto, hoy_, uid, orden_id=k["orden_id"], motivo=motivo.strip() or None, tipo="fallido",
                                 **({"pack_id": rid} if tipo == "pack" else {"prepagado_id": rid}))

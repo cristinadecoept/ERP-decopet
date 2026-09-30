@@ -39,9 +39,9 @@
 {% set tot = c.hoy + c.packs %}
 <div class="hoy-grid {{ 'solo' if rol!='admin' }}">
  <a class="tile hoy-hero" href="/operaciones?cola=hoy">
-  <div class="hoy-hero-cab"><div><b>{{ tot }}</b><span>Entregas de hoy</span></div><i>{% if c.packs %}{{ c.packs }} retiro{{ 's' if c.packs!=1 }} de pack / prepagado programado{{ 's' if c.packs!=1 }}{% endif %}</i></div>
+  <div class="hoy-hero-cab"><div><b>{{ tot }}</b><span>Entregas de hoy</span></div><i>{% if c.packs %}{{ c.packs }} entrega{{ 's' if c.packs!=1 }} de pack o prepagado programada{{ 's' if c.packs!=1 }}{% endif %}</i></div>
   {% if tot %}<div class="seg">{% for k,v2 in ENTREGA.items() if tipos.get(k) %}<i style="width:{{ (tipos[k]/tot*100)|round(1) }}%;background:{{ COL[k] }}"></i>{% endfor %}{% if c.packs %}<i style="width:{{ (c.packs/tot*100)|round(1) }}%;background:#F89980"></i>{% endif %}</div>
-  <div class="seg-leg">{% for k,v2 in ENTREGA.items() if tipos.get(k) %}<span><b style="background:{{ COL[k] }}"></b>{{ v2 }} {{ tipos[k] }}</span>{% endfor %}{% if c.packs %}<span><b style="background:#F89980"></b>Retiros programados {{ c.packs }}</span>{% endif %}</div>
+  <div class="seg-leg">{% for k,v2 in ENTREGA.items() if tipos.get(k) %}<span><b style="background:{{ COL[k] }}"></b>{{ v2 }} {{ tipos[k] }}</span>{% endfor %}{% if c.packs %}<span><b style="background:#F89980"></b>Entregas programadas {{ c.packs }}</span>{% endif %}</div>
   <div class="hoy-lista">{% for o in hoy_lista %}<div class="hoy-ln"><span class="ln-dot {{ 'ok' if o.coordinada }}"></span><span class="hoy-nom">{{ o.cliente }}</span><span class="mini">{{ ENTREGA.get(o.tipo_entrega,'') }}{% if o.despachador %} · {{ o.despachador }}{% elif o.agencia %} · {{ o.agencia }}{% elif not o.coordinada %} · <em style="font-style:normal;color:#b45a1c">sin coordinar</em>{% endif %}</span></div>{% endfor %}
   {% if tot > hoy_lista|length %}<div class="mini" style="margin-top:6px">y {{ tot - hoy_lista|length }} más → Operaciones</div>{% endif %}</div>
   {% else %}<div class="mini" style="margin-top:14px">Nada programado para hoy todavía.</div>{% endif %}

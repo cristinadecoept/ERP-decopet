@@ -4,7 +4,7 @@
 
 <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
  <div class="tile"><b style="color:{{ '#b45a1c' if r.debe else 'var(--verde-osc)' }}">{{ (r.debe or 0)|usd }}</b><span>Te deben</span>
-  <i>{% if r.n_debe %}{{ r.n_debe }} entrega{{ 's' if r.n_debe != 1 }}{% if r.n_viajes %} y {{ r.n_viajes }} viaje{{ 's' if r.n_viajes != 1 }}{% endif %} sin pagar{% elif r.n_retiros or r.n_fallidos %}por pagar{% else %}estás al día{% endif %}{% if r.n_retiros %} · {{ r.n_retiros }} retiro{{ 's' if r.n_retiros != 1 }} de repuesto{% endif %}{% if r.n_fallidos %} · {{ r.n_fallidos }} viaje{{ 's' if r.n_fallidos != 1 }} sin entregar{% endif %}{% if r.adelanto_resta %} · menos {{ r.adelanto_resta|usd }} de adelanto{% endif %}</i></div>
+  <i>{% if r.n_debe %}{{ r.n_debe }} entrega{{ 's' if r.n_debe != 1 }}{% if r.n_viajes %} y {{ r.n_viajes }} viaje{{ 's' if r.n_viajes != 1 }}{% endif %} sin pagar{% elif r.n_fallidos %}por pagar{% else %}estás al día{% endif %}{% if r.n_fallidos %} · {{ r.n_fallidos }} viaje{{ 's' if r.n_fallidos != 1 }} sin entregar{% endif %}{% if r.adelanto_resta %} · menos {{ r.adelanto_resta|usd }} de adelanto{% endif %}</i></div>
  {% if r.adelanto_libre %}<div class="tile"><b>{{ r.adelanto_libre|usd }}</b><span>Adelanto recibido</span><i>se descuenta de tus próximas entregas</i></div>{% endif %}
  {% if 'ver_dinero' in puede %}<div class="tile"><b>{{ ganado_mes|usd }}</b><span>Ganado este mes</span></div>{% endif %}
  <div class="tile"><b>{{ n_entregadas }}</b><span>Entregas hechas</span>{% if 'ver_dinero' in puede %}<i>{{ ganado_todo|usd }} en total</i>{% endif %}</div>
