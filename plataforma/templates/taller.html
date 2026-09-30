@@ -3,7 +3,7 @@
 
 {# Lo que tiene algo pendiente sube; lo que está vacío baja al final, en chiquito. #}
 <div class="taller-col">
-<div class="tarjeta {{ '' if pickups else 'vacia' }}" style="order:{{ 0 if pickups else 3 }}"><h3>Pick-up · por entregar</h3>
+<div class="tarjeta {{ '' if pickups else 'vacia' }}" style="order:{{ 0 if pickups else 3 }}"><h3>Pick-up</h3>
 {% if pickups %}<table class="lineas"><tr><th>Quién viene</th><th>Qué se lleva</th><th>Para cuándo</th><th></th></tr>
 {% for p in pickups %}<tr>
  <td><b>{{ p.quien }}</b></td>
