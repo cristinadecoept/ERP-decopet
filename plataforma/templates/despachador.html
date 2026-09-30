@@ -19,14 +19,14 @@
 <div class="desp-grid">
 <div>
 {% if rol=='admin' %}<div class="tarjeta" style="margin-bottom:14px"><h3>Lo que le toca hoy</h3>
-{% if ruta %}<table class="lineas"><tr><th>Quién</th><th>Dónde</th><th>Qué lleva</th><th class="num">Cobrar</th></tr>
+{% if ruta %}<table class="lineas"><tr><th>Quién</th><th>Dónde</th><th>Qué lleva</th><th class="num">Falta pagar</th></tr>
 {% for f in ruta %}<tr>
  <td style="width:130px"><b>{{ f.quien }}</b>{% if f.telefono %}<div class="mini mono">{{ f.telefono }}</div>{% endif %}</td>
  <td>{{ f.direccion or '—' }}{% if f.maps %} <a href="{{ f.maps }}" target="_blank" rel="noreferrer" class="mini">mapa</a>{% endif %}</td>
  <td class="mini">{{ f.que_lleva }}</td>
  <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}</td>
 </tr>{% endfor %}
-{% if ruta_cobrar %}<tr><td colspan="3" class="num mini">Tiene que cobrar</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td></tr>{% endif %}</table>
+{% if ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td></tr>{% endif %}</table>
 <div class="ruta-b">
  {% if d.telefono %}<a class="btn chico" href="{{ d.telefono|wa }}?text={{ ruta_texto|urlencode }}" target="_blank" rel="noreferrer">Mandárselo por WhatsApp</a>
  {% else %}<span class="mini">Para mandárselo por WhatsApp, agrégale el teléfono abajo en Datos.</span>{% endif %}

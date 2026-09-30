@@ -12,7 +12,7 @@
 
 <h2 class="seccion-t">Lo que te toca hoy</h2>
 <div class="tabla">
-{% if ruta %}<table><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th class="num">Cobrar</th><th></th></tr>
+{% if ruta %}<table><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th class="num">Falta pagar</th><th></th></tr>
 {% for f in ruta %}<tr>
  <td style="width:160px"><b>{{ f.quien }}</b></td>
  <td style="max-width:260px">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}
@@ -27,9 +27,12 @@
    <form method="post" action="/ordenes/{{ f.id }}/estado" class="cobro-f" style="min-width:230px">
     <input type="hidden" name="estado" value="entregada">
     {% if f.cobrar %}<input type="hidden" name="moneda_recibida" value="USD">
-     <label style="margin-top:0">¿Cuánto cobraste en efectivo? <span class="mini">tenías que cobrar {{ f.cobrar|usd }}</span></label>
-     <div class="cf-in"><span class="mini">$</span><input name="monto_recibido" inputmode="decimal" value="{{ '%g'|format(f.cobrar) }}" style="width:110px"></div>
-     <div class="mini">Si te dio menos, pon lo que te dio de verdad. Si no te dio nada, pon 0.</div>
+     <label style="margin-top:0">¿Cómo pagó? <span class="mini">falta pagar {{ f.cobrar|usd }}</span></label>
+     <select name="forma_recibida" onchange="this.form.querySelector('.me-monto').hidden=this.value==='despues'">
+      <option value="Efectivo USD">Efectivo</option>{% for x in FORMAS_COBRO if not x.startswith('Efectivo') %}<option>{{ x }}</option>{% endfor %}
+      <option value="despues">No pagó · se le cobra después</option></select>
+     <div class="me-monto"><label>¿Cuánto?</label><div class="cf-in"><span class="mini">$</span><input name="monto_recibido" inputmode="decimal" value="{{ '%g'|format(f.cobrar) }}" style="width:110px"></div>
+     <div class="mini">Si pagó menos, pon lo que pagó de verdad.</div></div>
     {% else %}<div class="mini" style="margin-bottom:6px">Ya está pagada, no hay que cobrar nada.</div>{% endif %}
     <p style="margin:8px 0 0"><button class="btn chico">Marcar entregado</button></p></form></details>
   <details class="cobro"><summary class="btn sec chico">Hubo un problema</summary>
@@ -41,7 +44,7 @@
     <p style="margin:8px 0 0"><button class="btn chico">Avisar a Cristina</button></p></form></details>
  {% endif %}</td>
 </tr>{% endfor %}
-{% if ruta_cobrar is defined and ruta_cobrar %}<tr><td colspan="3" class="num mini">Tienes que cobrar</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td><td></td></tr>{% endif %}</table>
+{% if ruta_cobrar is defined and ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td><td></td></tr>{% endif %}</table>
 {% else %}<div class="vacio">Hoy no tienes entregas asignadas.</div>{% endif %}</div>
 
 <div class="g2" style="align-items:start;margin-top:16px">

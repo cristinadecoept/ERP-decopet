@@ -75,9 +75,9 @@ def estado_pago_de(pagado, total):
     if pagado >= total - 0.01: return "pagada"
     return "abonada" if pagado > 0.009 else "sin_pago"
 
-P_LABEL = {"sin_pago": "Por pagar", "por_confirmar": "Por revisar", "rechazado": "Pago rechazado", "abonada": "Pago parcial", "pagada": "Pagada", "contra_entrega": "Contra entrega",
+P_LABEL = {"sin_pago": "Por pagar", "por_confirmar": "Por revisar", "rechazado": "Pago rechazado", "abonada": "Pago parcial", "pagada": "Pagada", "contra_entrega": "Falta pagar",
            "por_cobrar": "Cashea · cuotas pendientes", "reembolsada": "Reembolsada"}
-P_SUB = {"sin_pago": "por pagar", "por_confirmar": "por revisar", "rechazado": "PAGO RECHAZADO", "abonada": "pago parcial", "pagada": "", "contra_entrega": "CONTRA ENTREGA", "por_cobrar": "cuotas pendientes", "reembolsada": "reembolsada"}
+P_SUB = {"sin_pago": "por pagar", "por_confirmar": "por revisar", "rechazado": "PAGO RECHAZADO", "abonada": "pago parcial", "pagada": "", "contra_entrega": "falta pagar", "por_cobrar": "cuotas pendientes", "reembolsada": "reembolsada"}
 RAZAS = ["Mestizo", "Akita", "Basset Hound", "Beagle", "Bichón Frisé", "Border Collie", "Boston Terrier", "Bóxer", "Bulldog Francés", "Bulldog Inglés", "Bull Terrier", "Caniche / Poodle",
          "Cavalier King Charles", "Chihuahua", "Chow Chow", "Cocker Spaniel", "Corgi", "Dálmata", "Doberman", "Dogo Argentino", "Golden Retriever", "Gran Danés", "Husky Siberiano", "Jack Russell",
          "Labrador", "Lhasa Apso", "Maltés", "Mastín", "Pastor Alemán", "Pastor Australiano", "Pequinés", "Pinscher", "Pitbull", "Pomerania", "Pug", "Rottweiler", "Salchicha / Dachshund",
@@ -605,7 +605,8 @@ def inicio(request: Request, con=Depends(db)):
     rol = rol_de(request); hoy = datetime.date.today(); h = hoy.isoformat(); mes = hoy.strftime("%Y-%m")
     activas = cargar_ordenes(con, {"estado": "activas"}, rol)
     c = {
-        "por_revisar": sum(1 for o in activas if o["estado_pago"] == "por_confirmar"),
+        # también los de órdenes ya entregadas: el despachador anota un Pago Móvil en la puerta y hay que revisarlo
+        "por_revisar": con.execute("SELECT COUNT(*) FROM ordenes WHERE estado_pago='por_confirmar' AND estado!='cancelada'").fetchone()[0],
         "incidencias": con.execute("SELECT COUNT(*) FROM incidencias WHERE estado='abierta'").fetchone()[0],
         "sin_coordinar": sum(1 for o in activas if not o["coordinada"]),
         "hoy": sum(1 for o in activas if (o["fecha_prometida"] or h) <= h),
@@ -941,14 +942,10 @@ def resumen_despacho(o, con_plata=True):
         L.append(f"📍 {o['zona'] + ', ' if o['zona'] else ''}{o['direccion']}" + (f" — recibe {o['receptor_nombre']}" + (f" {o['receptor_telefono']}" if o["receptor_telefono"] else "") if o["receptor_nombre"] else ""))
         if o["maps"]: L.append(f"🗺 {o['maps']}")
     if not con_plata:   # para quien no ve dinero: qué hacer, sin montos (el despachador ve el suyo en su pantalla)
-        if o["estado_pago"] == "contra_entrega": L.append("💵 CONTRA ENTREGA: se cobra en efectivo")
-        elif o["estado_pago"] in ("abonada", "sin_pago", "rechazado"): L.append("💵 Falta cobrar: lo coordina Cristina")
+        if o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado"): L.append("💵 Falta pagar")
         else: L.append("✅ Pagado, no cobrar nada")
-    elif o["estado_pago"] == "contra_entrega":
-        pend = o["monto_contra_entrega"] or (o["total"] - o["pagado"])
-        L.append(f"💵 CONTRA ENTREGA: cobrar {fmt_usd(pend)} en efectivo" + (f" (ya pagó {fmt_usd(o['pagado'])} por {o['forma_pago_prevista'].split(' + ')[0]})" if o["pagado"] > 0 else ""))
-    elif o["estado_pago"] == "abonada": L.append(f"💵 Abonó {fmt_usd(o['pagado'])}; falta {fmt_usd(o['total'] - o['pagado'])}")
-    elif o["estado_pago"] == "sin_pago": L.append(f"💵 Por cobrar {fmt_usd(o['total'])}")
+    elif o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado") and o["total"] - o["pagado"] > 0.009:
+        L.append(f"💵 Falta pagar {fmt_usd(o['total'] - o['pagado'])}")
     else: L.append("✅ Pagado, no cobrar nada")
     if o["notas_entrega"]: L.append(f"📝 {o['notas_entrega']}")
     for n in o.get("notas_cliente") or []:   # lo que siempre hay que saber de este cliente
@@ -988,7 +985,7 @@ def volver(oid, request):
 
 
 @app.post("/ordenes/{oid}/estado")
-def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), con=Depends(db)):
+def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), forma_recibida: str = Form(""), con=Depends(db)):
     rol = rol_de(request); uid = uid_de(request)
     if PERMISO_ESTADO.get(estado) not in PERMISOS[rol]: return volver(oid, request)
     o = cargar_orden(con, oid)
@@ -1004,8 +1001,25 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
         sets.append("fecha_entrega=?"); args.append(fe if fe != datetime.date.today().isoformat() else datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
         # lo que el despachador cobró en la puerta: contra entrega, o el resto de una orden que quedó con saldo
         cobro_puerta = o["estado_pago"] == "contra_entrega" or (
-            o["estado_pago"] in ("abonada", "sin_pago") and str(monto_recibido).strip() != "")
-        if cobro_puerta:
+            o["estado_pago"] in ("abonada", "sin_pago", "rechazado") and (str(monto_recibido).strip() != "" or forma_recibida))
+        despues = forma_recibida == "despues"   # cliente de la casa: se le entrega y Cristina le cobra después
+        digital = forma_recibida and not despues and not forma_recibida.startswith("Efectivo")
+        if cobro_puerta and (despues or digital):
+            falta = round(o["total"] - o["pagado"], 2)
+            monto = 0.0 if despues else max(0.0, round(float(cifra(monto_recibido) or 0) if str(monto_recibido).strip() else falta, 2))
+            if monto:   # pagó por Zelle, Pago Móvil…: lo dice el despachador, Cristina confirma que llegó
+                tasa = tasa_hoy(con)["valor"] or 0; en_bs = es_bolivares(forma_recibida) and tasa
+                con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,fecha,estado)
+                               VALUES (?,?,?,?,?,?,?,?,'por_confirmar')""",
+                            (oid, forma_recibida, monto, round(monto * tasa, 2) if en_bs else monto, "VES" if en_bs else "USD",
+                             tasa if en_bs else None, FORMA_CUENTA.get(forma_recibida, forma_recibida), fe))
+                sets.append("estado_pago=?"); args.append("por_confirmar")
+                registrar(con, oid, uid, "pago", f"Al entregar pagó {fmt_usd(monto)} por {forma_recibida}: por revisar"
+                          + (f" · quedan {fmt_usd(falta - monto)}" if falta - monto > 0.009 else ""))
+            else:
+                sets.append("estado_pago=?"); args.append(estado_pago_de(o["pagado"], o["total"]))
+                registrar(con, oid, uid, "pago", f"Entregado sin cobrar: quedan {fmt_usd(falta)} · lo cobra Cristina después")
+        elif cobro_puerta:
             falta = round(o["total"] - o["pagado"], 2)
             monto = float(cifra(monto_recibido)) if str(monto_recibido).strip() else float(o["monto_contra_entrega"] or falta)
             monto = max(0.0, round(monto, 2))
@@ -1070,7 +1084,7 @@ def contra_entrega(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request)
     if "contra_entrega" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE ordenes SET estado_pago='contra_entrega' WHERE id=? AND estado_pago IN ('sin_pago','rechazado','por_confirmar')", (oid,))
-    registrar(con, oid, uid_de(request), "estado", "Autorizada salida contra entrega (efectivo) → Confirmada"); con.commit(); return volver(oid, request)
+    registrar(con, oid, uid_de(request), "estado", "Autorizado que pague al recibir → Confirmada"); con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/pago")
