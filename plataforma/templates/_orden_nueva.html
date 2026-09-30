@@ -115,7 +115,8 @@ function agregarPago(){const d=document.createElement('div');d.className='no-pag
  d.innerHTML=`<select name="pago_forma" onchange="calc()">${o}</select><input type="number" step="0.01" name="pago_monto" placeholder="monto" oninput="this.dataset.tocado=1;calc()"><input name="pago_ref" placeholder="referencia"><button type="button" class="no-x-sm" onclick="this.parentElement.remove();calc()">×</button>`;document.getElementById('pagos').appendChild(d);}
 function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');if(filas.length===1&&!m.dataset.tocado)m.value=tot.toFixed(2);s+=+m.value||0;
   if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
- document.getElementById('p-pagado').innerText='$'+s.toFixed(2);document.getElementById('p-saldo').innerText='$'+Math.max(tot-s,0).toFixed(2);document.getElementById('p-saldo').style.color=(tot-s)>0.01?'#b45a1c':'var(--verde-osc)';
+ // el efectivo todavía no está pagado: se cobra al entregar, así que cuenta como saldo pendiente
+ const pag=s-efe,sal=Math.max(tot-pag,0);document.getElementById('p-pagado').innerText='$'+pag.toFixed(2);document.getElementById('p-saldo').innerText='$'+sal.toFixed(2);document.getElementById('p-saldo').style.color=sal>0.01?'#b45a1c':'var(--verde-osc)';
  const f=document.getElementById('p-falta');const d=tot-s;f.innerText=Math.abs(d)<0.01?'':(d>0&&d<tot-0.01?'pago parcial':(d>0?'sin pagar todavía':'sobran $'+(-d).toFixed(2)));f.style.color='#b45a1c';
  const n=document.getElementById('p-efectivo');n.hidden=efe<0.01;   // el efectivo se cobra al entregar, no hoy
  if(efe>=0.01)n.innerHTML='💵 <b>Contra entrega:</b> los $'+efe.toFixed(2)+' en efectivo se registran cuando marques la entrega, no hoy.';
