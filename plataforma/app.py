@@ -254,6 +254,11 @@ ESCUDOS = {
 }
 
 
+def demo_publica_activa():
+    return (os.environ.get("DECOPET_PUBLIC_DEMO") == "1" and os.environ.get("DECOPET_STAGING") == "1"
+            and BD.usa_postgres() and BD.nombre_base().lower().endswith("_staging"))
+
+
 def viene_de_fuera(request):
     """Una orden que llega desde otra página web. Así funciona el engaño de hacerte hacer clic
     en un sitio cualquiera para que tu navegador, ya con tu sesión abierta, haga algo aquí."""
@@ -277,9 +282,10 @@ async def puerta(request: Request, call_next):
         return r
 
     access_exigido = os.environ.get("CF_ACCESS_ENFORCE") == "1" or os.environ.get("DECOPET_STAGING") == "1"
+    demo_publica = demo_publica_activa()
     if ruta == "/health":
         return con_escudos(PlainTextResponse("ok"))
-    if access_exigido:
+    if access_exigido and not demo_publica:
         token = request.headers.get("cf-access-jwt-assertion", "")
         try:
             if not token: raise ValueError("JWT ausente")
@@ -295,7 +301,7 @@ async def puerta(request: Request, call_next):
             return con_escudos(JSONResponse({"error": "Eso pesa demasiado"}, status_code=413))
     except ValueError:
         return con_escudos(JSONResponse({"error": "Orden mal formada"}, status_code=400))
-    if not ruta.startswith(ABIERTO):
+    if not ruta.startswith(ABIERTO) and not demo_publica:
         if hay_claves() and not quien_es(request):
             return con_escudos(RedirectResponse("/entrar", status_code=303))
         permitido, casa = PUERTAS.get(rol_de(request), (None, None))
@@ -508,6 +514,7 @@ def hay_claves(con=None):
 
 
 def rol_de(request: Request):
+    if demo_publica_activa(): return "admin"
     u = quien_es(request)
     if not u: return "admin" if not hay_claves() else "invitado"
     # solo el administrador puede mirar el ERP como si fuera otro, para revisarlo
@@ -520,6 +527,7 @@ def rol_de(request: Request):
 def uid_de(request):
     """Quién está haciendo esto. Si hay sesión, es esa persona — no el rol genérico.
     Así el historial dice "Isaías" y no "Taller"."""
+    if demo_publica_activa(): return 1
     u = quien_es(request)
     return u["id"] if u else usuario_id(rol_de(request))
 
@@ -551,6 +559,7 @@ def render(request, nombre, **ctx):
 
 @app.get("/entrar", response_class=HTMLResponse)
 def entrar(request: Request, mal: str = "", con=Depends(db)):
+    if demo_publica_activa(): return RedirectResponse("/inicio", status_code=303)
     if quien_es(request): return RedirectResponse("/inicio", status_code=303)
     return render(request, "entrar.html", seccion="entrar", primera_vez=not hay_claves(con),
                   mal=mal, sin_menu=True)
@@ -577,7 +586,7 @@ def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form("")
 @app.post("/entrar/primera-vez")
 def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), con=Depends(db)):
     """La primera vez, Cristina pone su propia clave. Nadie más la ve nunca, ni queda escrita."""
-    if hay_claves(con): return RedirectResponse("/entrar", status_code=303)
+    if demo_publica_activa() or hay_claves(con): return RedirectResponse("/inicio" if demo_publica_activa() else "/entrar", status_code=303)
     if len(clave.strip()) < 8 or clave != clave2:
         return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 8 else "distinta"), status_code=303)
     u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()

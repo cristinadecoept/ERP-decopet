@@ -22,7 +22,8 @@ _conexiones_prueba = contextvars.ContextVar("decopet_conexiones_prueba", default
 
 
 def usa_postgres():
-    return bool(os.environ.get("DECOPET_DATABASE_URL") or os.environ.get("DATABASE_URL"))
+    url = os.environ.get("DECOPET_DATABASE_URL") or os.environ.get("DATABASE_URL") or ""
+    return url.startswith(("postgres://", "postgresql://", "postgresql+"))
 
 
 def nombre_base():
