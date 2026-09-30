@@ -4054,6 +4054,8 @@ def sincronizar_packs(con):
 
 def cargar_prepagados(con, solo_pendientes=True):
     sql = """SELECT r.*, c.nombre cliente, c.telefono, c.ciudad, o.numero orden,
+             -- su pedido todavía no salió y lleva otras cosas: el repuesto se puede mandar en esa misma entrega
+             (o.estado IN ('pendiente','en_ruta') AND """ + HAY_QUE_ENTREGAR() + """) puede_ir_junto,
              (SELECT direccion FROM direcciones d WHERE d.cliente_id=c.id ORDER BY principal DESC, id LIMIT 1) direccion,
              (SELECT maps FROM direcciones d WHERE d.cliente_id=c.id ORDER BY principal DESC, id LIMIT 1) maps
              FROM repuestos_prepagados r JOIN clientes c ON c.id=r.cliente_id LEFT JOIN ordenes o ON o.id=r.orden_id"""
@@ -4092,6 +4094,21 @@ def prepagado_programar(request: Request, rid: int, fecha: str = Form(""), tipo_
         cobro_extra(con, r["orden_id"], "Delivery repuesto", dl, f_pago, datetime.date.today().isoformat(), uid_de(request))
         con.execute("UPDATE repuestos_prepagados SET delivery_forma=? WHERE id=?", (f_pago, rid))
     con.commit(); return RedirectResponse(volver or "/prepagados", status_code=303)
+
+
+@app.post("/prepagados/{rid}/con-pedido")
+def prepagado_con_pedido(request: Request, rid: int, volver: str = Form(""), con=Depends(db)):
+    """El cliente lo quiere ya, y su pedido todavía no ha salido: el repuesto deja de ser 'para después'
+    y va en esa misma entrega (mismo despachador, mismo delivery, sin cobrar nada extra)."""
+    if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse(volver or "/prepagados", status_code=303)
+    r = con.execute("SELECT * FROM repuestos_prepagados WHERE id=? AND entregado_en IS NULL", (rid,)).fetchone()
+    o = con.execute("SELECT id, estado FROM ordenes WHERE id=?", (r["orden_id"],)).fetchone() if r and r["orden_id"] else None
+    if r and o and o["estado"] in ("pendiente", "en_ruta"):
+        con.execute("DELETE FROM repuestos_prepagados WHERE id=?", (rid,))
+        registrar(con, o["id"], uid_de(request), "pack", f"El repuesto {r['tamano'] or ''} que era para después va en esta misma entrega")
+        con.commit()
+        return RedirectResponse(volver or f"/ordenes?estado=todas&abrir={o['id']}", status_code=303)
+    return RedirectResponse(volver or "/prepagados", status_code=303)
 
 
 @app.post("/prepagados/{rid}/campo")
