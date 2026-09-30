@@ -113,7 +113,7 @@ function calc(){let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{
  const tot=s-ds+iva+dl;document.getElementById('t-tot').innerText='$'+tot.toFixed(2);document.getElementById('t-bs').innerText='≈ Bs '+(tot*TASA).toLocaleString('es-VE',{maximumFractionDigits:0});pagos(tot);}
 function agregarPago(){const d=document.createElement('div');d.className='no-pago';let o='<option value="">forma de pago…</option>';FORMAS.forEach(x=>o+=`<option>${x}</option>`);
  d.innerHTML=`<select name="pago_forma" onchange="calc()">${o}</select><input type="number" step="0.01" name="pago_monto" placeholder="monto" oninput="this.dataset.tocado=1;calc()"><input name="pago_ref" placeholder="referencia"><button type="button" class="no-x-sm" onclick="this.parentElement.remove();calc()">×</button>`;document.getElementById('pagos').appendChild(d);}
-function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');if(filas.length===1&&!m.dataset.tocado)m.value=tot.toFixed(2);s+=+m.value||0;
+function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');s+=+m.value||0;   // el monto no se pone solo: se escribe lo que de verdad pagó
   if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
  // el efectivo todavía no está pagado: se cobra al entregar, así que cuenta como saldo pendiente
  const pag=s-efe,sal=Math.max(tot-pag,0);document.getElementById('p-pagado').innerText='$'+pag.toFixed(2);document.getElementById('p-saldo').innerText='$'+sal.toFixed(2);document.getElementById('p-saldo').style.color=sal>0.01?'#b45a1c':'var(--verde-osc)';document.getElementById('p-saldo-t').innerText=efe>=0.01&&s>=tot-0.01?'Se cobra en efectivo al entregar':'Saldo pendiente';
@@ -157,7 +157,7 @@ function usarCredito(){
  if(![...sel.options].some(o=>o.value==='Saldo a favor'))sel.insertAdjacentHTML('beforeend','<option>Saldo a favor</option>');
  sel.value='Saldo a favor';mi.value=usa.toFixed(2);mi.max=CRED.toFixed(2);mi.dataset.tocado=1;
  const puesto=[...document.querySelectorAll('#pagos [name=pago_monto]')].reduce((s,i)=>s+(+i.value||0),0);
- if(TOT-puesto>0.009){agregarPago();const r=[...document.querySelectorAll('#pagos .no-pago')].pop().querySelector('[name=pago_monto]');r.value=(TOT-puesto).toFixed(2);r.dataset.tocado=1;}
+ if(TOT-puesto>0.009)agregarPago();   // lo que falte se escribe a mano, con lo que de verdad pagó
  document.getElementById('cred-w').hidden=true;calc();}
 const sirve=v=>!!(v&&v.trim()&&v.trim().toLowerCase()!=='pendiente');
 function esTercero(){return document.getElementById('rec-ter').classList.contains('act');}
@@ -182,6 +182,8 @@ function validar(){const fp=document.getElementById('f-pago');
  if(nac){if(esTercero()){if(!val('receptor_cedula')){alert('Para un envío nacional hace falta la cédula de quien recibe.');return false;}}
          else if(nuevo){if(!val('cliente_cedula')){alert('Para un envío nacional hace falta la cédula del cliente.');return false;}}
          else if(!pedir('add-ced-w','cl_add_cedula','Para un envío nacional hace falta la cédula del cliente.'))return false;}
+ for(const d of document.querySelectorAll('#pagos .no-pago')){const fo=d.querySelector('[name=pago_forma]'),m=d.querySelector('[name=pago_monto]');
+  if(fo.value&&!(+m.value>0)){alert('¿Cuánto pagó por '+fo.value+'? Escribe el monto, o quita esa forma de pago si todavía no ha pagado.');m.focus();return false;}}
  // repuesto o pack de otro tamaño que el porche que tiene registrado: preguntar antes de crear
  const tam=(([...document.getElementById('cl').options].find(o=>o.dataset.id===document.getElementById('cl-id').value)||{dataset:{}}).dataset.tam||'');
  const lins=[...document.querySelectorAll('#lin .no-linea')].map(d=>+d.dataset.i);
