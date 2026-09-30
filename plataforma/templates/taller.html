@@ -37,13 +37,13 @@
 {% else %}<div class="vacio">No hay nada pedido esperando llegar.</div>{% endif %}</div>
 
 <div class="tarjeta" style="order:1"><h3>Porches armados</h3>
-<table class="lineas"><tr><th>Modelo</th><th class="num" style="padding-right:18px">Listos</th><th style="padding-right:22px">Material que hay</th><th class="num" style="padding-right:26px">Puede armar</th><th style="width:230px">¿Cuántos armaron?</th></tr>
+<table class="lineas tal-arm"><tr><th>Modelo</th><th class="num" style="padding-right:18px">Listos</th><th style="padding-right:22px">Material que hay</th><th class="num" style="padding-right:26px">Puede armar</th><th style="width:230px">¿Cuántos armaron?</th></tr>
 {% for a in armables %}<tr>
  <td><b>{{ a.nombre }}</b>{% if a.color %} <span class="pl-{{ a.color }}">plato {{ a.color }}</span>{% endif %}</td>
- <td class="num" style="padding-right:18px"><b>{{ a.listos|int }}</b></td>
- <td style="padding-right:22px">{% for m in a.materiales %}<div class="mini">{{ m.hay }} × {{ m.nombre|lower }}{% if a.materiales|length > 1 and m.nombre == a.tope.nombre %} · es lo que frena{% endif %}</div>{% endfor %}</td>
-<td class="num" style="padding-right:26px">{% if a.alcanza %}<b>{{ a.alcanza }}</b>{% else %}<span class="ln-alerta">0</span>{% endif %}</td>
- <td><form method="post" action="/taller/armar" style="display:flex;gap:6px;align-items:center">
+ <td class="num" style="padding-right:18px" data-t="Listos"><b>{{ a.listos|int }}</b></td>
+ <td style="padding-right:22px" data-t="Material que hay">{% for m in a.materiales %}<div class="mini">{{ m.hay }} × {{ m.nombre|lower }}{% if a.materiales|length > 1 and m.nombre == a.tope.nombre %} · es lo que frena{% endif %}</div>{% endfor %}</td>
+<td class="num" style="padding-right:26px" data-t="Puede armar">{% if a.alcanza %}<b>{{ a.alcanza }}</b>{% else %}<span class="ln-alerta">0</span>{% endif %}</td>
+ <td data-t="¿Cuántos armaron?"><form method="post" action="/taller/armar" style="display:flex;gap:6px;align-items:center">
    <input type="hidden" name="producto_id" value="{{ a.id }}">{% if a.color %}<input type="hidden" name="color" value="{{ a.color }}">{% endif %}
    <input name="cantidad" inputmode="numeric" placeholder="0" style="width:70px;text-align:right">
    <button class="btn chico">Armamos</button></form></td>
