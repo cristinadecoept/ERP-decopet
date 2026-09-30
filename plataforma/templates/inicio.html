@@ -5,7 +5,7 @@
 {# ---------- 1 · AHORA: solo lo que existe #}
 {% set pend = [] %}
 {% if rol=='admin' and c.por_revisar %}{% set _ = pend.append(('/ordenes?estado=por_revisar', c.por_revisar ~ ' pago' ~ ('s' if c.por_revisar!=1) ~ ' por revisar', 'revisar', 'nar')) %}{% endif %}
-{% if rol=='admin' and c.con_saldo %}{% set _ = pend.append(('/operaciones?cola=con_saldo', c.con_saldo ~ ' orden' ~ ('es' if c.con_saldo!=1) ~ ' con saldo pendiente · ' ~ (c.saldo_total|usd), 'cobrar', 'nar')) %}{% endif %}
+{% if 'ver_cobros' in puede and c.con_saldo %}{% set _ = pend.append(('/operaciones?cola=con_saldo', c.con_saldo ~ ' orden' ~ ('es' if c.con_saldo!=1) ~ ' con saldo pendiente · ' ~ (c.saldo_total|usd), 'cobrar', 'nar')) %}{% endif %}
 {% for d in c.prov_deben %}{% set _ = pend.append(('__devuelve__' ~ d.id, (d.responsable or 'El proveedor') ~ (' no te entregó ' ~ d.faltaron ~ ' ' ~ d.pieza if d.faltaron else '') ~ ' · te debe ' ~ ('$%.2f'|format(d.debe)), '%.2f'|format(d.debe), 'nar')) %}{% endfor %}
 {% for pv in c.toca_pagar_prov %}{% set _ = pend.append(('/produccion?tipo=' ~ pv.tipo,'Hoy toca pagar ' ~ pv.pieza ~ ' a ' ~ (pv.responsable or 'proveedor') ~ ' · ' ~ (pv.debe|usd), 'pagar', 'nar')) %}{% endfor %}
 {% if rol=='admin' and c.desp_debe and c.toca_pagar_desp %}{% set _ = pend.append(('/despachadores', ('Quedó sin pagar del lunes: ' if c.desp_atrasado else 'Hoy es lunes: pagar a ') ~ c.desp_n ~ ' despachador' ~ ('es' if c.desp_n!=1) ~ ' · ' ~ (c.desp_debe|usd), 'pagar', 'rojo' if c.desp_atrasado else 'nar')) %}{% endif %}
