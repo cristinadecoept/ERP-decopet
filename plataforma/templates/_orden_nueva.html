@@ -130,7 +130,11 @@ function setCanal(c){document.getElementById('canal').value=c;document.querySele
  const sinPerso=!['whatsapp','instagram','presencial','web'].includes(c);document.querySelectorAll('.perso-lin').forEach(w=>{w.hidden=sinPerso;if(sinPerso){const cb=w.querySelector('input[type=checkbox]');if(cb.checked){cb.checked=false;togPersoLin(cb);}}});   // solo se personaliza por WhatsApp, Instagram, presencial y página web
  calc();}
 document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.dataset.lock){e.preventDefault();e.target.checked=true;}});
-function setEntrega(k){document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
+function setEntrega(k){
+ if(document.getElementById('te').value===k){   // tocar la que ya está marcada la desmarca
+  document.getElementById('te').value='';document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.remove('act');});
+  document.getElementById('ent-detalle').hidden=true;document.getElementById('cobro-deliv').hidden=true;document.getElementById('deliv').value=0;calc();return;}
+ document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
  document.getElementById('ent-detalle').hidden=false;const nac=k==='nacional';document.getElementById('nac-extra').hidden=!nac;
  document.getElementById('dir-bloque').hidden=(k==='pickup'||k==='distribuidor'||k==='nacional');document.getElementById('oficina-w').hidden=!nac;document.getElementById('rec-extra').hidden=!nac;document.getElementById('rec-titulo').innerText=(k==='pickup'||k==='distribuidor')?'¿Quién retira?':'¿Quién recibe?';document.getElementById('nota-desp-w').hidden=(k==='pickup'||k==='distribuidor');document.getElementById('nota-desp-txt').innerText=nac?'Notas para la agencia':'Nota para el despachador';document.getElementById('desp-w').hidden=!(k==='delivery'||k==='delivery_fuera');
  const cd=(k==='delivery'||k==='delivery_fuera');document.getElementById('cobro-deliv').hidden=!cd;
