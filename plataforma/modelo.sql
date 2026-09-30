@@ -223,10 +223,12 @@ CREATE TABLE IF NOT EXISTS viajes_agencia (
   pagado INTEGER NOT NULL DEFAULT 0, pago_id INTEGER REFERENCES pagos_despachador(id),
   nota TEXT, usuario_id INTEGER, creado_en TEXT DEFAULT (datetime('now','localtime')));
 
--- El despachador fue hasta la casa y el cliente no recibió: el viaje se le paga igual,
--- aunque el pedido vuelva a pendiente. Si no llegó a ir, no se anota nada.
-CREATE TABLE IF NOT EXISTS viajes_fallidos (
-  id INTEGER PRIMARY KEY, orden_id INTEGER REFERENCES ordenes(id), fecha TEXT NOT NULL, despachador TEXT NOT NULL,
+-- Lo que se le paga al despachador fuera de los pedidos normales (que se pagan por su delivery):
+--   tipo 'retiro'  = llevó un retiro de pack o un repuesto prepagado: se le paga el delivery de ese retiro.
+--   tipo 'fallido' = fue hasta la casa y el cliente no recibió: el viaje se le paga igual. Si no llegó a ir, no se anota.
+CREATE TABLE IF NOT EXISTS viajes_despachador (
+  id INTEGER PRIMARY KEY, tipo TEXT NOT NULL DEFAULT 'fallido', orden_id INTEGER REFERENCES ordenes(id),
+  pack_id INTEGER, prepagado_id INTEGER, fecha TEXT NOT NULL, despachador TEXT NOT NULL,
   monto REAL NOT NULL DEFAULT 0, motivo TEXT,
   pagado INTEGER NOT NULL DEFAULT 0, pago_id INTEGER REFERENCES pagos_despachador(id),
   usuario_id INTEGER, creado_en TEXT DEFAULT (datetime('now','localtime')));
