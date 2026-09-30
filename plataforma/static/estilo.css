@@ -888,3 +888,6 @@ html.oscuro .no-pago input.falta-monto{background:rgba(225,120,46,.14)}
 .no-pago input.falta-monto::placeholder{color:#b45a1c;opacity:1}
 .no-pago input[name=pago_monto]{-moz-appearance:textfield;min-width:120px}
 .no-pago input[name=pago_monto]::-webkit-inner-spin-button,.no-pago input[name=pago_monto]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+/* Volvió de la calle sin entregar: en rojo */
+.est.no_entregado{background:#fbe9e5;color:#b3321b}.est.no_entregado:before{background:#c94a2f}
+html.oscuro .est.no_entregado{background:rgba(201,74,47,.25);color:#ffb8a4}
