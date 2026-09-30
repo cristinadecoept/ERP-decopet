@@ -316,7 +316,7 @@ COLUMNAS = (
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
     ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"), ("pagos_despachador", "confirmado_en", "TEXT"),
     ("pagos_despachador", "reclamo_monto", "REAL"), ("pagos_despachador", "reclamo_nota", "TEXT"), ("pagos_despachador", "reclamo_en", "TEXT"),
-    ("pagos_despachador", "reclamo_resuelto", "TEXT"),
+    ("pagos_despachador", "reclamo_resuelto", "TEXT"), ("pagos_despachador", "gasto_id", "INTEGER"),
     ("orden_lineas", "perso_lista", "INTEGER NOT NULL DEFAULT 0"), ("orden_lineas", "perso_lista_en", "TEXT"),
     ("orden_lineas", "extra_en", "TEXT"),   # cobro que se agregó después de la compra: el día en que entró
     ("viajes_despachador", "tipo", "TEXT NOT NULL DEFAULT 'fallido'"), ("viajes_despachador", "pack_id", "INTEGER"),
@@ -4827,10 +4827,27 @@ def mis_entregas_reclamo_pago(request: Request, pid: int, llego: str = Form(""),
 
 
 @app.post("/despachadores/pago/{pid}/resuelto")
-def despachador_reclamo_resuelto(request: Request, pid: int, nota: str = Form(""), como: str = Form(""), con=Depends(db)):
-    """Cristina aclaró el reclamo del despachador (le pagó la diferencia, o le explicó el cálculo)."""
+def despachador_reclamo_resuelto(request: Request, pid: int, nota: str = Form(""), como: str = Form(""),
+                                 monto: str = Form(""), cuenta_id: str = Form(""), con=Depends(db)):
+    """Cristina aclaró el reclamo del despachador (le mandó lo que faltaba, o era un error suyo).
+    Si lo que faltaba salió de OTRA caja, el pago original se reparte: esa parte sale de la otra caja."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    p = con.execute("SELECT despachador FROM pagos_despachador WHERE id=?", (pid,)).fetchone()
+    p = con.execute("SELECT * FROM pagos_despachador WHERE id=?", (pid,)).fetchone()
+    if p and como == "otra_caja":
+        x = round(float(cifra(monto) or 0), 2)
+        cu = con.execute("SELECT id, nombre FROM cuentas WHERE id=? AND activa=1", (int(cuenta_id),)).fetchone() if cuenta_id.isdigit() else None
+        gid = p["gasto_id"] or (con.execute("""SELECT id FROM gastos WHERE categoria='Despachadores' AND proveedor=? AND fecha=?
+                                               ORDER BY ABS(monto_usd - ?) LIMIT 1""", (p["despachador"], p["fecha"], (p["monto"] or 0) - (p["adelanto_usado"] or 0))).fetchone() or [None])[0]
+        g = con.execute("SELECT * FROM gastos WHERE id=?", (gid,)).fetchone() if gid else None
+        if not (x > 0 and cu and g and x < (g["monto_usd"] or 0)):
+            d = con.execute("SELECT id FROM despachadores WHERE nombre=?", (p["despachador"],)).fetchone()
+            return RedirectResponse(f"/despachadores/{d['id']}" if d else "/despachadores", status_code=303)
+        # de la caja original salió menos; lo que faltaba salió de la otra. El total pagado no cambia.
+        con.execute("UPDATE gastos SET monto_usd=monto_usd-?, monto_real=monto_real-? WHERE id=?", (x, x, g["id"]))
+        con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor, cuenta_id, usuario_id)
+                       VALUES (?,?,?,'USD','Despachadores','Pago semanal',?,?,?,?)""",
+                    (datetime.date.today().isoformat(), x, x, f"Lo que faltaba del pago del {fmt_dia(p['fecha'])}", p["despachador"], cu["id"], uid_de(request)))
+        como = f"le mandé {fmt_usd(x)} que faltaban desde {cu['nombre']}"
     con.execute("UPDATE pagos_despachador SET reclamo_resuelto=? WHERE id=?",
                 (("el " + datetime.datetime.now().strftime("%d/%m") + (" · " + como.strip() if como.strip() else "") + (" · " + nota.strip() if nota.strip() else "")), pid))
     con.commit()
@@ -5047,7 +5064,8 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                   total=round(sum(h["pago"] or 0 for h in ent), 2),
                   mes=round(sum(h["pago"] or 0 for h in ent if (h["fecha"] or "")[:7] == mes), 2),
                   primera=hist[-1]["fecha"] if hist else None)
-    return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO, d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos,
+    return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO,
+                  CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos,
                   ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist, record=record)
 
@@ -5111,11 +5129,12 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
                 qf = ",".join("?" * len(fids))
                 nf = con.execute(f"SELECT COALESCE(SUM(tipo='fallido'),0) FROM viajes_despachador WHERE id IN ({qf})", fids).fetchone()[0]
                 if nf: det.append(f"{nf} viaje{'s' if nf != 1 else ''} sin entregar")
-            con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
+            g = con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                            cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Pago semanal',?,?,?,?,?,?)""",
                         (fecha, round(monto - usado, 2), round(monto - usado, 2),
                          " · ".join(det) + (f" · menos ${usado:.2f} de adelanto" if usado else ""), d["nombre"], None,   # sin "c/u": cada entrega vale distinto
                          cuenta["id"] if cuenta else None, nota, uid))
+            con.execute("UPDATE pagos_despachador SET gasto_id=? WHERE id=?", (g.lastrowid, cur.lastrowid))
         con.commit()
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
 
