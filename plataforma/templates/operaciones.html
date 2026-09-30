@@ -71,7 +71,7 @@
 
 {% if grupos %}{% for nombre, lista in grupos.items() %}<div class="op-card">
 <div class="op-card-h"><b>{{ nombre }}</b><span class="n">{{ lista|length }}</span></div>
-<table class="ops-t"><tr><th>Cliente</th><th>Productos</th><th>Entrega</th><th>Despachador</th><th>Dirección</th><th>Pago</th><th style="text-align:center">Status</th></tr>{% for o in lista %}{{ fila(o) }}{% endfor %}</table></div>{% endfor %}
+<table class="ops-t"><tr><th>Cliente</th><th>Productos</th><th>Entrega</th><th>Despachador</th><th>Dirección</th><th>Pago</th><th style="text-align:center">Marcar como</th></tr>{% for o in lista %}{{ fila(o) }}{% endfor %}</table></div>{% endfor %}
 {% else %}<div class="pend">{% if q %}<b>No hay resultados para «{{ q }}»</b>No está entre las entregas de {{ 'hoy' if cola=='hoy' else ('mañana' if cola=='manana' else 'ese día') }}. <a href="/operaciones?cola={{ cola }}&dia={{ dia }}">Quitar búsqueda</a> · <a href="/ordenes?q={{ q|urlencode }}&estado=todas">buscar en Órdenes</a>{% else %}<b>Nada para {{ 'hoy' if cola=='hoy' else ('mañana' if cola=='manana' else 'ese día') }}</b>Todo al día.{% endif %}</div>{% endif %}
 
 
