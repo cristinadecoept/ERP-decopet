@@ -1,14 +1,14 @@
 {% extends "base.html" %}{% block titulo %}{{ c.nombre }} · Decopet{% endblock %}{% block cuerpo %}
 <p class="mini" style="margin:0 0 10px"><a href="/clientes">← Clientes</a></p>
-<div class="fila-titulo"><div><h1>{{ c.nombre }}</h1><div class="sub">{% for e in etiquetas %}<span class="canal {{ 'pro' if e.startswith('Miembro PRO') }}">{{ e }}</span> {% endfor %}{% if not c.cedula and c.ciudad and c.ciudad!='Caracas' %}<span class="canal" style="color:#b3402b;border-color:#e6b8ae">sin cédula · necesaria para envío nacional</span>{% endif %}{% if primera %}<span class="mini" style="margin-left:6px">cliente desde el {{ primera|fecha }}</span>{% endif %}</div></div>
+<div class="fila-titulo"><div><h1>{{ c.nombre }}</h1><div class="sub">{% for e in etiquetas %}<span class="canal {{ 'pro' if e.startswith('Miembro PRO') }}">{{ e }}</span> {% endfor %}{% if not c.cedula and c.ciudad and c.ciudad!='Caracas' %}<span class="canal" style="color:#b3402b;border-color:#e6b8ae">sin cédula · necesaria para envío nacional</span>{% endif %}{% if primera %}<span class="mini" style="margin-left:6px">cliente desde {{ primera|el_fecha }}</span>{% endif %}</div></div>
 <button class="btn" onclick="location.href='/ordenes?estado=todas&nueva={{ c.id }}'">+ Nueva orden</button></div>
 
 <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:16px">
  {% if rol=='admin' and credito %}<div class="tile"><b style="color:var(--verde-osc)">{{ credito|usd }}</b><span>Saldo a favor</span><i>se le descuenta en su próxima compra</i></div>{% endif %}
  <div class="tile"><b>{{ nums.n }}</b><span>Pedidos</span><i>{{ nums.unidades|int }} productos en total</i></div>
  {% if rol=='admin' %}<div class="tile"><b>{{ nums.total|usd }}</b><span>Total gastado</span><i>{% if nums.mejor_que is not none %}compra más que el {{ nums.mejor_que }} % de tus clientes{% else %}&nbsp;{% endif %}</i></div>
- <div class="tile"><b>{{ nums.ticket|usd }}</b><span>Ticket promedio</span><i>{% if nums.mayor %}su pedido más grande fue de {{ nums.mayor.total|usd }} el {{ nums.mayor.creado_en|fecha }}{% else %}—{% endif %}</i></div>{% endif %}
- <div class="tile"><b>{% if nums.dias_sin is not none %}{{ nums.dias_sin }} días{% else %}—{% endif %}</b><span>Sin comprar</span><i>{% if ultima %}último pedido el {{ ultima|fecha }}{% else %}nunca ha comprado{% endif %}</i></div>
+ <div class="tile"><b>{{ nums.ticket|usd }}</b><span>Ticket promedio</span><i>{% if nums.mayor %}su pedido más grande fue de {{ nums.mayor.total|usd }} {{ nums.mayor.creado_en|el_fecha }}{% else %}—{% endif %}</i></div>{% endif %}
+ <div class="tile"><b>{% if nums.dias_sin is not none %}{{ nums.dias_sin }} días{% else %}—{% endif %}</b><span>Sin comprar</span><i>{% if ultima %}último pedido {{ ultima|el_fecha }}{% else %}nunca ha comprado{% endif %}</i></div>
  <div class="tile"><b>{% if nums.cada %}{{ nums.cada }} días{% else %}—{% endif %}</b><span>Frecuencia de compra</span><i>{% if nums.cada %}pide cada {{ nums.cada }} días en promedio{% elif nums.n==1 %}solo ha comprado una vez{% else %}—{% endif %}</i></div>
  {% if porche %}<div class="tile"><b>{% if proximo %}{{ proximo|fecha }}{% else %}—{% endif %}</b><span>Próximo repuesto</span></div>{% endif %}
  {% if saldo_pack %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ saldo_pack }}</b><span>Repuestos del pack por entregar</span><i>ya pagados · no cobrar</i></div>{% endif %}

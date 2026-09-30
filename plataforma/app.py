@@ -188,6 +188,8 @@ def fmt_cant(v, unidad=None):
     if not unidad: return n
     return f"{n} {unidad}" if v == 1 else f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
 tpl.env.filters["cant"] = fmt_cant
+# "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
+tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
 tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
