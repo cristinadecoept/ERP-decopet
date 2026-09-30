@@ -1000,7 +1000,10 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
     if estado == "entregada":
         fe = fecha.strip() or datetime.date.today().isoformat()   # se puede registrar una entrega de otro día
         sets.append("fecha_entrega=?"); args.append(fe if fe != datetime.date.today().isoformat() else datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-        if o["estado_pago"] == "contra_entrega":
+        # lo que el despachador cobró en la puerta: contra entrega, o el resto de una orden que quedó con saldo
+        cobro_puerta = o["estado_pago"] == "contra_entrega" or (
+            o["estado_pago"] in ("abonada", "sin_pago") and str(monto_recibido).strip() != "")
+        if cobro_puerta:
             falta = round(o["total"] - o["pagado"], 2)
             monto = float(cifra(monto_recibido)) if str(monto_recibido).strip() else float(o["monto_contra_entrega"] or falta)
             monto = max(0.0, round(monto, 2))
@@ -1018,9 +1021,9 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
             if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
             if monto:
                 falto = round(o["total"] - o["pagado"] - monto, 2)
-                registrar(con, oid, uid, "pago", f"Cobrado contra entrega {fmt_usd(monto)} en efectivo el {fe} → {caja_efectivo(con)}"
+                registrar(con, oid, uid, "pago", f"Cobrado al entregar {fmt_usd(monto)} en efectivo el {fe} → {caja_efectivo(con)}"
                           + (f" · quedan {fmt_usd(falto)} por cobrar" if falto > 0.009 else ""))
-            else:
+            elif falta > 0.009:
                 registrar(con, oid, uid, "pago", f"Entregado sin cobrar: quedan {fmt_usd(falta)} por cobrar")
             if monto and not o["fecha_pago"] and nuevo_estado == "pagada":
                 sets.append("fecha_pago=?"); args.append(fe)   # el día que se entrega es el día que pagaron
