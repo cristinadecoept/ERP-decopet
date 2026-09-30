@@ -4711,7 +4711,8 @@ def resumen_despachador(con, nombre, hoy):
     vf = con.execute("""SELECT COALESCE(SUM(monto),0) m, COALESCE(SUM(tipo='fallido'),0) nf, COALESCE(SUM(tipo='retiro'),0) nr
                         FROM viajes_despachador WHERE despachador=? AND pagado=0""", (nombre,)).fetchone()
     # retiros de pack / prepagados que llevó, y viajes en que fue y no le recibieron: también se le pagan
-    r["debe"] += vf["m"]; r["n_fallidos"] = vf["nf"]; r["n_retiros"] = vf["nr"]
+    # un retiro de repuesto que llevó es una entrega más: se cuenta junto con las demás
+    r["debe"] += vf["m"]; r["n_fallidos"] = vf["nf"]; r["n_debe"] = (r["n_debe"] or 0) + vf["nr"]; r["n_retiros"] = 0
     # lo que se le adelantó se descuenta de lo que se le debe; si adelantaste más de lo que ha hecho, queda a favor tuyo
     r["adelantos"], r["adelanto"] = adelanto_despachador(con, nombre)
     r["debe_bruto"] = r["debe"]
@@ -4930,7 +4931,7 @@ def viajes_hist(con, nombre, vigentes=False):
         out.append({"id": v["orden_id"], "numero": v["numero"], "fecha": v["fecha"], "pago": v["monto"], "quien": v["quien"], "cliente": v["cliente"],
                     "zona": v["zona"], "direccion": v["direccion"], "ciudad": v["ciudad"], "despachador_pagado": v["pagado"],
                     "estado": "no_entregado" if v["tipo"] == "fallido" else "entregada", "nota": v["motivo"],
-                    "que": "Retiro de repuesto" if v["tipo"] == "retiro" else None})
+                    "que": None})
     return out
 
 
@@ -5101,12 +5102,14 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
         if fids: con.execute(f"UPDATE viajes_despachador SET pagado=1, pago_id=? WHERE id IN ({','.join('?' * len(fids))}) AND despachador=?", (cur.lastrowid, *fids, d["nombre"]))
         if monto - usado > 0.009:   # pagarle a un despachador es un gasto: tiene que llegar a Gastos y al libro de caja
             det = []
-            if ids: det.append(f"{len(ids)} entrega{'s' if len(ids) != 1 else ''}")
+            nr = 0
+            if fids:
+                nr = con.execute(f"SELECT COALESCE(SUM(tipo='retiro'),0) FROM viajes_despachador WHERE id IN ({','.join('?' * len(fids))})", fids).fetchone()[0]
+            if ids or nr: det.append(f"{len(ids) + nr} entrega{'s' if len(ids) + nr != 1 else ''}")
             if vids: det.append(f"{len(vids)} viaje{'s' if len(vids) != 1 else ''} a agencia")
             if fids:
                 qf = ",".join("?" * len(fids))
-                nr, nf = con.execute(f"SELECT COALESCE(SUM(tipo='retiro'),0), COALESCE(SUM(tipo='fallido'),0) FROM viajes_despachador WHERE id IN ({qf})", fids).fetchone()
-                if nr: det.append(f"{nr} retiro{'s' if nr != 1 else ''} de repuesto")
+                nf = con.execute(f"SELECT COALESCE(SUM(tipo='fallido'),0) FROM viajes_despachador WHERE id IN ({qf})", fids).fetchone()[0]
                 if nf: det.append(f"{nf} viaje{'s' if nf != 1 else ''} sin entregar")
             con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                            cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Pago semanal',?,?,?,?,?,?)""",
