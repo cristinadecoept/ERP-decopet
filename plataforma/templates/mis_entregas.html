@@ -70,7 +70,12 @@
   <div class="cf-cuerpo">
   {% if pagos or r.adelantos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th></th></tr>
   {% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td class="num mini">adelanto</td><td class="num"><b>{{ a.monto_usd|usd }}</b></td><td></td></tr>{% endfor %}
-  {% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num"><b>{{ (p.monto - (p.adelanto_usado or 0))|usd }}</b>{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} ya te lo habían adelantado</div>{% endif %}</td><td style="text-align:right"><form method="post" action="/mis-entregas/pago/{{ p.id }}/confirmar" onsubmit="event.preventDefault();preguntar('¿Te llegó este pago? Al confirmarlo sale de tu lista.',{si:'Sí, me llegó',no:'Todavía no'}).then(ok=>ok&&this.submit())"><button class="btn chico">Sí, me llegó</button></form></td></tr>{% endfor %}</table>
+  {% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num"><b>{{ (p.monto - (p.adelanto_usado or 0))|usd }}</b>{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} ya te lo habían adelantado</div>{% endif %}</td><td style="text-align:right">{% if p.reclamo_en %}<div class="mini ln-alerta" style="margin-bottom:4px">Le avisaste a Cristina{% if p.reclamo_monto is not none %}: te llegaron {{ p.reclamo_monto|usd }}{% endif %}</div>{% endif %}<form method="post" action="/mis-entregas/pago/{{ p.id }}/confirmar" onsubmit="event.preventDefault();preguntar('¿Te llegó este pago? Al confirmarlo sale de tu lista.',{si:'Sí, me llegó',no:'Todavía no'}).then(ok=>ok&&this.submit())"><button class="btn chico">Sí, me llegó</button></form>
+   <details class="cobro" style="display:inline-block"><summary class="btn sec chico">Me llegó menos</summary>
+    <form method="post" action="/mis-entregas/pago/{{ p.id }}/reclamo" class="cobro-f" style="min-width:240px;text-align:left">
+     <label style="margin-top:0">¿Cuánto te llegó?</label><div class="cf-in"><span class="mini">$</span><input name="llego" inputmode="decimal" style="width:110px" placeholder="0.00"></div>
+     <label>¿Qué crees que falta?</label><textarea name="nota" rows="3" placeholder="faltó la entrega de Los Chorros…"></textarea>
+     <p style="margin:8px 0 0"><button class="btn chico">Avisar a Cristina</button></p></form></details></td></tr>{% endfor %}</table>
   {% else %}<div class="vacio">No tienes pagos por confirmar.</div>{% endif %}</div></div>
 </div>
 {% endblock %}

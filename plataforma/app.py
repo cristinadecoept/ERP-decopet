@@ -310,6 +310,8 @@ COLUMNAS = (
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
     ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"), ("pagos_despachador", "confirmado_en", "TEXT"),
+    ("pagos_despachador", "reclamo_monto", "REAL"), ("pagos_despachador", "reclamo_nota", "TEXT"), ("pagos_despachador", "reclamo_en", "TEXT"),
+    ("pagos_despachador", "reclamo_resuelto", "TEXT"),
     ("orden_lineas", "perso_lista", "INTEGER NOT NULL DEFAULT 0"), ("orden_lineas", "perso_lista_en", "TEXT"),
     ("orden_lineas", "extra_en", "TEXT"),   # cobro que se agregó después de la compra: el día en que entró
     ("viajes_despachador", "tipo", "TEXT NOT NULL DEFAULT 'fallido'"), ("viajes_despachador", "pack_id", "INTEGER"),
@@ -650,6 +652,8 @@ def inicio(request: Request, con=Depends(db)):
                             FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado')""").fetchone()
     c["con_saldo"], c["saldo_total"] = deudas["n"], deudas["s"]
     c["personalizar"] = por_personalizar(con)
+    c["reclamos_desp"] = [dict(r) for r in con.execute("""SELECT p.*, d.id did FROM pagos_despachador p LEFT JOIN despachadores d ON d.nombre=p.despachador
+                              WHERE p.reclamo_en IS NOT NULL AND p.reclamo_resuelto IS NULL ORDER BY p.reclamo_en""")] if rol == "admin" else []
     # retiros de pack y repuestos prepagados PROGRAMADOS para hoy (o atrasados): los que de verdad se entregan
     packs = sum(1 for k in cargar_packs(con) if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= h)
     packs += sum(1 for r in cargar_prepagados(con) if r["fecha_programada"] and r["fecha_programada"] <= h)
@@ -4732,7 +4736,7 @@ def mis_entregas(request: Request, con=Depends(db)):
                             AND NOT (o.despachador_pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=o.despachador_pago_id) IS NOT NULL)
                           ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
     mes = hoy.strftime("%Y-%m")
-    pagos = con.execute("""SELECT id, fecha, monto, entregas, adelanto_usado FROM pagos_despachador
+    pagos = con.execute("""SELECT id, fecha, monto, entregas, adelanto_usado, reclamo_monto, reclamo_nota, reclamo_en FROM pagos_despachador
                            WHERE despachador=? AND confirmado_en IS NULL ORDER BY fecha DESC, id DESC""", (nombre,)).fetchall()
     ult_conf = con.execute("SELECT MAX(substr(confirmado_en,1,10)) FROM pagos_despachador WHERE despachador=?", (nombre,)).fetchone()[0]
     if ult_conf: r["adelantos"] = [a for a in r["adelantos"] if (a["fecha"] or "") > ult_conf or r["adelanto_libre"] > 0]
@@ -4796,6 +4800,31 @@ def orden_no_recibio(request: Request, oid: int, motivo: str = Form(""), fecha: 
         registrar(con, oid, uid_de(request), "estado", texto, motivo.strip() or None)
         con.commit()
     return RedirectResponse(volver if volver.startswith("/") else "/operaciones", status_code=303)
+
+
+@app.post("/mis-entregas/pago/{pid}/reclamo")
+def mis_entregas_reclamo_pago(request: Request, pid: int, llego: str = Form(""), nota: str = Form(""), con=Depends(db)):
+    """Le llegó menos de lo que dice el pago: se lo avisa a Cristina con cuánto le llegó y por qué cree que falta."""
+    u = quien_es(request); yo = (u or {}).get("despachador")
+    es_admin = rol_de(request) == "admin" or (u and u["rol"] == "admin")
+    p = con.execute("SELECT despachador FROM pagos_despachador WHERE id=?", (pid,)).fetchone()
+    if p and (es_admin or (yo and p["despachador"] == yo)):
+        con.execute("""UPDATE pagos_despachador SET reclamo_monto=?, reclamo_nota=?, reclamo_en=datetime('now','localtime'), reclamo_resuelto=NULL
+                       WHERE id=? AND confirmado_en IS NULL""", (cifra(llego) if llego.strip() else None, nota.strip() or None, pid))
+        con.commit()
+    return RedirectResponse("/mis-entregas", status_code=303)
+
+
+@app.post("/despachadores/pago/{pid}/resuelto")
+def despachador_reclamo_resuelto(request: Request, pid: int, nota: str = Form(""), con=Depends(db)):
+    """Cristina aclaró el reclamo del despachador (le pagó la diferencia, o le explicó el cálculo)."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    p = con.execute("SELECT despachador FROM pagos_despachador WHERE id=?", (pid,)).fetchone()
+    con.execute("UPDATE pagos_despachador SET reclamo_resuelto=? WHERE id=?",
+                (("el " + datetime.datetime.now().strftime("%d/%m") + (" · " + nota.strip() if nota.strip() else "")), pid))
+    con.commit()
+    d = con.execute("SELECT id FROM despachadores WHERE nombre=?", (p["despachador"],)).fetchone() if p else None
+    return RedirectResponse(f"/despachadores/{d['id']}" if d else "/despachadores", status_code=303)
 
 
 @app.post("/mis-entregas/pago/{pid}/confirmar")
