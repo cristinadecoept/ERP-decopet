@@ -187,7 +187,8 @@ function validar(){const fp=document.getElementById('f-pago');
  const lins=[...document.querySelectorAll('#lin .no-linea')].map(d=>+d.dataset.i);
  if(tam&&!lins.some(i=>(PN[i]||'').startsWith('El Porche'))){const suyo=tam.startsWith('G')?'G':(tam.startsWith('M')?'M':'');
   const otros=lins.filter(i=>/^(REP|PACK\d+)-[MG]$/.test(PS[i]||'')&&suyo&&!(PS[i]||'').endsWith('-'+suyo)).map(i=>PN[i]);
-  if(otros.length&&!confirm('Este cliente tiene el porche '+tam.toLowerCase()+'. ¿Seguro que quieres '+otros.join(' y ')+'?'))return false;}
+  if(otros.length&&!window._tamOk){preguntar('Este cliente tiene el porche '+tam.toLowerCase()+'. ¿Seguro que quieres '+otros.join(' y ')+'?',{si:'Sí, crear la orden',no:'Corregir'})
+   .then(ok=>{if(ok){window._tamOk=true;document.getElementById('fn').requestSubmit();}});return false;}}
  return true;}
 agregarPago();setCanal('whatsapp');
 {% if precliente %}(()=>{const i=document.getElementById('cl-in');i.value={{ precliente|tojson }};i.dispatchEvent(new Event('input'));})();{% endif %}

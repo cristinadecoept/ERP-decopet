@@ -58,7 +58,13 @@ document.addEventListener('toggle',e=>{
 },true);
 addEventListener('resize',()=>document.querySelectorAll('details.cobro[open] .cobro-f').forEach(encajarCobro));
 // un formulario no se manda dos veces: un doble clic anotaba las cosas dos veces
-document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.enviando){e.preventDefault();return;}f.dataset.enviando='1';setTimeout(()=>{delete f.dataset.enviando},4000);},true);</script>
+// un envío que el propio formulario canceló (le faltaba algo, o está preguntando) no cuenta como enviado
+document.addEventListener('submit',e=>{if(e.defaultPrevented)return;const f=e.target;if(f.dataset.enviando){e.preventDefault();return;}f.dataset.enviando='1';setTimeout(()=>{delete f.dataset.enviando},4000);});
+// la pregunta "¿seguro?" con el diseño del ERP en vez del cuadro gris del navegador
+function preguntar(msg,{si='Sí, seguir',no='Cancelar'}={}){const d=document.getElementById('dlg-preg');d.querySelector('.dlg-txt').textContent=msg;
+ d.querySelector('[value=si]').textContent=si;d.querySelector('[value=no]').textContent=no;d.returnValue='';d.showModal();
+ return new Promise(r=>d.addEventListener('close',()=>r(d.returnValue==='si'),{once:true}));}</script>
+<dialog id="dlg-preg" class="dlg"><form method="dialog"><p class="dlg-txt"></p><div class="dlg-b"><button class="btn sec" value="no">Cancelar</button><button class="btn" value="si" autofocus>Sí, seguir</button></div></form></dialog>
 <div id="cand-w" hidden class="cand-w" onclick="if(event.target===this)candCerrar()">
  <form class="cand-c" onsubmit="candProbar(event)">
   <h4>Mostrar las cifras</h4>
