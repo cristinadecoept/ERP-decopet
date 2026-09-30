@@ -997,9 +997,19 @@ def descripcion_linea(l):
     return " · ".join(partes)
 
 
+def con_global_prepagados(oid):
+    """Líneas de la orden que son repuestos pagados para después y todavía no se entregaron."""
+    c = sqlite3.connect(DB)
+    try: return c.execute("SELECT linea_id FROM repuestos_prepagados WHERE orden_id=? AND entregado_en IS NULL AND linea_id IS NOT NULL", (oid,)).fetchall()
+    finally: c.close()
+
+
 def resumen_despacho(o, con_plata=True):
     L = [f"📦 {o['numero']} — {o['cliente']}" + (f" · {o['telefono']}" if o["telefono"] else "")]
+    prep = {r[0] for r in con_global_prepagados(o["id"])} if o.get("id") else set()
     for l in o["lineas"]:
+        ks = l.keys() if hasattr(l, "keys") else []
+        if ("id" in ks and l["id"] in prep) or ("extra_en" in ks and l["extra_en"]): continue   # prepagado / cobro agregado: no se lleva hoy
         L.append("• " + descripcion_linea(l))
     ent = ENTREGA.get(o["tipo_entrega"], "")
     if o["fecha_prometida"]: ent += f" · {fmt_fecha(o['fecha_prometida'])}" + (f" {o['franja']}" if o["franja"] else "")
@@ -5145,7 +5155,10 @@ def lo_que_lleva(con, oid, cuenta):
     De un pack no se lleva "el pack", sino los repuestos que le tocan hoy."""
     partes = []; piezas = 0
     for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku
-                            FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?""", (oid,)):
+                            FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?
+                              AND COALESCE(p.tipo,'producto')!='opcion' AND l.extra_en IS NULL
+                              AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id AND r.entregado_en IS NULL)""", (oid,)):
+        # lo que quedó pagado para después no sale hoy: se entrega cuando el cliente lo active
         if (l["sku"] or "").startswith("PACK"):
             k = con.execute("SELECT tamano, unidades, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
                             (oid, l["sku"])).fetchone()
@@ -5209,7 +5222,8 @@ def taller_hoy(request: Request, con=Depends(db)):
         a_agencia = o["tipo_entrega"] == "nacional"
         for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo,
                                 TRIM(COALESCE(l.personalizacion,'')) perso
-                                FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?""", (o["id"],)):
+                                FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? AND l.extra_en IS NULL
+                                  AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id AND r.entregado_en IS NULL)""", (o["id"],)):
             if l["tipo"] == "opcion":   # una opción no es un bulto; si es la placa con nombre, que se vea el nombre
                 if l["perso"]: sale(lleva, f"Placa con el nombre “{l['perso']}”", int(l["cantidad"] or 1), a_agencia)
                 continue
