@@ -11,7 +11,7 @@
  <div class="tile"><b>{% if nums.dias_sin is not none %}{{ nums.dias_sin }} días{% else %}—{% endif %}</b><span>Sin comprar</span><i>{% if ultima %}último pedido {{ ultima|el_fecha }}{% else %}nunca ha comprado{% endif %}</i></div>
  <div class="tile"><b>{% if nums.cada %}{{ nums.cada }} días{% else %}—{% endif %}</b><span>Frecuencia de compra</span><i>{% if nums.cada %}pide cada {{ nums.cada }} días en promedio{% elif nums.n==1 %}solo ha comprado una vez{% else %}—{% endif %}</i></div>
  {% if porche %}<div class="tile"><b>{% if proximo %}{{ proximo|fecha }}{% else %}—{% endif %}</b><span>Próximo repuesto</span></div>{% endif %}
- {% if saldo_pack %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ saldo_pack }}</b><span>Repuestos del pack por entregar</span></div>{% endif %}
+ {% if saldo_pack %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ saldo_pack }}</b><span>Repuestos del pack por entregar</span><i><a href="/packs?q={{ c.nombre|urlencode }}">ver</a></i></div>{% endif %}
  {% if n_prepagados %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ n_prepagados }}</b><span>Repuesto{{ 's' if n_prepagados != 1 }} prepagado{{ 's' if n_prepagados != 1 }} por entregar</span><i><a href="/prepagados">ver</a></i></div>{% endif %}
 </div>
 {% if nums.n %}<div class="tarjeta" style="margin-bottom:16px"><div class="num-graf">
