@@ -209,8 +209,13 @@ def fmt_cant(v, unidad=None):
     if not unidad: return n
     return f"{n} {unidad}" if v == 1 else f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
 tpl.env.filters["cant"] = fmt_cant
+# el color del plato (Slow Chow, comedores) resaltado, para no entregar el que no es
+def _platos(t):
+    t = t if isinstance(t, Markup) else escape(t or "")
+    return Markup(re.sub(r"(?<![\w-])(?:plato )?(azul|rosado)\b", r'<span class="pl-\1">plato \1</span>', str(t)))
+tpl.env.filters["platos"] = _platos
 # "Pack 3 Repuestos Mediano⟪Lleva 1 de 3⟫" → el producto y, debajo, resaltado cuánto se lleva hoy
-tpl.env.filters["lleva"] = lambda t: Markup(re.sub(r"⟪(.*?)⟫", r'<span class="lleva-tag">\1</span>', str(escape(t or ""))))
+tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<span class="lleva-tag">\1</span>', str(escape(t or "")))))
 # "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
 tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
