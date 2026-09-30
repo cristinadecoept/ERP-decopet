@@ -78,12 +78,14 @@ def ventas_por_dia(con, desde, hasta):
     """Ventas de cada día: los pedidos creados ese día (sin lo que se les agregó después) más los cobros extra
     que entraron ese día (el delivery de un retiro, por ejemplo). Solo pedidos: las entradas del Cash flow no cuentan."""
     out = {}
-    for d, m, n in con.execute("""SELECT substr(o.creado_en,1,10) d,
+    for fila in con.execute("""SELECT substr(o.creado_en,1,10) d,
                                   SUM(o.total - COALESCE((SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en IS NOT NULL),0)), COUNT(*)
                                   FROM ordenes o WHERE o.estado!='cancelada' AND substr(o.creado_en,1,10) BETWEEN ? AND ? GROUP BY 1""", (desde, hasta)):
+        d, m, n = fila[0], fila[1], fila[2]
         out[d] = [m or 0, n]
-    for d, m in con.execute("""SELECT l.extra_en, SUM(l.total) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
+    for fila in con.execute("""SELECT l.extra_en, SUM(l.total) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
                                WHERE l.extra_en BETWEEN ? AND ? AND o.estado!='cancelada' GROUP BY 1""", (desde, hasta)):
+        d, m = fila[0], fila[1]
         out.setdefault(d, [0, 0])[0] += m or 0
     return {d: (round(m, 2), n) for d, (m, n) in out.items()}
 
