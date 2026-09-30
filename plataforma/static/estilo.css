@@ -961,3 +961,5 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
  .me-acc .me-prob{display:block!important;margin-top:6px!important}
  .me-acc summary,.me-acc button{white-space:nowrap}
 }
+.op-card{max-width:100%;overflow-x:auto}
+.ops-t .op-accion{white-space:normal}.ops-t .op-accion>div{flex-wrap:wrap;justify-content:center}
