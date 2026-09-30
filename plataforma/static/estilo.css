@@ -734,6 +734,7 @@ html.oscuro .falta-p{background:rgba(255,255,255,.12)}
 .falta-p button{border:0;background:none;cursor:pointer;color:inherit;opacity:.55;font-size:14px;padding:0 3px}
 .falta-p button:hover{opacity:1}
 .fal-w{margin-bottom:12px}
+.eq-pagar{margin-bottom:12px}.eq-pagar>summary{list-style:none;width:max-content}.eq-pagar>summary::-webkit-details-marker{display:none}.eq-pagar[open]>summary{display:none}.eq-pagar .fal-f select,.eq-pagar .fal-f input{width:auto}.eq-pagar .cf-in{display:inline-flex;align-items:center;gap:4px}
 .fal-w summary{cursor:pointer;font-size:13px;opacity:.75;width:max-content}
 .fal-f{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .fal-f input[name=nota]{min-width:200px}

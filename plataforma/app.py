@@ -628,16 +628,7 @@ def inicio(request: Request, con=Depends(db)):
     c["efectivo_total"] = round(sum(x["monto_usd"] or 0 for x in efectivo), 2)
     # quincena del equipo: el 15 y el último día del mes, corridos al viernes si caen domingo
     if rol == "admin":
-        ant = datetime.date(hoy.year, hoy.month, 1) - datetime.timedelta(days=1)
-        # el día de pago que toca ahora: el más reciente que ya llegó, hasta 2 días después
-        tocan = [p for p, fin in ventana_pago(ant.year, ant.month) + ventana_pago(hoy.year, hoy.month) if p <= hoy <= fin]
-        c["es_quincena"] = any(f == hoy for f in tocan)
-        c["quincena_falta"] = []
-        if tocan:
-            f = max(tocan); desde = (f - datetime.timedelta(days=3)).isoformat()
-            c["quincena_falta"] = [n for n in (cfg_json(con, "sueldos", {}) or {})
-                                   if not con.execute("""SELECT 1 FROM gastos WHERE categoria='Equipo' AND subcategoria='Quincena'
-                                                         AND TRIM(COALESCE(proveedor,''))=? AND fecha>=?""", (n, desde)).fetchone()]
+        c["es_quincena"], c["quincena_falta"] = quincena_pendiente(con, hoy)
         c["quincena_n"] = len(c["quincena_falta"])
 
     deuda_desp = con.execute("""SELECT despachador, SUM(COALESCE(delivery, 0)) m, COUNT(*) n FROM ordenes
@@ -3194,6 +3185,19 @@ def proxima_quincena(hoy):
     return dias_de_pago(sig.year, sig.month)[0]
 
 
+def quincena_pendiente(con, hoy):
+    """(¿hoy es día de pago?, a quién le falta cobrar la quincena que toca ahora)."""
+    ant = datetime.date(hoy.year, hoy.month, 1) - datetime.timedelta(days=1)
+    # el día de pago que toca ahora: el más reciente que ya llegó, hasta 2 días después
+    tocan = [p for p, fin in ventana_pago(ant.year, ant.month) + ventana_pago(hoy.year, hoy.month) if p <= hoy <= fin]
+    if not tocan: return False, []
+    desde = (max(tocan) - datetime.timedelta(days=3)).isoformat()
+    falta = [n for n in (cfg_json(con, "sueldos", {}) or {})
+             if not con.execute("""SELECT 1 FROM gastos WHERE categoria='Equipo' AND subcategoria='Quincena'
+                                   AND TRIM(COALESCE(proveedor,''))=? AND fecha>=?""", (n, desde)).fetchone()]
+    return any(f == hoy for f in tocan), falta
+
+
 def ficha_equipo(con, nombre, hoy):
     """Lo que le has pagado a una persona del equipo, y qué adelantos quedan por descontar."""
     mensual = (cfg_json(con, "sueldos", {}) or {}).get(nombre)   # el sueldo se guarda por mes; se paga en dos quincenas
@@ -3247,6 +3251,25 @@ def equipo_falta_borrar(request: Request, fid: int, con=Depends(db)):
     return RedirectResponse("/equipo", status_code=303)
 
 
+@app.post("/equipo/pagar")
+def equipo_pagar(request: Request, nombre: str = Form(...), que: str = Form("Quincena"), monto: str = Form(""),
+                 cuenta_id: str = Form(""), fecha: str = Form(""), nota: str = Form(""), con=Depends(db)):
+    """Pagarle a alguien del equipo desde su ficha: sale de la caja elegida y queda en gastos (Equipo)."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    usd = cifra(monto) if monto else 0
+    cu = con.execute("SELECT * FROM cuentas WHERE id=? AND activa=1", (int(cuenta_id),)).fetchone() if cuenta_id.isdigit() else None
+    if not usd or usd <= 0 or not cu: return RedirectResponse("/equipo", status_code=303)   # sin monto o sin caja no se anota
+    tasa = tasa_hoy(con)["valor"] or 0
+    en_bs = cu["moneda"] == "VES" and tasa
+    que = que if que in ("Quincena", "Adelanto", "Bono", "Día extra") else "Quincena"
+    con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, tasa, categoria, subcategoria, descripcion, proveedor,
+                   cuenta_id, usuario_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                ((fecha or "").strip() or datetime.date.today().isoformat(), round(usd, 2), round(usd * tasa, 2) if en_bs else round(usd, 2),
+                 "VES" if en_bs else "USD", tasa if en_bs else None, "Equipo", que,
+                 f"{que} {nombre}" + (f" · {nota.strip()}" if nota.strip() else ""), nombre, cu["id"], uid_de(request)))
+    con.commit(); return RedirectResponse("/equipo", status_code=303)
+
+
 @app.get("/equipo", response_class=HTMLResponse)
 def equipo(request: Request, con=Depends(db)):
     """Isaías, Manawa y Víctor: lo que se les ha pagado. Solo Cristina — el taller no llega aquí."""
@@ -3254,7 +3277,9 @@ def equipo(request: Request, con=Depends(db)):
     hoy = datetime.date.today()
     gente = [ficha_equipo(con, n, hoy) for n in cfg_json(con, "equipo", ["Víctor", "Isaías", "Manawa"])]
     return render(request, "equipo.html", seccion="equipo", gente=gente, hoy_iso=hoy.isoformat(),
-                  CUENTAS=con.execute("SELECT * FROM cuentas WHERE activa=1 ORDER BY orden").fetchall())
+                  falta_quincena=quincena_pendiente(con, hoy)[1],
+                  CUENTAS=con.execute("""SELECT * FROM cuentas WHERE activa=1 AND tipo='operativa' AND moneda IN ('USD','VES')
+                                         ORDER BY orden""").fetchall())
 
 
 @app.post("/finanzas/recurrentes/{cid}/saltar")
