@@ -85,7 +85,7 @@
 
 {% if por_desp %}<div id="resumenes" class="op-grupo" style="margin-top:22px"><div class="op-titulo">Resumen del día por despachador</div>
 <div class="op-res">{% for d, lista in por_desp.items() %}<div><b>{{ d }}</b> <span class="mini">{{ lista|length }} entrega{{ 's' if lista|length!=1 }}</span>
-<div class="resumen" id="res-{{ loop.index }}">{{ ('🚚 ' ~ d ~ ' — hoy ' ~ hoy_iso|fecha ~ '\n\n') ~ lista|join('\n\n') }}</div><p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ loop.index }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>{% endfor %}</div></div>{% endif %}
+<div class="resumen" id="res-{{ loop.index }}">{{ ('🚚 ' ~ d ~ ' — ' ~ hoy_iso|dia ~ '\n\n') ~ lista|join('\n\n') }}</div><p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ loop.index }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>{% endfor %}</div></div>{% endif %}
 {% endblock %}
 {% block extra %}
 <div class="velo" id="velo" onclick="cerrarPanel()"></div><aside class="panel" id="panel"><button class="cerrar" onclick="cerrarPanel()">×</button><div class="pc" id="pc"></div></aside>
