@@ -4827,12 +4827,12 @@ def mis_entregas_reclamo_pago(request: Request, pid: int, llego: str = Form(""),
 
 
 @app.post("/despachadores/pago/{pid}/resuelto")
-def despachador_reclamo_resuelto(request: Request, pid: int, nota: str = Form(""), con=Depends(db)):
+def despachador_reclamo_resuelto(request: Request, pid: int, nota: str = Form(""), como: str = Form(""), con=Depends(db)):
     """Cristina aclaró el reclamo del despachador (le pagó la diferencia, o le explicó el cálculo)."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     p = con.execute("SELECT despachador FROM pagos_despachador WHERE id=?", (pid,)).fetchone()
     con.execute("UPDATE pagos_despachador SET reclamo_resuelto=? WHERE id=?",
-                (("el " + datetime.datetime.now().strftime("%d/%m") + (" · " + nota.strip() if nota.strip() else "")), pid))
+                (("el " + datetime.datetime.now().strftime("%d/%m") + (" · " + como.strip() if como.strip() else "") + (" · " + nota.strip() if nota.strip() else "")), pid))
     con.commit()
     d = con.execute("SELECT id FROM despachadores WHERE nombre=?", (p["despachador"],)).fetchone() if p else None
     return RedirectResponse(f"/despachadores/{d['id']}" if d else "/despachadores", status_code=303)
