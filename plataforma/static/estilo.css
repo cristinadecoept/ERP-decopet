@@ -965,3 +965,10 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .ops-t .op-accion{white-space:normal}.ops-t .op-accion>div{flex-wrap:wrap;justify-content:center}
 /* Órdenes: el nombre del cliente con espacio, sin partirse en tres líneas */
 @media (min-width:901px){ .nom-cli{display:inline-block;min-width:150px} .tabla .fila td.mini[style*="max-width:300px"]{min-width:170px} }
+/* Analítica */
+.an-mes{display:flex;align-items:center;gap:10px}.an-mes b{font-size:17px;min-width:150px;text-align:center}
+.an-tiles{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))!important;margin-bottom:8px}
+.an-var{font-weight:700;margin-right:4px}.an-var.sube{color:var(--verde-osc)}.an-var.baja{color:#b3321b}
+.an-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+@media(max-width:1100px){.an-g{grid-template-columns:1fr}}
+.an-quietos{display:flex;flex-wrap:wrap;gap:6px}

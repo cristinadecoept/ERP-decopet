@@ -5579,23 +5579,75 @@ def referidos(request: Request, con=Depends(db)):
 
 # ------------------------------------------------------------------ ANALÍTICA
 @app.get("/analitica", response_class=HTMLResponse)
-def analitica(request: Request, con=Depends(db)):
-    """Qué se vende y qué no. Lo de los clientes vive en Clientes, no se repite aquí."""
+def analitica(request: Request, mes: str = "", con=Depends(db)):
+    """El cierre de un mes: cuánto se vendió, de dónde vino, qué se vendió y cuánta gente pide repuestos y packs.
+    Cada número se compara con el mes anterior. La plata fina (costos, gastos, resultado) vive en Finanzas."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    productos = con.execute("""SELECT l.nombre, SUM(l.cantidad) u, SUM(l.total) fact,
-                               MAX(substr(o.creado_en,1,10)) ultima,
-                               (SELECT p.costo FROM productos p WHERE p.nombre=l.nombre) costo
-                               FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
-                               WHERE o.estado!='cancelada' AND l.producto_id IS NOT NULL
-                               GROUP BY l.nombre ORDER BY fact DESC""").fetchall()
-    productos = [dict(p) | {"deja": round(p["fact"] - (p["costo"] or 0) * p["u"], 2) if p["costo"] else None} for p in productos]
-    quietos = con.execute("""SELECT p.nombre, (SELECT MAX(substr(o.creado_en,1,10)) FROM orden_lineas l
-                             JOIN ordenes o ON o.id=l.orden_id WHERE l.producto_id=p.id AND o.estado!='cancelada') ultima
-                             FROM productos p WHERE p.activo=1 AND p.tipo='producto' AND p.categoria NOT IN ('opcion')
-                             ORDER BY ultima IS NOT NULL, ultima LIMIT 12""").fetchall()
-    tot_u = sum(p["u"] for p in productos); tot_f = sum(p["fact"] for p in productos)
-    return render(request, "analitica.html", seccion="analitica", productos=productos, quietos=quietos,
-                  tot_u=tot_u, tot_f=tot_f)
+    hoy = datetime.date.today()
+    try: m0 = datetime.date.fromisoformat((mes or hoy.strftime("%Y-%m")) + "-01")
+    except ValueError: m0 = hoy.replace(day=1)
+    ant = (m0 - datetime.timedelta(days=1)).replace(day=1)
+    sig = (m0 + datetime.timedelta(days=32)).replace(day=1)
+    a, b = resumen_mes(con, m0), resumen_mes(con, ant)
+    def var(x, y):   # cuánto cambió frente al mes anterior
+        if not y: return None
+        return round((x - y) / y * 100)
+    comp = {k: var(a[k], b[k]) for k in ("ventas", "pedidos", "ticket", "clientes", "nuevos", "repiten", "rep_clientes", "rep_unidades", "pack_clientes", "packs")}
+    return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp,
+                  mes_txt=f"{MESES_N[m0.month - 1].capitalize()} {m0.year}", mes_ant=ant.strftime("%Y-%m"),
+                  mes_sig=sig.strftime("%Y-%m") if sig <= hoy.replace(day=1) else None, CANAL=CANAL)
+
+
+def resumen_mes(con, m0):
+    """Los números de un mes (m0 = día 1). Ventas por el día en que entraron, como en Inicio."""
+    fin = ((m0 + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)).isoformat()
+    ini = m0.isoformat(); rango = (ini, fin)
+    ventas = round(sum(m for m, n in ventas_por_dia(con, ini, fin).values()), 2)
+    ords = con.execute("""SELECT o.id, o.cliente_id, o.canal, o.total, COALESCE(NULLIF(TRIM(o.ciudad),''), c.ciudad, 'Sin ciudad') ciudad,
+                          (SELECT MIN(substr(x.creado_en,1,10)) FROM ordenes x WHERE x.cliente_id=o.cliente_id AND x.estado!='cancelada') primera,
+                          c.origen
+                          FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
+                          WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ?""", rango).fetchall()
+    pedidos = len(ords)
+    clientes = {o["cliente_id"] for o in ords}
+    nuevos = {o["cliente_id"] for o in ords if (o["primera"] or "") >= ini}
+    def agrupa(clave):
+        d = {}
+        for o in ords:
+            k = o[clave] or "—"; d.setdefault(k, [0, 0.0]); d[k][0] += 1; d[k][1] += o["total"] or 0
+        return sorted(({"k": k, "n": v[0], "m": round(v[1], 2), "pct": round(v[1] / ventas * 100) if ventas else 0} for k, v in d.items()), key=lambda x: -x["m"])
+    origen = {}
+    for o in ords:
+        if o["cliente_id"] in nuevos: origen[o["cliente_id"]] = o["origen"] or "Sin anotar"
+    como_llegaron = {}
+    for v in origen.values(): como_llegaron[v] = como_llegaron.get(v, 0) + 1
+    lineas = con.execute("""SELECT l.nombre, p.sku, p.categoria, SUM(l.cantidad) u, SUM(l.total) f, COUNT(DISTINCT o.cliente_id) cl
+                            FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id LEFT JOIN productos p ON p.id=l.producto_id
+                            WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND l.extra_en IS NULL AND l.producto_id IS NOT NULL
+                              AND COALESCE(p.tipo,'producto')!='opcion' AND substr(o.creado_en,1,10) BETWEEN ? AND ?
+                            GROUP BY l.nombre ORDER BY u DESC, f DESC""", rango).fetchall()
+    def suma(filtro, campo="u"): return sum(l[campo] or 0 for l in lineas if filtro(l["sku"] or ""))
+    def clientes_de(filtro):
+        return con.execute(f"""SELECT COUNT(DISTINCT o.cliente_id) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id JOIN productos p ON p.id=l.producto_id
+                               WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ? AND {filtro}""", rango).fetchone()[0]
+    es_rep = lambda k: k.startswith("REP-"); es_pack = lambda k: k.startswith("PACK")
+    entregas_rep = (con.execute("SELECT COUNT(*) FROM entregas_repuesto WHERE fecha BETWEEN ? AND ?", rango).fetchone()[0]
+                    + con.execute("SELECT COUNT(*) FROM repuestos_prepagados WHERE substr(entregado_en,1,10) BETWEEN ? AND ?", rango).fetchone()[0])
+    vendidos = {l["nombre"] for l in lineas}
+    quietos = [r[0] for r in con.execute("""SELECT nombre FROM productos WHERE activo=1 AND tipo='producto' ORDER BY orden, nombre""") if r[0] not in vendidos]
+    return {
+        "ventas": ventas, "pedidos": pedidos, "ticket": round(ventas / pedidos, 2) if pedidos else 0,
+        "clientes": len(clientes), "nuevos": len(nuevos), "repiten": len(clientes - nuevos),
+        "canales": agrupa("canal"), "ciudades": agrupa("ciudad")[:8],
+        "como_llegaron": sorted(como_llegaron.items(), key=lambda x: -x[1]),
+        "top": [dict(l) for l in lineas[:8]],
+        "rep_clientes": clientes_de("p.sku LIKE 'REP-%'"), "rep_unidades": int(suma(es_rep)),
+        "pack_clientes": clientes_de("p.sku LIKE 'PACK%'"), "packs": int(suma(es_pack)),
+        "prepagados": con.execute("SELECT COUNT(*) FROM repuestos_prepagados WHERE substr(creado_en,1,10) BETWEEN ? AND ?", rango).fetchone()[0],
+        "entregas_rep": entregas_rep,
+        "porches": [{"k": l["nombre"], "u": int(l["u"])} for l in lineas if (l["categoria"] or "") in ("porche", "kit")],
+        "quietos": quietos[:15],
+    }
 
 
 @app.get("/{seccion}", response_class=HTMLResponse)

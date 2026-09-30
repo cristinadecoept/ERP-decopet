@@ -1,20 +1,59 @@
 {% extends "base.html" %}{% block titulo %}Analítica · Decopet{% endblock %}{% block cuerpo %}
-<div class="fila-titulo"><div><h1>Analítica</h1></div></div>
+{% macro flecha(p) %}{% if p is not none %}<span class="an-var {{ 'sube' if p > 0 else ('baja' if p < 0 else '') }}">{{ '↑' if p > 0 else ('↓' if p < 0 else '=') }} {{ p|abs }} %</span>{% endif %}{% endmacro %}
+<div class="fila-titulo"><div><h1>Analítica</h1><div class="sub">Cómo le fue al mes, comparado con el anterior</div></div>
+ <div class="an-mes"><a class="btn sec chico" href="/analitica?mes={{ mes_ant }}">‹</a><b>{{ mes_txt }}</b>{% if mes_sig %}<a class="btn sec chico" href="/analitica?mes={{ mes_sig }}">›</a>{% else %}<span class="btn sec chico" style="opacity:.35">›</span>{% endif %}</div></div>
 
-<div class="g2" style="align-items:start">
-<div class="tarjeta"><h3>Qué se vende</h3>
-{% if productos %}<table class="lineas"><tr><th>Producto</th><th class="num" style="padding-right:16px">Unidades</th><th class="num" style="padding-right:16px">Facturación</th><th class="num" style="padding-right:16px">Deja</th><th style="padding-left:6px">Última</th></tr>
-{% for p in productos %}<tr><td>{{ p.nombre }}</td>
- <td class="num" style="padding-right:16px"><span class="dinero">{{ p.u|int }}</span></td>
- <td class="num" style="padding-right:16px"><b>{{ p.fact|usd }}</b></td>
- <td class="num" style="padding-right:16px">{% if p.deja is not none %}{{ p.deja|usd }}{% else %}<span class="mini">sin costo</span>{% endif %}</td>
- <td class="mono mini" style="padding-left:6px">{{ p.ultima|dia }}</td></tr>{% endfor %}
-<tr><td><b>Total</b></td><td class="num" style="padding-right:16px"><b>{{ tot_u|int }}</b></td><td class="num" style="padding-right:16px"><b>{{ tot_f|usd }}</b></td><td></td><td></td></tr></table>
-{% else %}<div class="vacio">Todavía no hay ventas registradas.</div>{% endif %}</div>
+{# ---------- 1 · Cómo le fue al mes #}
+<div class="tiles an-tiles">
+ <div class="tile"><b>{{ am.ventas|usd }}</b><span>Ventas</span><i>{{ flecha(comp.ventas) }} antes {{ bm.ventas|usd }}</i></div>
+ <div class="tile"><b>{{ am.pedidos }}</b><span>Pedidos</span><i>{{ flecha(comp.pedidos) }} antes {{ bm.pedidos }}</i></div>
+ <div class="tile"><b>{{ am.ticket|usd }}</b><span>Ticket promedio</span><i>{{ flecha(comp.ticket) }} antes {{ bm.ticket|usd }}</i></div>
+ <div class="tile"><b>{{ am.clientes }}</b><span>Clientes que compraron</span><i>{{ am.nuevos }} nuevo{{ 's' if am.nuevos != 1 }} · {{ am.repiten }} repite{{ 'n' if am.repiten != 1 }}</i></div>
+</div>
 
-<div class="tarjeta"><h3>Lo que no se mueve</h3>
-{% if quietos %}<table class="lineas"><tr><th>Producto</th><th>Última vez que se vendió</th></tr>
-{% for p in quietos %}<tr><td>{{ p.nombre }}</td><td class="mini">{% if p.ultima %}{{ p.ultima|dia }}{% else %}<span class="ln-alerta">nunca</span>{% endif %}</td></tr>{% endfor %}</table>
-{% else %}<div class="vacio">Sin datos.</div>{% endif %}</div>
+{# ---------- Repuestos y packs: lo que más importa saber #}
+<h2 class="seccion-t">Repuestos y packs</h2>
+<div class="tiles an-tiles">
+ <div class="tile"><b>{{ am.rep_clientes }}</b><span>Clientes que compraron repuesto</span><i>{{ am.rep_unidades }} repuesto{{ 's' if am.rep_unidades != 1 }} · {{ flecha(comp.rep_clientes) }} antes {{ bm.rep_clientes }}</i></div>
+ <div class="tile"><b>{{ am.pack_clientes }}</b><span>Clientes que compraron pack</span><i>{{ am.packs }} pack{{ 's' if am.packs != 1 }} · {{ flecha(comp.pack_clientes) }} antes {{ bm.pack_clientes }}</i></div>
+ <div class="tile"><b>{{ am.prepagados }}</b><span>Repuestos dejados pagados</span><i>para entregar después · antes {{ bm.prepagados }}</i></div>
+ <div class="tile"><b>{{ am.entregas_rep }}</b><span>Entregas de repuesto hechas</span><i>de packs y prepagados · antes {{ bm.entregas_rep }}</i></div>
+</div>
+
+{# ---------- 2 · De dónde vinieron las ventas #}
+<h2 class="seccion-t">De dónde vinieron las ventas</h2>
+<div class="g3 an-g">
+ <div class="tarjeta"><h3>Por canal</h3>
+ {% if am.canales %}<table class="lineas"><tr><th>Canal</th><th class="num">Pedidos</th><th class="num">Ventas</th><th class="num">%</th></tr>
+ {% for x in am.canales %}<tr><td>{{ CANAL.get(x.k, x.k) }}</td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td><td class="num mini">{{ x.pct }} %</td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Sin pedidos este mes.</div>{% endif %}</div>
+
+ <div class="tarjeta"><h3>Clientes nuevos · cómo llegaron</h3>
+ {% if am.como_llegaron %}<table class="lineas"><tr><th>Cómo llegó</th><th class="num">Clientes</th></tr>
+ {% for k, n in am.como_llegaron %}<tr><td>{{ k }}</td><td class="num"><b>{{ n }}</b></td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Ningún cliente nuevo este mes.</div>{% endif %}</div>
+
+ <div class="tarjeta"><h3>Por ciudad</h3>
+ {% if am.ciudades %}<table class="lineas"><tr><th>Ciudad</th><th class="num">Pedidos</th><th class="num">Ventas</th></tr>
+ {% for x in am.ciudades %}<tr><td>{{ x.k }}</td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Sin pedidos este mes.</div>{% endif %}</div>
+</div>
+
+{# ---------- 3 · Qué se vendió #}
+<h2 class="seccion-t">Qué se vendió</h2>
+<div class="g3 an-g">
+ <div class="tarjeta"><h3>Lo más vendido</h3>
+ {% if am.top %}<table class="lineas"><tr><th>Producto</th><th class="num">Unidades</th><th class="num">Ventas</th></tr>
+ {% for p in am.top %}<tr><td>{{ p.nombre }}</td><td class="num"><b>{{ p.u|int }}</b></td><td class="num">{{ p.f|usd }}</td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Sin ventas este mes.</div>{% endif %}</div>
+
+ <div class="tarjeta"><h3>El Porche</h3>
+ {% if am.porches %}<table class="lineas"><tr><th>Modelo</th><th class="num">Vendidos</th></tr>
+ {% for p in am.porches %}<tr><td>{{ p.k }}</td><td class="num"><b>{{ p.u }}</b></td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">No se vendió ningún porche este mes.</div>{% endif %}</div>
+
+ <div class="tarjeta"><h3>Lo que no se vendió</h3>
+ {% if am.quietos %}<div class="an-quietos">{% for q in am.quietos %}<span class="canal">{{ q }}</span>{% endfor %}</div>
+ {% else %}<div class="vacio">Se vendió de todo.</div>{% endif %}</div>
 </div>
 {% endblock %}
