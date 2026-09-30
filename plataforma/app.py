@@ -2419,6 +2419,12 @@ def finanzas_salir():
     resp = RedirectResponse("/inicio", status_code=303); resp.delete_cookie("res_ok"); return resp
 
 
+def resultados_auto(con):
+    """Apagado: Resultados muestra solo los meses que Cristina carga a mano, hasta que confíe en que el ERP los calcule solo."""
+    r = con.execute("SELECT valor FROM config WHERE clave='resultados_auto'").fetchone()
+    return bool(r and r[0] == "1")
+
+
 def _resultados_meses(con, anio):
     """Las filas de Resultados. Antes de la fecha de arranque manda el historial del Excel; desde ahí lo calcula el ERP."""
     desde = finanzas_desde(con)   # Finanzas solo mira órdenes desde la fecha que Cristina active; antes, el historial
@@ -2448,15 +2454,16 @@ def _resultados_meses(con, anio):
     for m in set(gastos_m) | set(sueldos):
         if m.startswith(anio): vivos.setdefault(m, {"m": m, "facturacion": 0, "n": 0})
     hist = {r["mes"]: dict(r) for r in con.execute("SELECT * FROM resultados_mes WHERE substr(mes,1,4)=? ORDER BY mes", (anio,))}
+    auto = resultados_auto(con)
     meses = []
     for m in sorted(set(vivos) | set(hist)):
         h, v = hist.get(m), vivos.get(m)
-        usar_hist = h and (not desde or m < desde[:7])   # desde que el ERP está activo, el mes se calcula solo
-        if usar_hist:
+        # un mes cargado a mano siempre manda; el cálculo del ERP solo entra si Cristina lo prende (resultados_auto)
+        if h:
             meses.append({"m": m, "facturacion": h["facturacion"] or 0, "unidades": h["unidades"] or 0, "gastos": h["gastos"] or 0,
                           "sueldo": h["sueldo"] or 0, "grandes": h["arrastre"] or 0, "n": 0, "historial": True,
                           "nota": h["nota"] or "", "contexto": h["contexto"] or ""})
-        elif v:
+        elif v and auto:
             meses.append({"m": m, "facturacion": v.get("facturacion") or 0, "unidades": unidades.get(m, 0), "gastos": gastos_m.get(m, 0),
                           "sueldo": sueldos.get(m, 0), "grandes": grandes.get(m, 0), "n": v.get("n") or 0, "historial": False, "nota": "", "contexto": ""})
     for m in meses:
@@ -2484,7 +2491,7 @@ def finanzas(request: Request, anio: str = "", mal: str = "", con=Depends(db)):
     anios = sorted({r[0] for r in con.execute("SELECT DISTINCT substr(creado_en,1,4) FROM ordenes UNION SELECT DISTINCT substr(fecha,1,4) FROM gastos UNION SELECT DISTINCT substr(mes,1,4) FROM resultados_mes")} | {anio}, reverse=True)
     por_cat = con.execute("SELECT categoria, SUM(monto_usd) monto FROM gastos WHERE substr(fecha,1,4)=? GROUP BY 1 ORDER BY 2 DESC", (anio,)).fetchall()
     historial = con.execute("SELECT * FROM resultados_mes WHERE substr(mes,1,4)=? ORDER BY mes", (anio,)).fetchall()
-    return render(request, "finanzas.html", seccion="finanzas", meses=meses, anio=anio, anios=anios, por_cat=por_cat, historial=historial, cashflow_desde=desde, MESES_N=MESES_N)
+    return render(request, "finanzas.html", seccion="finanzas", meses=meses, anio=anio, anios=anios, por_cat=por_cat, historial=historial, cashflow_desde=desde, auto=resultados_auto(con), MESES_N=MESES_N)
 
 
 @app.get("/finanzas/exportar")

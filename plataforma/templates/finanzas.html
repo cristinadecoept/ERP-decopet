@@ -4,7 +4,7 @@
 {% set ns = namespace(f=0,u=0,g=0,s=0,gr=0) %}
 {% macro delta(d, ant) %}{% if d is not none %}<div class="vs {{ 'sube' if d > 0 else ('baja' if d < 0 else '') }}">{{ '+' if d > 0 }}{{ d }} %<span> vs {{ ant }}</span></div>{% endif %}{% endmacro %}
 {% for m in meses %}{% set ns.f = ns.f + m.facturacion %}{% set ns.u = ns.u + m.unidades %}{% set ns.g = ns.g + m.gastos %}{% set ns.s = ns.s + m.sueldo %}{% set ns.gr = ns.gr + m.grandes %}
-<tr><td><b>{{ MESES_N[m.m[5:]|int - 1]|capitalize }}</b>{% if m.historial %} <span class="canal" title="{{ m.nota }}">Excel</span>{% endif %}</td>
+<tr><td><b>{{ MESES_N[m.m[5:]|int - 1]|capitalize }}</b>{% if m.historial and auto %} <span class="canal" title="{{ m.nota }}">A mano</span>{% endif %}</td>
 <td class="num">{{ m.facturacion|usd }}{{ delta(m.d_facturacion, m.mes_ant) }}</td>
 <td class="num">{{ m.unidades|int or '—' }}{{ delta(m.d_unidades, m.mes_ant) }}{% if m.n %}<div class="mini">{{ m.n }} orden{{ 'es' if m.n!=1 }}</div>{% endif %}</td>
 <td class="num">{{ m.gastos|usd }}{% if m.grandes %}<div class="mini">{{ m.grandes|usd }} no son de este mes</div>{% endif %}</td>
@@ -16,7 +16,7 @@
 {% if meses %}{% set gan = ns.f - ns.g %}<tr style="background:var(--fondo)"><td><b>Total {{ anio }}</b></td><td class="num"><b>{{ ns.f|usd }}</b></td><td class="num"><b>{{ ns.u|int }}</b></td><td class="num"><b>{{ ns.g|usd }}</b></td><td class="num"><b>{{ gan|usd }}</b></td><td class="num"><b>{{ ns.s|usd }}</b></td><td class="num"><b>{{ (gan - ns.s)|usd }}</b></td><td class="num"><b>{{ ((gan / ns.f * 100)|round|int ~ ' %') if ns.f else '—' }}</b></td></tr>{% endif %}
 </table></div>
 <p class="mini" style="margin-top:8px"><b>Ganancia</b> = facturación − gastos del mes (antes de tu sueldo). <b>Entrada</b> = lo que quedó después de pagarte. Tu sueldo no se cuenta dentro de Gastos, va en su propia columna, para que no se reste dos veces.</p>
-<div class="nota-cli" style="margin-top:10px"><span class="t">De dónde sale cada mes</span>Los meses marcados <span class="canal">Excel</span> son el historial que cargaste a mano. Desde el día que activemos el ERP, cada mes nuevo se llena <b>solo</b>: la facturación y las unidades salen de las órdenes (contando cada venta el día que entró la plata) y los gastos salen de la sección Gastos. No hay que volver a cargar nada a mano.{% if not cashflow_desde %} <b>Todavía no está activo</b> — avísame el día que empiecen a usarlo y lo prendo.{% else %} Activo desde {{ cashflow_desde|el_fecha }}.{% endif %}</div>
+<div class="nota-cli" style="margin-top:10px"><span class="t">De dónde sale cada mes</span>{% if auto %}Los meses que cargas a mano mandan. Los demás los calcula el ERP desde {{ cashflow_desde|el_fecha }} con las órdenes y los gastos.{% else %}Cada mes lo cargas tú aquí abajo. Cuando confíes en que el ERP lo haga solo, me avisas y lo prendo.{% endif %}</div>
 
 <h2 class="seccion-t">Cargar o corregir un mes</h2>
 <div class="tabla"><table><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Unidades</th><th class="num">Gastos</th><th class="num">Sueldo</th><th class="num">No es de este mes</th><th>Qué pasó</th><th></th></tr>
