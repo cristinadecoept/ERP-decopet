@@ -944,3 +944,4 @@ html.oscuro .est.no_entregado{background:rgba(201,74,47,.25);color:#ffb8a4}
 }
 .lleva-tag{display:block;width:max-content;margin-top:4px;font-size:11.5px;font-weight:700;color:#7a5a10;background:rgba(224,168,46,.14);border:1px solid #e0c68a;border-radius:99px;padding:1px 9px}
 html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-color:rgba(224,168,46,.4)}
+.pl-azul,.pl-rosado{white-space:nowrap;display:inline-block}
