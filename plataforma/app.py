@@ -840,6 +840,31 @@ def HAY_QUE_ENTREGAR(a="o"):
                   AND NOT EXISTS (SELECT 1 FROM packs kx WHERE kx.orden_id={a}.id AND kx.producto_id=lx.producto_id AND kx.entregadas_inicio=0))"""
 
 
+def pasar_entrega_a_prepagado(con, oid, uid):
+    """Si el pedido no trae nada para entregar hoy (solo repuestos prepagados, o un pack del que no se lleva ninguno)
+    y aun así se llenó cómo se va a entregar, eso no es una entrega de hoy: queda guardado en el repuesto (o el pack)
+    para cuando el cliente lo active. Si el delivery ya se pagó en el pedido, queda como pagado y no se vuelve a cobrar.
+    El pedido se queda sin despachador, así el delivery no se le paga dos veces."""
+    o = con.execute("SELECT * FROM ordenes o WHERE o.id=? AND NOT " + HAY_QUE_ENTREGAR(), (oid,)).fetchone()
+    if not o or not (o["tipo_entrega"] or o["despachador"]): return
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado IN ('confirmado','por_confirmar')", (oid,)).fetchone()[0]
+    deliv = float(o["delivery"] or 0); pago_d = 1 if (deliv > 0 and pagado >= (o["total"] or 0) - 0.01) else 0
+    te = o["tipo_entrega"] if o["tipo_entrega"] in ("delivery", "delivery_fuera", "pickup", "nacional") else None
+    r = con.execute("SELECT id FROM repuestos_prepagados WHERE orden_id=? AND entregado_en IS NULL ORDER BY id LIMIT 1", (oid,)).fetchone()
+    k = None if r else con.execute("SELECT id FROM packs WHERE orden_id=? ORDER BY id LIMIT 1", (oid,)).fetchone()
+    if r:
+        con.execute("UPDATE repuestos_prepagados SET tipo_entrega=?, despachador=?, agencia=?, delivery=?, delivery_pagado=? WHERE id=?",
+                    (te, o["despachador"], o["agencia"], deliv, pago_d, r["id"]))
+    elif k:
+        con.execute("""UPDATE packs SET tipo_programado=?, despachador_programado=?, delivery_programado=?,
+                       deliveries_prepagados=COALESCE(deliveries_prepagados,0)+? WHERE id=?""", (te, o["despachador"], deliv, pago_d, k["id"]))
+    else: return
+    con.execute("UPDATE ordenes SET despachador=NULL WHERE id=?", (oid,))
+    registrar(con, oid, uid, "estado", "Hoy no se entrega nada: la entrega" + (f" ({ENTREGA.get(te, te)}" if te else " (") +
+              (f", {o['despachador']}" if o["despachador"] else "") + (f", delivery {fmt_usd(deliv)}{' ya pagado' if pago_d else ''}" if deliv else "") +
+              ") queda guardada para cuando el cliente lo active")
+
+
 def cargar_ordenes(con, filtros, rol):
     sql = """SELECT o.*, c.nombre cliente, c.telefono, u.nombre creada_por_nombre,
              (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_direccion,
@@ -1551,6 +1576,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     sobra = sobrante_a_favor(con, oid, uid, fp or None)   # pagó de más al crear la orden (no había vuelto)
     if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
     actualizar_porche_cliente(con, oid); fijar_pago_despachador(con, oid)
+    pasar_entrega_a_prepagado(con, oid, uid)
     con.commit(); return RedirectResponse(f"/ordenes?abrir={oid}", status_code=303)
 
 

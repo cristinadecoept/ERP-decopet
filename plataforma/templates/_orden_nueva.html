@@ -45,6 +45,7 @@
 
 <!-- 4 · PAGO -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">5</span><b>Entrega</b></div>
+<div class="nota-log" id="nada-hoy" hidden style="margin-top:0">Hoy no se entrega nada. La entrega es opcional: si la llenas (delivery, despachador), queda guardada para cuando el cliente active su repuesto.</div>
 <div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
 <div id="ent-detalle" hidden>
 <div class="g2" id="cobro-deliv" hidden>{% if tarifas %}<div><label>Zona de delivery</label><select id="zona-sel" name="zona_tarifa" onchange="const o=this.selectedOptions[0];if(o&&o.dataset.t){document.getElementById('deliv').value=o.dataset.t;calc();}"><option value="">— elegir zona —</option>{% for z in tarifas %}<option value="{{ z.zona }}" data-t="{{ z.tarifa }}">{{ z.zona }} · ${{ '%g'|format(z.tarifa) }}</option>{% endfor %}</select></div>{% endif %}<div><label>Delivery USD</label><input type="number" step="0.01" name="delivery" id="deliv" value="0" oninput="calc()"></div></div>
@@ -89,12 +90,14 @@ function agregar(i){document.getElementById('picker').hidden=true;const d=docume
  if((PS[i]||'').startsWith('REP-'))ops+=`<label class="chk no-chk-mini"><input type="checkbox" onchange="togPrepago(this)"> <span>Lo deja pagado · se entrega después</span></label><input type="hidden" name="prepagar" value="0">`;else ops+='<input type="hidden" name="prepagar" value="0">';
  const U={'PACK3-M':3,'PACK3-G':3,'PACK4-M':4,'PACK4-G':4,'PACK8-M':8,'PACK8-G':8}[PS[i]];
  if(U){let so='';for(let n=0;n<=U;n++)so+=`<option value="${n}" ${n===1?'selected':''}>${n===0?'ninguno · los pide después':n===U?n+' (todos)':n}</option>`;let dso='';for(let n=0;n<=U;n++)dso+=`<option value="${n}" ${n===0?'selected':''}>${n===0?'ninguno':n===U?n+' (todos)':n+(n===1?' retiro':' retiros')}</option>`;
-  ops+=`<span class="no-opt-g pack-hoy"><b>¿Cuántos se lleva hoy?</b><select name="pack_inicio" style="width:auto;padding:5px 28px 5px 10px;font-size:13px;margin:0;font-weight:600">${so}</select></span><span class="no-opt-g"><span class="mini" title="Deliveries de los próximos retiros que el cliente deja pagados hoy. El delivery de hoy va abajo, en Delivery USD.">Deja pagado el delivery de:</span><select name="pack_deliv" style="width:auto;padding:4px 26px 4px 8px;font-size:12px;margin:0" onchange="delivPack()">${dso}</select></span>`;}else ops+='<input type="hidden" name="pack_inicio" value=""><input type="hidden" name="pack_deliv" value="">';
+  ops+=`<span class="no-opt-g pack-hoy"><b>¿Cuántos se lleva hoy?</b><select name="pack_inicio" onchange="calc()" style="width:auto;padding:5px 28px 5px 10px;font-size:13px;margin:0;font-weight:600">${so}</select></span><span class="no-opt-g"><span class="mini" title="Deliveries de los próximos retiros que el cliente deja pagados hoy. El delivery de hoy va abajo, en Delivery USD.">Deja pagado el delivery de:</span><select name="pack_deliv" style="width:auto;padding:4px 26px 4px 8px;font-size:12px;margin:0" onchange="delivPack()">${dso}</select></span>`;}else ops+='<input type="hidden" name="pack_inicio" value=""><input type="hidden" name="pack_deliv" value="">';
  d.innerHTML=`<input type="hidden" name="producto_id" value="${PR[i]}"><div class="no-linea-top">${PF[i]?`<img class="no-linea-foto" src="/fotos/${PF[i]}" alt="">`:''}<div class="no-linea-nom"><b>${PN[i]}</b><span class="mini">$${PP[i].toFixed(2)} c/u</span></div><div class="no-qty"><button type="button" onclick="qty(this,-1)">−</button><input type="number" name="cantidad" value="1" min="1" oninput="calc()"><button type="button" onclick="qty(this,1)">+</button></div><b class="lt">$${PP[i].toFixed(2)}</b><button type="button" class="no-x-sm" onclick="this.closest('.no-linea').remove();calc()">×</button></div><div class="no-opts">${ops}</div>`;
  document.getElementById('lin').appendChild(d);calc();}
 function delivPack(){calc();}   // los deliveries prepagados de los retiros futuros se suman aparte en el total
 function qty(b,n){const i=b.parentElement.querySelector('input');i.value=Math.max(1,(+i.value||1)+n);calc();}
 function togPrepago(c){const h=c.closest('label').nextElementSibling;h.value=c.checked?'1':'0';c.closest('label').classList.toggle('act',c.checked);calc();}
+// todos los productos se quedan para después (repuestos prepagados o pack sin retiro hoy): no hay entrega de hoy
+function nadaHoy(){const ls=[...document.querySelectorAll('#lin .no-linea')];return ls.length>0&&ls.every(d=>{const pp=d.querySelector('[name=prepagar]'),pi=d.querySelector('select[name=pack_inicio]');return (pp&&pp.value==='1')||(pi&&pi.value==='0');});}
 function togChk(c){const h=c.closest('label').nextElementSibling;h.value=c.checked?'1':'';c.closest('label').classList.toggle('act',c.checked);calc();}
 function tog(b){const h=b.nextElementSibling;const on=!b.classList.contains('act');b.classList.toggle('act',on);h.value=on?'1':(h.name==='prepagar'?'0':'');calc();}
 // la personalización se marca en el producto que la lleva: así el taller sabe a cuál pegarle la placa
@@ -105,7 +108,7 @@ function setColor(b,c){b.parentElement.querySelectorAll('.no-mini').forEach(x=>x
  const d=b.closest('.no-linea'),i=+d.dataset.i,img=d.querySelector('.no-linea-foto'),f=(c==='rosado'&&PFR[i])?PFR[i]:PF[i];if(img&&f)img.src='/fotos/'+f;calc();}
 function lineaTotal(d){const i=+d.dataset.i,c=Math.max(1,+d.querySelector('[name=cantidad]').value||1);let base=P2[i]&&c>=2?Math.floor(c/2)*P2[i]+(c%2)*PP[i]:PP[i]*c;
  if(d.querySelector('[name=malla]').value==='1')base+=OP_MALLA;const p=d.querySelector('[name=personalizacion]');if(p&&p.type!=='hidden'&&p.value.trim())base+=OP_PERSO;return base;}
-function calc(){let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{const v=lineaTotal(d);d.querySelector('.lt').innerText='$'+v.toFixed(2);s+=v;});
+function calc(){const nh=document.getElementById('nada-hoy');if(nh)nh.hidden=!nadaHoy();let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{const v=lineaTotal(d);d.querySelector('.lt').innerText='$'+v.toFixed(2);s+=v;});
  const px=+document.getElementById('perso-x').value||0;s+=px;document.getElementById('motivo-w').hidden=!(+document.getElementById('desc').value>0);
  const ds=+document.getElementById('desc').value||0,dl=+document.getElementById('deliv').value||0;const conIva=document.getElementById('canal').value==='cashea'||document.getElementById('factura').value==='1';const iva=conIva?(s-ds)*0.16:0;
  document.getElementById('r-iva').hidden=!iva;document.getElementById('r-deliv').hidden=!dl;document.getElementById('r-desc').hidden=!ds;
@@ -173,7 +176,7 @@ function faltanDatos(){   // un cliente que ya existe puede no tener correo, tel
  w.hidden=!(ft||fc||fd);}
 function validar(){const fp=document.getElementById('f-pago');
  if(!fp.disabled&&!fp.value){alert('Falta la fecha de pago. Solo se puede dejar vacía si lo paga en efectivo al recibir.');fp.focus();return false;}
- if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if(!document.getElementById('te').value){alert('Elige el tipo de entrega.');return false;}
+ if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if(!document.getElementById('te').value&&!nadaHoy()){alert('Elige el tipo de entrega.');return false;}
  const val=n=>((document.querySelector('[name='+n+']')||{}).value||'').trim(),nuevo=!document.getElementById('cl-id').value,nac=document.getElementById('te').value==='nacional';
  const pedir=(id,n,msg)=>{const w=document.getElementById(id);if(!w.hidden&&!val(n)){alert(msg);w.querySelector('input').focus();return false;}return true;};
  if(nuevo){if(!val('cliente_telefono')){alert('El teléfono del cliente es obligatorio.');return false;}
