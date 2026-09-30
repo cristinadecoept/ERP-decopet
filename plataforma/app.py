@@ -5647,6 +5647,13 @@ def resumen_mes(con, m0):
         "entregas_rep": entregas_rep,
         "porches": [{"k": l["nombre"], "u": int(l["u"])} for l in lineas if (l["categoria"] or "") in ("porche", "kit")],
         "quietos": quietos[:15],
+        # Miembros PRO: quienes tienen un porche PRO (por su primera compra de uno), a fin de ese mes y los que se sumaron en el mes
+        "pro_total": con.execute("""SELECT COUNT(*) FROM (SELECT o.cliente_id, MIN(substr(o.creado_en,1,10)) d FROM orden_lineas l
+                                    JOIN ordenes o ON o.id=l.orden_id JOIN productos p ON p.id=l.producto_id
+                                    WHERE o.estado!='cancelada' AND (p.sku LIKE 'PRO-%' OR p.sku LIKE 'KIT-COMPLETO-%') GROUP BY o.cliente_id) WHERE d <= ?""", (fin,)).fetchone()[0],
+        "pro_nuevos": con.execute("""SELECT COUNT(*) FROM (SELECT o.cliente_id, MIN(substr(o.creado_en,1,10)) d FROM orden_lineas l
+                                     JOIN ordenes o ON o.id=l.orden_id JOIN productos p ON p.id=l.producto_id
+                                     WHERE o.estado!='cancelada' AND (p.sku LIKE 'PRO-%' OR p.sku LIKE 'KIT-COMPLETO-%') GROUP BY o.cliente_id) WHERE d BETWEEN ? AND ?""", rango).fetchone()[0],
     }
 
 

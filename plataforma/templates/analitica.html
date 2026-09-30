@@ -14,6 +14,7 @@
 {# ---------- Repuestos y packs: lo que más importa saber #}
 <h2 class="seccion-t">Repuestos y packs</h2>
 <div class="tiles an-tiles">
+ <a class="tile" href="/miembros" style="text-decoration:none;color:inherit"><b>{{ am.pro_total }}</b><span>Miembros PRO</span><i>{{ am.pro_nuevos }} nuevo{{ 's' if am.pro_nuevos != 1 }} este mes · <u>ver quiénes</u></i></a>
  <div class="tile"><b>{{ am.rep_clientes }}</b><span>Clientes que compraron repuesto</span><i>{{ am.rep_unidades }} repuesto{{ 's' if am.rep_unidades != 1 }} · {{ flecha(comp.rep_clientes) }} antes {{ bm.rep_clientes }}</i></div>
  <div class="tile"><b>{{ am.pack_clientes }}</b><span>Clientes que compraron pack</span><i>{{ am.packs }} pack{{ 's' if am.packs != 1 }} · {{ flecha(comp.pack_clientes) }} antes {{ bm.pack_clientes }}</i></div>
  <div class="tile"><b>{{ am.prepagados }}</b><span>Repuestos dejados pagados</span><i>para entregar después · antes {{ bm.prepagados }}</i></div>
