@@ -916,7 +916,7 @@ def cargar_orden(con, oid):
                        FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id LEFT JOIN usuarios u ON u.id=o.creada_por WHERE o.id=?""", (oid,)).fetchone()
     if not o: return None
     o = dict(o); o["alertas"] = alertas(o); o["coordinada"] = coordinada(o)
-    o["lineas"] = con.execute("""SELECT l.*, k.unidades pack_unidades, k.entregadas_inicio pack_hoy FROM orden_lineas l
+    o["lineas"] = con.execute("""SELECT l.*, k.id pack_id, k.unidades pack_unidades, k.entregadas_inicio pack_hoy FROM orden_lineas l
                                  LEFT JOIN packs k ON k.orden_id=l.orden_id AND k.producto_id=l.producto_id WHERE l.orden_id=?""", (oid,)).fetchall()
     o["pagos"] = con.execute("SELECT p.*, u.nombre confirmado_por_nombre FROM pagos p LEFT JOIN usuarios u ON u.id=p.confirmado_por WHERE orden_id=? ORDER BY id", (oid,)).fetchall()
     o["pagado"] = sum(p["monto_usd"] for p in o["pagos"] if p["estado"] == "confirmado")
@@ -4675,6 +4675,22 @@ def mis_entregas(request: Request, con=Depends(db)):
                   ganado_mes=round(sum(h["pago"] for h in hist if h["estado"] == "entregada" and (h["fecha"] or "")[:7] == mes), 2),
                   ganado_todo=round(sum(h["pago"] for h in hist if h["estado"] == "entregada"), 2),
                   n_entregadas=sum(1 for h in hist_todo if h["estado"] == "entregada"))
+
+
+@app.post("/ordenes/{oid}/pack/{kid}/hoy")
+def pack_cuantos_hoy(request: Request, oid: int, kid: int, cuantos: str = Form(""), con=Depends(db)):
+    """El cliente cambió de idea antes de que le entregaran: se lleva otra cantidad del pack con esta entrega."""
+    if "coordinar" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    o = con.execute("SELECT estado FROM ordenes WHERE id=?", (oid,)).fetchone()
+    k = con.execute("SELECT * FROM packs WHERE id=? AND orden_id=?", (kid, oid)).fetchone()
+    if o and k and o["estado"] in ("pendiente", "en_ruta") and cuantos.isdigit():
+        ya = con.execute("SELECT COUNT(*) FROM entregas_repuesto WHERE pack_id=?", (kid,)).fetchone()[0]
+        n = max(0, min(int(cuantos), k["unidades"] - ya))
+        if n != k["entregadas_inicio"]:
+            con.execute("UPDATE packs SET entregadas_inicio=? WHERE id=?", (n, kid))
+            registrar(con, oid, uid_de(request), "pack", f"Se lleva {n} de {k['unidades']} con esta entrega (antes {k['entregadas_inicio']})")
+            con.commit()
+    return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/no-recibio")
