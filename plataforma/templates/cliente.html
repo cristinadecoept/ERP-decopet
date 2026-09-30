@@ -12,6 +12,7 @@
  <div class="tile"><b>{% if nums.cada %}{{ nums.cada }} días{% else %}—{% endif %}</b><span>Frecuencia de compra</span><i>{% if nums.cada %}pide cada {{ nums.cada }} días en promedio{% elif nums.n==1 %}solo ha comprado una vez{% else %}—{% endif %}</i></div>
  {% if porche %}<div class="tile"><b>{% if proximo %}{{ proximo|fecha }}{% else %}—{% endif %}</b><span>Próximo repuesto</span></div>{% endif %}
  {% if saldo_pack %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ saldo_pack }}</b><span>Repuestos del pack por entregar</span><i>ya pagados · no cobrar</i></div>{% endif %}
+ {% if n_prepagados %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ n_prepagados }}</b><span>Repuesto{{ 's' if n_prepagados != 1 }} prepagado{{ 's' if n_prepagados != 1 }} por entregar</span><i>ya pagado{{ 's' if n_prepagados != 1 }} · se activa cuando lo pida · <a href="/prepagados">ver</a></i></div>{% endif %}
 </div>
 {% if nums.n %}<div class="tarjeta" style="margin-bottom:16px"><div class="num-graf">
  <div><h3>Últimos 12 meses{% if rol!='admin' %} (pedidos){% endif %}</h3><svg viewBox="0 0 240 70" class="mini-barras">{% for m,v in nums.meses %}{% set h = (v/nums.max_mes*48) if nums.max_mes else 0 %}<rect x="{{ loop.index0*20+2 }}" y="{{ 52-h }}" width="16" height="{{ h }}" rx="3" fill="{{ 'var(--verde)' if v else 'var(--linea)' }}"{% if not v %} height="3" y="49"{% endif %}/><text x="{{ loop.index0*20+10 }}" y="65" text-anchor="middle">{{ m }}</text>{% endfor %}</svg></div>

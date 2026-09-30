@@ -3894,7 +3894,7 @@ def seguimientos_pendientes(con, umbral=None, ventana=7):
         # donde el cliente es el mismo registro.
         ritmo, _ = ritmo_cliente(fechas)
         intervalo = ciclo_de(ritmo)
-        saldo_pack = con.execute("SELECT COALESCE(SUM(k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)),0) FROM packs k WHERE k.cliente_id=?", (m["id"],)).fetchone()[0]
+        saldo_pack = con.execute("SELECT COALESCE(SUM(k.unidades - (CASE WHEN k.orden_id IS NULL OR (SELECT o_.estado FROM ordenes o_ WHERE o_.id=k.orden_id)='entregada' THEN k.entregadas_inicio ELSE 0 END) - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)),0) FROM packs k WHERE k.cliente_id=?", (m["id"],)).fetchone()[0]
         ult = max(fechas) if fechas else None
         ref = max([x for x in (ult, m["porche"]) if x]); dias = (hoy - datetime.date.fromisoformat(ref[:10])).days
         if dias < intervalo or dias > 120: continue
@@ -4428,8 +4428,10 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     catalogo = con.execute("SELECT * FROM productos WHERE tipo='producto' AND activo=1 ORDER BY orden").fetchall()
     for c_, tp in (("fecha_programada", "TEXT"), ("tipo_programado", "TEXT"), ("despachador_programado", "TEXT"), ("nota_programada", "TEXT")):
         if c_ not in [r[1] for r in con.execute("PRAGMA table_info(packs)")]: con.execute(f"ALTER TABLE packs ADD COLUMN {c_} {tp}")
-    packs = con.execute("""SELECT k.*, (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregadas,
-                           (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ult FROM packs k WHERE k.cliente_id=? ORDER BY k.id DESC""", (cid,)).fetchall()
+    # los que se lleva el día de la compra cuentan cuando esa orden se entrega, no antes
+    packs = [dict(r) | {"entregadas_inicio": r["ini_real"]} for r in con.execute("""SELECT k.*, (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregadas,
+                           (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ult, (CASE WHEN k.orden_id IS NULL OR (SELECT o_.estado FROM ordenes o_ WHERE o_.id=k.orden_id)='entregada' THEN k.entregadas_inicio ELSE 0 END) ini_real
+                           FROM packs k WHERE k.cliente_id=? ORDER BY k.id DESC""", (cid,))]
     entregas = con.execute("""SELECT e.*, k.tamano, k.unidades, k.id pack, o.numero orden,
                               (SELECT COUNT(*) FROM entregas_repuesto e2 WHERE e2.pack_id=e.pack_id AND (e2.fecha < e.fecha OR (e2.fecha = e.fecha AND e2.id <= e.id))) + k.entregadas_inicio n_retiro,
                               u.nombre usuario
@@ -4503,7 +4505,7 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
                   cajas=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 ORDER BY orden").fetchall(), c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
                   refirio=refirio, lo_trajo=lo_trajo,
                   packs=packs, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
-                  etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack,
+                  etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack, n_prepagados=prepagados,
                   oportunidades=oportunidades_cliente(lineas, perros), formas=formas, canales=canales, entregas_tipo=entregas_tipo,
                   ENTREGA=ENTREGA, E_LABEL=E_LABEL, P_LABEL=P_LABEL, RESULTADOS=RESULTADOS)
 
