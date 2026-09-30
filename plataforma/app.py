@@ -4565,7 +4565,10 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
                              COALESCE((SELECT SUM(total) FROM ordenes o WHERE o.cliente_id=clientes.id AND o.estado!='cancelada'),0) gastado
                              FROM clientes WHERE referido_id=? ORDER BY id""", (c["id"],)).fetchall()
     lo_trajo = con.execute("SELECT id, nombre FROM clientes WHERE id=?", (c["referido_id"],)).fetchone() if c["referido_id"] else None
-    return render(request, "cliente.html", seccion="clientes",
+    # lo que ha pasado en sus entregas: queda en su ficha para siempre, abierto o ya resuelto
+    incid = con.execute("""SELECT i.*, o.numero, substr(i.creado_en,1,10) fecha FROM incidencias i JOIN ordenes o ON o.id=i.orden_id
+                           WHERE o.cliente_id=? ORDER BY i.id DESC""", (cid,)).fetchall()
+    return render(request, "cliente.html", seccion="clientes", incid=incid,
                   credito=credito_de(con, cid),
                   credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
                         (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=k.orden_id AND p.estado='confirmado' AND p.forma!=?) pagado
