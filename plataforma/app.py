@@ -5039,6 +5039,13 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                                    WHERE despachador=?""", (d["nombre"],)).fetchone()
     record["viajes"] = viajes_hechos["n"]; record["viajes_monto"] = round(viajes_hechos["m"], 2)
     hist = sorted([dict(h) for h in hist] + viajes_hist(con, d["nombre"]), key=lambda h: h["fecha"] or "", reverse=True)
+    # los retiros de repuesto que llevó también son entregas suyas; los viajes en que no le recibieron, no
+    ent = [h for h in hist if h["estado"] == "entregada"]
+    record.update(n=len(hist), entregadas=len(ent),
+                  n_mes=sum(1 for h in ent if (h["fecha"] or "")[:7] == mes),
+                  total=round(sum(h["pago"] or 0 for h in ent), 2),
+                  mes=round(sum(h["pago"] or 0 for h in ent if (h["fecha"] or "")[:7] == mes), 2),
+                  primera=hist[-1]["fecha"] if hist else None)
     return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO, d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos,
                   ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist, record=record)
