@@ -5113,6 +5113,13 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
         forma = f.get("forma") or ""
         cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma, forma),)).fetchone()
         if monto - usado > 0.009 and not cuenta: return RedirectResponse(f"/despachadores/{did}", status_code=303)   # falta decir de qué caja
+        parcial = round(float(cifra(f.get("monto_pago")) or 0), 2) if (f.get("monto_pago") or "").strip() else 0
+        if 0 < parcial < monto - usado - 0.009:
+            # le paga solo una parte: queda como adelanto y se descuenta cuando se le pague el resto. Las entregas siguen por pagar.
+            con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor, cuenta_id, notas, usuario_id)
+                           VALUES (?,?,?,'USD','Despachadores','Adelanto',?,?,?,?,?)""",
+                        (fecha, parcial, parcial, f"Adelanto {d['nombre']} · parte de lo que se le debe", d["nombre"], cuenta["id"], nota, uid))
+            con.commit(); return RedirectResponse(f"/despachadores/{did}", status_code=303)
         cur = con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, usuario_id, adelanto_usado) VALUES (?,?,?,?,?,?,?)",
                           (d["nombre"], fecha, monto, len(ids) + len(vids) + len(fids), nota, uid, usado))
         if ids: con.execute(f"UPDATE ordenes SET despachador_pagado=1, despachador_pago_id=? WHERE id IN ({','.join('?' * len(ids))}) AND despachador=? AND estado='entregada'", (cur.lastrowid, *ids, d["nombre"]))
