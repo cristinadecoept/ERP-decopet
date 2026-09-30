@@ -4935,7 +4935,8 @@ def ruta_despachador(con, nombre, hoy):
     filas = []
     for o in con.execute("""SELECT o.id, o.numero, o.total, o.estado_pago, o.tipo_entrega,
                             COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.telefono,
-                            o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega
+                            o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega,
+                            NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
                             WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND """ + HAY_QUE_ENTREGAR() + """
                               AND o.tipo_entrega NOT IN ('pickup','distribuidor')
@@ -4983,6 +4984,7 @@ def texto_ruta(filas, hoy):
     out = [f"Decopet · {fecha_larga(hoy)}", ""]
     for i, f in enumerate(filas, 1):
         out.append(f"{i}. {f['quien']}" + (f" · {f['telefono']}" if f["telefono"] else ""))
+        if f.get("recibe"): out.append(f"   Recibe: {f['recibe']}" + (f" · {f['recibe_tel']}" if f.get("recibe_tel") else ""))
         if f["direccion"]: out.append(f"   {f['direccion']}")
         if f["maps"]: out.append(f"   {f['maps']}")
         out.append(f"   {f['que_lleva']}")
@@ -5254,7 +5256,7 @@ def taller_hoy(request: Request, con=Depends(db)):
         return f"{ya + 1}/{total}" if n <= 1 else f"{ya + 1}-{ya + n}/{total}"
 
     pickups = []
-    for o in con.execute("""SELECT o.id, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien,
+    for o in con.execute("""SELECT o.id, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(o.receptor_nombre),'') recibe,
                             COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha,
                             (CASE WHEN o.estado_pago IN ('sin_pago','abonada','contra_entrega','rechazado') THEN 1 ELSE 0 END) falta_cobrar
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id

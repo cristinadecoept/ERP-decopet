@@ -6,7 +6,7 @@
 <div class="tarjeta {{ '' if pickups else 'vacia' }}" style="order:{{ 0 if pickups else 3 }}"><h3>Pick-up</h3>
 {% if pickups %}<table class="lineas"><tr><th>Quién viene</th><th>Qué se lleva</th><th>Para cuándo</th><th></th></tr>
 {% for p in pickups %}<tr>
- <td><b>{{ p.quien }}</b></td>
+ <td><b>{{ p.recibe or p.quien }}</b>{% if p.recibe %}<div class="mini">de parte de {{ p.quien }}</div>{% endif %}</td>
  <td class="mini">{{ (p.que_lleva or '—')|platos }}</td>
  <td class="mono">{% if p.fecha <= hoy_iso %}<b>hoy</b>{% else %}{{ p.fecha|dia }}{% endif %}</td>
  <td style="text-align:right"><form method="post" action="{{ p.accion }}" data-msg="¿{{ p.quien }} ya se llevó {{ p.que_lleva }}? Queda anotado como entregado hoy, {{ hoy_iso|dia }}." onsubmit="event.preventDefault();preguntar(this.dataset.msg,{si:'Sí, se lo llevó',no:'Todavía no'}).then(ok=>ok&&this.submit())"><button class="btn chico">Entregado</button></form></td>

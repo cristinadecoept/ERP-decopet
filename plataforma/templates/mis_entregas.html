@@ -14,7 +14,8 @@
 <div class="tabla">
 {% if ruta %}<table class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th><th>Status</th><th style="text-align:center">Marcar como</th></tr>
 {% for f in ruta %}<tr>
- <td style="width:160px"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ f.telefono|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}</td>
+ <td style="width:170px"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ f.telefono|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
+  {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ f.recibe_tel|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% endif %}</div>{% endif %}</td>
  <td style="max-width:260px" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}
   <div><button type="button" class="no-link" style="font-size:12px" data-dir="{{ f.direccion }}{% if f.maps %}&#10;{{ f.maps }}{% endif %}" onclick="navigator.clipboard.writeText(this.dataset.dir).then(()=>{this.textContent='✓ Copiada';setTimeout(()=>this.textContent='Copiar dirección',1500)})">Copiar dirección</button></div>{% else %}<span class="mini">—</span>{% endif %}</td>
  <td class="mini" data-t="Qué lleva">{{ f.que_lleva|platos }}{% for t in f.indicaciones %}<div class="op-nota">📌 {{ t }}</div>{% endfor %}</td>
