@@ -1634,7 +1634,8 @@ def repuesto_de_pack(k):
 def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: str = "", dia: str = "", desp: str = "", vista: str = "tipo", q: str = "", con=Depends(db)):
     rol = rol_de(request); hoy_d = datetime.date.today(); hoy = hoy_d.isoformat(); manana = (hoy_d + datetime.timedelta(days=1)).isoformat()
     activas = cargar_ordenes(con, {"estado": "activas"}, rol)
-    con_saldo = cargar_ordenes(con, {"estado": "con_saldo"}, rol) if "ver_dinero" in PERMISOS[rol] else []
+    # logística también cobra (ve los pagos de los pedidos), así que ve la cola de saldos
+    con_saldo = cargar_ordenes(con, {"estado": "con_saldo"}, rol) if "ver_cobros" in PERMISOS[rol] else []
     for o in con_saldo:
         if o["id"] not in {a["id"] for a in activas}: activas.append(o)
     for o in activas:
