@@ -642,7 +642,7 @@ def inicio(request: Request, con=Depends(db)):
                                         AND (requiere_factura=1 OR canal='cashea') AND COALESCE(factura_hecha,0)=0""").fetchone()[0] if rol == "admin" else 0,
         # envío nacional que nadie ha llevado a la oficina: se acumulan, no dependen del día prometido
         "por_llevar": con.execute("""SELECT COUNT(*) FROM ordenes WHERE tipo_entrega='nacional' AND viaje_id IS NULL
-                                     AND origen_excel=0 AND estado IN ('pendiente','en_ruta')""").fetchone()[0],
+                                     AND origen_excel=0 AND estado IN ('pendiente','en_ruta') AND """ + HAY_QUE_ENTREGAR("ordenes")).fetchone()[0],
     }
     deudas = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(total - (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado')),0) s
                             FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado')""").fetchone()
@@ -830,6 +830,16 @@ def completar_direccion(o, principal):
     return o
 
 
+# Un pedido tiene algo que entregar AHORA si le queda al menos un producto que no sea un repuesto dejado
+# pagado para después, ni un pack del que no se lleva ninguno hoy, ni un cobro agregado después (delivery, propina…).
+# Si no, no es una entrega: no sale en Operaciones, ni en el Taller, ni en la lista del despachador.
+def HAY_QUE_ENTREGAR(a="o"):
+    return f"""EXISTS (SELECT 1 FROM orden_lineas lx JOIN productos px ON px.id=lx.producto_id
+                WHERE lx.orden_id={a}.id AND COALESCE(px.tipo,'producto')!='opcion' AND lx.extra_en IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados rx WHERE rx.linea_id=lx.id)
+                  AND NOT EXISTS (SELECT 1 FROM packs kx WHERE kx.orden_id={a}.id AND kx.producto_id=lx.producto_id AND kx.entregadas_inicio=0))"""
+
+
 def cargar_ordenes(con, filtros, rol):
     sql = """SELECT o.*, c.nombre cliente, c.telefono, u.nombre creada_por_nombre,
              (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_direccion,
@@ -855,7 +865,7 @@ def cargar_ordenes(con, filtros, rol):
              (SELECT COUNT(*) FROM repuestos_prepagados rp WHERE rp.orden_id=o.id AND rp.entregado_en IS NULL) prepagados_pend
              FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id LEFT JOIN usuarios u ON u.id=o.creada_por WHERE 1=1"""
     args = []
-    if filtros.get("estado") == "activas": sql += " AND o.estado NOT IN ('entregada','cancelada')"
+    if filtros.get("estado") == "activas": sql += " AND o.estado NOT IN ('entregada','cancelada') AND " + HAY_QUE_ENTREGAR()
     elif filtros.get("estado") == "por_revisar": sql += " AND o.estado_pago='por_confirmar'"
     elif filtros.get("estado") == "con_saldo": sql += " AND o.estado!='cancelada' AND o.estado_pago IN ('abonada','sin_pago','rechazado')"
     elif filtros.get("estado") == "pack_pend": sql += """ AND EXISTS (SELECT 1 FROM packs k WHERE k.orden_id=o.id
@@ -1681,7 +1691,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
                                        COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha
                                 FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                                 WHERE o.tipo_entrega='nacional' AND o.viaje_id IS NULL AND o.origen_excel=0
-                                  AND o.estado IN ('pendiente','en_ruta') ORDER BY o.agencia, o.id""").fetchall()
+                                  AND o.estado IN ('pendiente','en_ruta') AND """ + HAY_QUE_ENTREGAR() + """ ORDER BY o.agencia, o.id""").fetchall()
     por_agencia = {}
     for o in por_llevar: por_agencia.setdefault(o["agencia"] or "", []).append(o)
     por_agencia = dict(sorted(por_agencia.items(), key=lambda kv: (kv[0] == "", kv[0])))
@@ -4817,7 +4827,7 @@ def ruta_despachador(con, nombre, hoy):
                             COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.telefono,
                             o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
-                            WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
+                            WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND """ + HAY_QUE_ENTREGAR() + """
                               AND o.tipo_entrega NOT IN ('pickup','distribuidor')
                               AND COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) <= ?
                             ORDER BY o.zona, o.id""", (nombre, hoy)):
@@ -5135,7 +5145,7 @@ def taller_hoy(request: Request, con=Depends(db)):
                             COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha,
                             (CASE WHEN o.estado_pago IN ('sin_pago','abonada','contra_entrega','rechazado') THEN 1 ELSE 0 END) falta_cobrar
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
-                            WHERE o.tipo_entrega='pickup' AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0"""):
+                            WHERE o.tipo_entrega='pickup' AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND """ + HAY_QUE_ENTREGAR()):
         pickups.append(dict(o) | {"tipo": "orden", "que_lleva": lo_que_lleva(con, o["id"], cuenta)[0], "accion": f"/taller/{o['id']}/entregado"})
     # retiros de pack que el cliente viene a buscar
     for k in cargar_packs(con):
@@ -5164,6 +5174,7 @@ def taller_hoy(request: Request, con=Depends(db)):
     for o in con.execute("""SELECT o.id, o.despachador, o.tipo_entrega FROM ordenes o
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
                               AND o.estado='pendiente' AND o.origen_excel=0   -- en ruta = ya salió del taller
+                              AND """ + HAY_QUE_ENTREGAR() + """
                               AND COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) <= ?""", (hoy,)):
         # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
         lleva = (o["despachador"] or "").strip() or "Sin despachador"
