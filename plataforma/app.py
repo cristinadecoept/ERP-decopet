@@ -4932,7 +4932,7 @@ def taller_hoy(request: Request, con=Depends(db)):
 
     for o in con.execute("""SELECT o.id, o.despachador, o.tipo_entrega FROM ordenes o
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
-                              AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
+                              AND o.estado='pendiente' AND o.origen_excel=0   -- en ruta = ya salió del taller
                               AND COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) <= ?""", (hoy,)):
         # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
         lleva = (o["despachador"] or "").strip() or "Sin despachador"
