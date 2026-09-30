@@ -9,7 +9,7 @@
  <td><b>{{ p.quien }}</b></td>
  <td class="mini">{{ p.que_lleva or '—' }}</td>
  <td class="mono">{% if p.fecha <= hoy_iso %}<b>hoy</b>{% else %}{{ p.fecha|dia }}{% endif %}</td>
- <td style="text-align:right"><form method="post" action="{{ p.accion }}"><button class="btn chico">Entregado</button></form></td>
+ <td style="text-align:right"><form method="post" action="{{ p.accion }}" data-msg="¿{{ p.quien }} ya se llevó {{ p.que_lleva }}? Queda anotado como entregado hoy, {{ hoy_iso|dia }}." onsubmit="event.preventDefault();preguntar(this.dataset.msg,{si:'Sí, se lo llevó',no:'Todavía no'}).then(ok=>ok&&this.submit())"><button class="btn chico">Entregado</button></form></td>
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">Nadie tiene que venir a buscar nada ahora mismo.</div>{% endif %}</div>
 

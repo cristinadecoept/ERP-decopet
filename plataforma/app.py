@@ -5345,8 +5345,8 @@ def taller_entregado(request: Request, oid: int, con=Depends(db)):
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     o = con.execute("SELECT tipo_entrega, estado FROM ordenes WHERE id=?", (oid,)).fetchone()
     if o and o["tipo_entrega"] == "pickup" and o["estado"] in ("pendiente", "en_ruta"):
-        hoy = datetime.date.today().isoformat(); uid = uid_de(request)
-        con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=?, actualizado_en=datetime('now','localtime') WHERE id=?", (hoy, oid))
+        ahora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); uid = uid_de(request)   # día y hora en que se lo llevó
+        con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=?, actualizado_en=datetime('now','localtime') WHERE id=?", (ahora, oid))
         registrar(con, oid, uid, "estado", "Entregado en pick-up (taller)")
         con.commit()
     return RedirectResponse("/taller", status_code=303)
