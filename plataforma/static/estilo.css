@@ -963,3 +963,5 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 }
 .op-card{max-width:100%;overflow-x:auto}
 .ops-t .op-accion{white-space:normal}.ops-t .op-accion>div{flex-wrap:wrap;justify-content:center}
+/* Órdenes: el nombre del cliente con espacio, sin partirse en tres líneas */
+@media (min-width:901px){ .nom-cli{display:inline-block;min-width:150px} .tabla .fila td.mini[style*="max-width:300px"]{min-width:170px} }
