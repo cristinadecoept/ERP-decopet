@@ -946,3 +946,18 @@ html.oscuro .est.no_entregado{background:rgba(201,74,47,.25);color:#ffb8a4}
 html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-color:rgba(224,168,46,.4)}
 .pl-azul,.pl-rosado{white-space:nowrap;display:inline-block}
 .recibe-t{margin-top:6px;font-size:12.5px;background:var(--verde-tinte,#eef4f0);border-radius:8px;padding:4px 8px;width:max-content;max-width:100%}
+/* Mis entregas en computadora: cada columna con su ancho, sin palabras sueltas una debajo de otra */
+@media (min-width:721px){
+ .me-t .me-quien{width:220px;min-width:220px}.me-t .me-dir{min-width:180px;max-width:240px}.me-t .me-lleva{min-width:170px}
+ .me-t .recibe-t{width:auto;white-space:normal}
+ .me-acc{width:1%}
+}
+/* la columna del contenido nunca crece más que la pantalla: lo ancho se desliza dentro de su tabla */
+.app{grid-template-columns:264px minmax(0,1fr)}html.colapsado .app{grid-template-columns:76px minmax(0,1fr)}
+@media(max-width:900px){.app{grid-template-columns:minmax(0,1fr)}}
+.me-acc{white-space:normal}.me-acc>form,.me-acc>details{margin:3px}
+@media (min-width:721px){
+ .me-acc{width:auto!important;min-width:260px;white-space:nowrap!important}
+ .me-acc .me-prob{display:block!important;margin-top:6px!important}
+ .me-acc summary,.me-acc button{white-space:nowrap}
+}

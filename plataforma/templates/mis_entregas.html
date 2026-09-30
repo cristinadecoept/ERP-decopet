@@ -14,18 +14,17 @@
 <div class="tabla">
 {% if ruta %}<table class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th><th>Status</th><th style="text-align:center">Marcar como</th></tr>
 {% for f in ruta %}<tr>
- <td style="width:170px"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ f.telefono|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
+ <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ f.telefono|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
   {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ f.recibe_tel|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% endif %}</div>{% endif %}</td>
- <td style="max-width:260px" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}{% else %}<span class="mini">—</span>{% endif %}</td>
- <td class="mini" data-t="Qué lleva">{{ f.que_lleva|platos }}{% for t in f.indicaciones %}<div class="op-nota">📌 {{ t }}</div>{% endfor %}</td>
+ <td class="me-dir" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}{% else %}<span class="mini">—</span>{% endif %}</td>
+ <td class="mini me-lleva" data-t="Qué lleva">{{ f.que_lleva|platos }}{% for t in f.indicaciones %}<div class="op-nota">📌 {{ t }}</div>{% endfor %}</td>
  <td style="white-space:nowrap" data-t="Falta pagar">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% else %}<span class="ln-pagado">Nada · ya pagó</span>{% endif %}</td>
- <td data-t="Status">{% if f.en_ruta %}<span class="est en_ruta">En ruta</span>{% else %}<span class="est pendiente">Pendiente</span>{% endif %}</td>
+ <td data-t="Status" style="white-space:nowrap">{% if f.en_ruta %}<span class="est en_ruta">En ruta</span>{% if f.id or f.rid %}{% set ret0 = '/mis-entregas/retiro/' ~ f.kind ~ '/' ~ f.rid if f.kind != 'orden' else '' %}<form method="post" action="{{ ret0 ~ '/aun-no' if ret0 else '/mis-entregas/' ~ f.id ~ '/aun-no' }}" style="margin-top:6px"><button class="no-link" style="font-size:12px;padding:0" title="Lo tocaste sin querer">↩ todavía no salgo</button></form>{% endif %}{% else %}<span class="est pendiente">Pendiente</span>{% endif %}</td>
  <td class="me-acc">{% if f.id or f.rid %}
   {% set ret = '/mis-entregas/retiro/' ~ f.kind ~ '/' ~ f.rid if f.kind != 'orden' else '' %}
   {% if not f.en_ruta %}<form method="post" action="{{ ret ~ '/salgo' if ret else '/ordenes/' ~ f.id ~ '/estado' }}" style="display:inline">
    <input type="hidden" name="estado" value="en_ruta"><button class="btn sec chico">Voy saliendo</button></form>
-  {% else %}<form method="post" action="{{ ret ~ '/aun-no' if ret else '/mis-entregas/' ~ f.id ~ '/aun-no' }}" style="display:inline"><button class="no-link" style="font-size:12px" title="Lo tocaste sin querer">↩ todavía no salgo</button></form>
-   <details class="cobro"><summary class="btn sec chico">No pude entregar</summary>
+  {% else %}<details class="cobro"><summary class="btn sec chico">No pude entregar</summary>
     <form method="post" action="{{ ret ~ '/no-pude' if ret else '/ordenes/' ~ f.id ~ '/no-recibio' }}" class="cobro-f" style="min-width:260px;text-align:left">
      <label style="margin-top:0">¿Qué pasó?</label>
      <label class="chk" style="margin-top:4px"><input type="radio" name="fue" value="1" required> <span>Fui al sitio y no me recibieron</span></label>
@@ -44,7 +43,7 @@
      <div class="mini">Si pagó menos, pon lo que pagó de verdad.</div></div>
     {% else %}<div class="mini" style="margin-bottom:6px">Ya está pagado, no hay que cobrar nada.</div>{% endif %}
     <p style="margin:8px 0 0"><button class="btn chico">Marcar entregado</button></p></form></details>
-  {% if not ret %}<details class="cobro"><summary class="btn sec chico">Hubo un problema</summary>
+  {% if not ret %}<details class="cobro me-prob"><summary class="no-link" style="font-size:12px">Hubo un problema</summary>
    <form method="post" action="/mis-entregas/{{ f.id }}/incidencia" class="cobro-f" style="min-width:250px">
     <label style="margin-top:0">¿Qué pasó?</label>
     <select name="tipo"><option>Cliente molesto</option><option>No estaba</option><option>Dirección mala</option>
