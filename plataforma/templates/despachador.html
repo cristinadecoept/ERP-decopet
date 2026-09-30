@@ -76,9 +76,9 @@
 <div class="tarjeta"><h3>Zonas de esta semana</h3>{% if zonas %}<table class="lineas"><tr><th>Zona</th><th class="num">Entregas</th>{% if 'ver_dinero' in puede %}<th class="num">Le pagas</th>{% endif %}</tr>
 {% for z in zonas %}<tr><td>{{ z.z }}</td><td class="num">{{ z.n }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ z.monto|usd }}</td>{% endif %}</tr>{% endfor %}</table>
 {% else %}<div class="vacio">Sin entregas pendientes de pago.</div>{% endif %}</div>
-{% if 'ver_dinero' in puede %}<div class="tarjeta"><h3>Pagos que le has hecho</h3>{% if pagos or r.adelantos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th>Nota</th></tr>
-{% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td class="num mini">adelanto</td><td class="num">{{ a.monto_usd|usd }}</td><td class="mini">{{ a.caja or '' }}{% if a.notas %} · {{ a.notas }}{% endif %}</td></tr>{% endfor %}
-{% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num">{{ p.monto|usd }}{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} de adelanto · {{ (p.monto - p.adelanto_usado)|usd }} en plata</div>{% endif %}</td><td class="mini">{{ p.nota or '' }}</td></tr>{% endfor %}</table>{% else %}<div class="vacio">Todavía no has registrado pagos.</div>{% endif %}</div>{% endif %}
+{% if 'ver_dinero' in puede %}<div class="tarjeta"><h3>Pagos que le has hecho</h3>{% if pagos or r.adelantos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th>Nota</th><th>¿Le llegó?</th></tr>
+{% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td class="num mini">adelanto</td><td class="num">{{ a.monto_usd|usd }}</td><td class="mini">{{ a.caja or '' }}{% if a.notas %} · {{ a.notas }}{% endif %}</td><td></td></tr>{% endfor %}
+{% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num">{{ p.monto|usd }}{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} de adelanto · {{ (p.monto - p.adelanto_usado)|usd }} en plata</div>{% endif %}</td><td class="mini">{{ p.nota or '' }}</td><td class="mini">{% if p.confirmado_en %}<span class="ln-pagado">✓ confirmó {{ p.confirmado_en|fecha }}</span>{% else %}sin confirmar{% endif %}</td></tr>{% endfor %}</table>{% else %}<div class="vacio">Todavía no has registrado pagos.</div>{% endif %}</div>{% endif %}
 </div>
 </div>
 <div>

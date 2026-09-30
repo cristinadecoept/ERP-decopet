@@ -309,7 +309,7 @@ COLUMNAS = (
     ("notas_taller", "produccion_id", "INTEGER"),
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
-    ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"),
+    ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"), ("pagos_despachador", "confirmado_en", "TEXT"),
     ("orden_lineas", "perso_lista", "INTEGER NOT NULL DEFAULT 0"), ("orden_lineas", "perso_lista_en", "TEXT"),
     ("orden_lineas", "extra_en", "TEXT"),   # cobro que se agregó después de la compra: el día en que entró
     ("viajes_despachador", "tipo", "TEXT NOT NULL DEFAULT 'fallido'"), ("viajes_despachador", "pack_id", "INTEGER"),
@@ -4728,14 +4728,19 @@ def mis_entregas(request: Request, con=Depends(db)):
                                                                   ORDER BY d.principal DESC, d.id LIMIT 1)) direccion
                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
+                            -- lo que ya le pagaron y él confirmó que le llegó se le quita de la vista (Cristina lo sigue viendo en su ficha)
+                            AND NOT (o.despachador_pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=o.despachador_pago_id) IS NOT NULL)
                           ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
     mes = hoy.strftime("%Y-%m")
-    pagos = con.execute("SELECT fecha, monto, entregas, adelanto_usado FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC LIMIT 12", (nombre,)).fetchall()
+    pagos = con.execute("""SELECT id, fecha, monto, entregas, adelanto_usado FROM pagos_despachador
+                           WHERE despachador=? AND confirmado_en IS NULL ORDER BY fecha DESC, id DESC""", (nombre,)).fetchall()
+    ult_conf = con.execute("SELECT MAX(substr(confirmado_en,1,10)) FROM pagos_despachador WHERE despachador=?", (nombre,)).fetchone()[0]
+    if ult_conf: r["adelantos"] = [a for a in r["adelantos"] if (a["fecha"] or "") > ult_conf or r["adelanto_libre"] > 0]
     for f in ruta:
         if f.get("kind") != "orden": continue   # los retiros ya traen si van en ruta
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
-    hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre), key=lambda h: h["fecha"] or "", reverse=True)
+    hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre, vigentes=True), key=lambda h: h["fecha"] or "", reverse=True)
     return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(),
@@ -4791,6 +4796,18 @@ def orden_no_recibio(request: Request, oid: int, motivo: str = Form(""), fecha: 
         registrar(con, oid, uid_de(request), "estado", texto, motivo.strip() or None)
         con.commit()
     return RedirectResponse(volver if volver.startswith("/") else "/operaciones", status_code=303)
+
+
+@app.post("/mis-entregas/pago/{pid}/confirmar")
+def mis_entregas_confirmar_pago(request: Request, pid: int, con=Depends(db)):
+    """El despachador confirma que el pago le llegó: desde ahí ese pago y lo que cubría salen de su pantalla."""
+    u = quien_es(request); yo = (u or {}).get("despachador")
+    es_admin = rol_de(request) == "admin" or (u and u["rol"] == "admin")
+    p = con.execute("SELECT despachador FROM pagos_despachador WHERE id=?", (pid,)).fetchone()
+    if p and (es_admin or (yo and p["despachador"] == yo)):
+        con.execute("UPDATE pagos_despachador SET confirmado_en=datetime('now','localtime') WHERE id=? AND confirmado_en IS NULL", (pid,))
+        con.commit()
+    return RedirectResponse("/mis-entregas", status_code=303)
 
 
 @app.post("/mis-entregas/retiro/{kind}/{rid}/{accion}")
@@ -4859,7 +4876,7 @@ def indicaciones_cliente(con, cid, extra=None):
     return ([extra] if extra and extra not in notas else []) + notas
 
 
-def viajes_hist(con, nombre):
+def viajes_hist(con, nombre, vigentes=False):
     """Para su historial: los retiros de repuesto que llevó y los viajes en que no le recibieron,
     así no desaparecen de su lista aunque el pedido haya vuelto a pendiente o se haya asignado a otro."""
     out = []
@@ -4867,7 +4884,8 @@ def viajes_hist(con, nombre):
                             (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) direccion,
                             (SELECT d.zona FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) zona,
                             o.ciudad FROM viajes_despachador v LEFT JOIN ordenes o ON o.id=v.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
-                            WHERE v.despachador=? ORDER BY v.fecha DESC, v.id DESC LIMIT 60""", (nombre,)):
+                            WHERE v.despachador=? """ + ("AND NOT (v.pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=v.pago_id) IS NOT NULL) " if vigentes else "") +
+                            """ORDER BY v.fecha DESC, v.id DESC LIMIT 60""", (nombre,)):
         out.append({"id": v["orden_id"], "numero": v["numero"], "fecha": v["fecha"], "pago": v["monto"], "quien": v["quien"], "cliente": v["cliente"],
                     "zona": v["zona"], "direccion": v["direccion"], "ciudad": v["ciudad"], "despachador_pagado": v["pagado"],
                     "estado": "no_entregado" if v["tipo"] == "fallido" else "entregada", "nota": v["motivo"],
