@@ -1086,3 +1086,5 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 @media (max-width:820px){.ef-perro{height:min(192px,24vh)}}
 @media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.ef-perro{height:calc(min(316px,30vh) * 1.1)}}
 .ef-perro{bottom:max(10px,1.5vh)}@media (max-width:820px){.ef-perro{bottom:8px}}
+/* teléfono: el perrito se achica en pantallas bajitas para no tocar la tarjeta */
+@media (max-width:820px){.ef-perro{height:clamp(0px,calc(100vh - 530px),192px)}}
