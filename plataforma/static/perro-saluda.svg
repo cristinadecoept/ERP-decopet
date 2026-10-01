@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 320" fill="none" stroke="#5A9075" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+ <!-- un cachorrito de frente, sentado, saludando con la pata: mismo trazo y verde que el de la guía de estilo -->
+ <!-- orejas caídas -->
+ <path d="M110 70 C88 66 70 86 72 112 C74 132 88 142 99 133 C106 126 105 108 107 92"/>
+ <path d="M190 70 C212 66 230 86 228 112 C226 132 212 142 201 133 C194 126 195 108 193 92"/>
+ <!-- cabeza -->
+ <path d="M104 108 C102 68 124 44 150 44 C176 44 198 68 196 108 C195 138 176 156 150 156 C124 156 105 138 104 108 Z"/>
+ <!-- mancha alrededor del ojo -->
+ <path d="M158 88 C166 80 182 82 186 94 C189 106 180 114 170 113 C160 112 154 100 158 88 Z"/>
+ <!-- ojos y nariz -->
+ <ellipse cx="130" cy="100" rx="6" ry="7.5" fill="#5A9075" stroke="none"/>
+ <ellipse cx="171" cy="100" rx="6" ry="7.5" fill="#5A9075" stroke="none"/>
+ <path d="M141 119 C141 113 159 113 159 119 C159 125 153 128 150 128 C147 128 141 125 141 119 Z" fill="#5A9075"/>
+ <!-- boca con lengüita -->
+ <path d="M150 128 C150 136 143 140 137 136"/>
+ <path d="M150 128 C150 136 157 140 163 136"/>
+ <path d="M145 139 C145 149 155 149 155 139"/>
+ <!-- collar con plaquita -->
+ <path d="M121 147 C136 160 164 160 179 147"/>
+ <circle cx="150" cy="165" r="6.5"/>
+ <!-- cuerpo -->
+ <path d="M122 154 C104 176 98 214 101 252"/>
+ <path d="M178 154 C186 166 190 176 192 186"/>
+ <path d="M196 206 C201 222 202 238 199 252"/>
+ <!-- patas traseras -->
+ <path d="M101 252 C86 260 84 284 98 293 L118 293"/>
+ <path d="M199 252 C214 260 216 284 202 293 L168 293"/>
+ <!-- pata delantera apoyada -->
+ <path d="M126 196 C123 236 122 268 123 291"/>
+ <path d="M146 210 C146 244 146 272 146 291"/>
+ <path d="M117 292 C116 302 150 302 150 292"/>
+ <path d="M150 292 L168 293"/>
+ <!-- pata levantada saludando -->
+ <path d="M166 186 C192 174 208 160 222 140 L242 154 C228 176 208 196 186 214 Z" fill="#f2f3f5" stroke="none"/>
+ <path d="M170 190 C192 176 208 160 222 140"/>
+ <path d="M186 212 C208 196 228 176 242 154"/>
+ <path d="M219 141 C214 126 224 112 238 113 C252 114 258 130 250 144 C246 152 236 156 229 152" fill="#f2f3f5"/>
+ <path d="M236 116 L239 125"/>
+ <path d="M248 122 L247 131"/>
+ <!-- rayitas de saludo -->
+ <path d="M258 102 C266 108 270 116 270 126"/>
+ <path d="M266 92 C278 100 284 112 283 126"/>
+ <!-- colita -->
+ <path d="M206 276 C222 272 232 260 230 246"/>
+ <!-- grama -->
+ <path d="M60 296 C66 286 70 282 74 280 C72 288 72 292 74 296"/>
+ <path d="M74 296 C80 290 86 288 92 288"/>
+ <path d="M226 296 C230 288 234 284 240 282 C238 290 238 294 240 297"/>
+ <path d="M240 297 C246 292 252 290 258 291"/>
+</svg>
