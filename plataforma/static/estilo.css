@@ -982,3 +982,15 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .entrar-c input{background:#F7F3EE;border-color:#EAE2D9}
 .entrar-c .btn{margin-top:30px}
 @media (max-width:820px){.entrar-c{padding:28px 22px}}
+/* Entrar: formas de la marca de fondo, para que el crema no quede plano */
+.entrar-fondo{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.entrar-top,.entrar-m{position:relative;z-index:1}
+.ef{position:absolute;display:block}
+.ef-blob1{width:620px;left:-170px;bottom:-230px;opacity:.55}
+.ef-blob2{width:520px;right:-150px;top:-190px;opacity:.6}
+.ef-blob3{width:300px;right:26%;bottom:-170px;opacity:.22}
+.ef-pata{width:92px;left:9%;top:20%;transform:rotate(-18deg)}
+.ef-hueso{width:64px;left:42%;top:13%;transform:rotate(38deg)}
+.ef-estrella{width:58px;left:30%;bottom:16%;transform:rotate(12deg)}
+@media (max-width:820px){.ef-blob1{width:380px;left:-150px;bottom:-150px}.ef-blob2{width:300px;right:-120px;top:-120px}.ef-blob3{display:none}
+ .ef-pata{width:56px;left:auto;right:22px;top:auto;bottom:90px}.ef-hueso{width:40px;left:auto;right:30px;top:96px}.ef-estrella{width:38px;left:26px;bottom:40px}}
