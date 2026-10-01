@@ -1036,3 +1036,7 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .entrar-izq .entrar-sub{margin-top:-12px}@media (max-width:820px){.entrar-izq .entrar-sub{margin-top:-12px}}
 /* la etiqueta termina debajo de la "o" (la pata) del logo */
 .entrar-izq .entrar-sub{font-size:15px;padding:6px 11px;letter-spacing:.05em}@media (max-width:820px){.entrar-izq .entrar-sub{font-size:10px;padding:4px 8px;letter-spacing:.03em}}
+/* la etiqueta mide exactamente de la "d" hasta el final de la "o" (60 % del ancho del logo) */
+.entrar-izq .entrar-sub{box-sizing:border-box;width:calc(clamp(70px,8vw,120px) * 2.466);text-align:center;white-space:nowrap;font-size:17px;padding:6px 0}
+@media (max-width:820px){.entrar-izq .entrar-sub{width:calc(70px * 2.466);font-size:11px;padding:4px 0}}
+.entrar-izq .entrar-sub{margin-left:0}
