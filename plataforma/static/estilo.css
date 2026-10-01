@@ -1040,3 +1040,6 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .entrar-izq .entrar-sub{box-sizing:border-box;width:calc(clamp(70px,8vw,120px) * 2.466);text-align:center;white-space:nowrap;font-size:17px;padding:6px 0}
 @media (max-width:820px){.entrar-izq .entrar-sub{width:calc(70px * 2.466);font-size:11px;padding:4px 0}}
 .entrar-izq .entrar-sub{margin-left:0}
+/* la etiqueta va encima del logo y ocupa todo su ancho */
+.entrar-izq .entrar-sub{width:calc(clamp(70px,8vw,120px) * 4.11);margin:0 0 12px;font-size:20px;padding:8px 0;letter-spacing:.18em}
+@media (max-width:820px){.entrar-izq .entrar-sub{width:calc(70px * 4.11);margin:0 0 8px;font-size:13px;padding:6px 0;letter-spacing:.14em}}
