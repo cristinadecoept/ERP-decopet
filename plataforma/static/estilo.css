@@ -1032,3 +1032,5 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 /* prueba: Centro de operaciones en una tarjetita naranja */
 .entrar-izq .entrar-sub{background:#E1782E;color:#fff;border-radius:8px;padding:6px 12px;margin-top:6px;font-weight:600;letter-spacing:.08em}
 @media (max-width:820px){.entrar-izq .entrar-sub{padding:4px 9px;margin-top:4px}}
+.entrar-izq .entrar-sub{font-size:18px;padding:7px 14px;margin-top:0}@media (max-width:820px){.entrar-izq .entrar-sub{font-size:12px;padding:5px 10px;margin-top:-2px}}
+.entrar-izq .entrar-sub{margin-top:-12px}@media (max-width:820px){.entrar-izq .entrar-sub{margin-top:-12px}}
