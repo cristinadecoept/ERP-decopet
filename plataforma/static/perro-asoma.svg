@@ -1,31 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 14 244 284" fill="none" stroke="#5A9075" stroke-width="2.14" stroke-linecap="round" stroke-linejoin="round">
- <!-- el perrito que saluda, asomándose desde el borde derecho: solo cabeza, cuello y la pata que saluda; el cuerpo queda fuera de la pantalla -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 56 259 254" fill="none" stroke="#5A9075" stroke-width="1.60" stroke-linecap="round" stroke-linejoin="round">
+ <!-- el perrito que saluda (gordito), asomándose en diagonal: solo cabeza, cuello y la pata; el cuerpo queda fuera de la pantalla -->
  <g transform="rotate(-40 200 150)"><g transform="translate(300 0) scale(-1 1)">
-  <!-- cuello y lomo que se van por el borde -->
-  <path d="M122 154 C104 168 70 178 -90 184"/>
-  <path d="M186 214 C150 236 80 246 -90 250"/>
-  <path d="M166 186 C192 174 208 160 222 140 L242 154 C228 176 208 196 186 214 C150 236 80 246 -90 250 L-90 184 C70 178 104 168 122 154 Z" fill="#f2f3f5" stroke="none"/>
-  <path d="M186 214 C150 236 80 246 -90 250"/>
-  <path d="M110 70 C88 66 70 86 72 112 C74 132 88 142 99 133 C106 126 105 108 107 92" fill="#f2f3f5"/>
-  <path d="M190 70 C212 66 230 86 228 112 C226 132 212 142 201 133 C194 126 195 108 193 92" fill="#f2f3f5"/>
-  <path d="M104 108 C102 68 124 44 150 44 C176 44 198 68 196 108 C195 138 176 156 150 156 C124 156 105 138 104 108 Z" fill="#f2f3f5"/>
-  <path d="M158 88 C166 80 182 82 186 94 C189 106 180 114 170 113 C160 112 154 100 158 88 Z"/>
-  <ellipse cx="130" cy="100" rx="6" ry="7.5" fill="#5A9075" stroke="none"/>
-  <ellipse cx="171" cy="100" rx="6" ry="7.5" fill="#5A9075" stroke="none"/>
-  <path d="M141 119 C141 113 159 113 159 119 C159 125 153 128 150 128 C147 128 141 125 141 119 Z" fill="#5A9075"/>
-  <path d="M150 128 C150 136 143 140 137 136"/>
-  <path d="M150 128 C150 136 157 140 163 136"/>
-  <path d="M145 139 C145 149 155 149 155 139"/>
-  <path d="M121 147 C136 160 164 160 179 147"/>
-  <circle cx="150" cy="165" r="6.5" fill="#f2f3f5"/>
-  <!-- pata saludando -->
-  <path d="M166 186 C192 174 208 160 222 140 L242 154 C228 176 208 196 186 214 Z" fill="#f2f3f5" stroke="none"/>
-  <path d="M170 190 C192 176 208 160 222 140"/>
-  <path d="M186 212 C208 196 228 176 242 154"/>
-  <path d="M219 141 C214 126 224 112 238 113 C252 114 258 130 250 144 C246 152 236 156 229 152" fill="#f2f3f5"/>
-  <path d="M236 116 L239 125"/>
-  <path d="M248 122 L247 131"/>
-  <path d="M258 102 C266 108 270 116 270 126"/>
-  <path d="M266 92 C278 100 284 112 283 126"/>
+  <path d="M114 156 C96 172 62 184 -90 190 L-90 262 C80 258 152 246 192 222 L162 188 Z" fill="#f2f3f5" stroke="none"/>
+  <path d="M114 156 C96 172 62 184 -90 190"/>
+  <path d="M192 222 C152 246 80 258 -90 262"/>
+  <path d="M104 68 C80 62 62 84 64 112 C66 134 82 144 94 134 C100 128 99 108 101 90" fill="#f2f3f5"/>
+  <path d="M196 68 C220 62 238 84 236 112 C234 134 218 144 206 134 C200 128 201 108 199 90" fill="#f2f3f5"/>
+  <path d="M96 110 C94 64 122 40 150 40 C178 40 206 64 204 110 C203 144 180 164 150 164 C120 164 97 144 96 110 Z" fill="#f2f3f5"/>
+  <path d="M160 86 C168 78 186 80 190 93 C193 106 183 115 172 114 C161 113 155 100 160 86 Z"/>
+  <ellipse cx="128" cy="100" rx="6.5" ry="8" fill="#5A9075" stroke="none"/>
+  <ellipse cx="173" cy="100" rx="6.5" ry="8" fill="#5A9075" stroke="none"/>
+  <path d="M140 121 C140 114 160 114 160 121 C160 127 154 131 150 131 C146 131 140 127 140 121 Z" fill="#5A9075"/>
+  <path d="M150 131 C150 139 143 143 136 139"/>
+  <path d="M150 131 C150 139 157 143 164 139"/>
+  <path d="M145 142 C145 152 155 152 155 142"/>
+  <path d="M116 152 C134 168 166 168 184 152"/>
+  <circle cx="150" cy="174" r="7" fill="#f2f3f5"/>
+  <path d="M162 188 C192 178 206 162 218 140 L250 158 C236 182 214 204 192 222 Z" fill="#f2f3f5" stroke="none"/>
+  <path d="M166 191 C192 178 206 162 218 140"/>
+  <path d="M192 220 C214 204 234 182 248 158"/>
+  <path d="M214 142 C208 124 220 108 238 108 C256 109 263 128 254 146 C249 156 236 161 227 156" fill="#f2f3f5"/>
+  <path d="M235 112 L238 122"/>
+  <path d="M250 118 L249 128"/>
+  <path d="M262 98 C271 104 275 113 275 124"/>
+  <path d="M271 87 C284 96 290 109 289 124"/>
  </g></g>
 </svg>

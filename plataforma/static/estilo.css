@@ -1074,3 +1074,10 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 /* mismo grosor de línea que el perrito de abajo: los tamaños van atados al de él (el SVG chico tiene el trazo compensado) */
 .ef-perro2{height:min(316px,30vh)}
 @media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.ef-perro4{height:calc(min(316px,30vh) * .794)}}
+/* perrito de arriba: más grande y gordito (el trazo del SVG está compensado para que mida igual que el de abajo) */
+.ef-perro2{height:calc(min(316px,30vh) * 1.2)}
+@media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.entrar-c{margin-top:70px}.ef-perro4{height:calc(min(316px,30vh) * .95);bottom:calc(100% - 28px)}}
+/* el perrito de abajo no va pegado al piso */
+.ef-perro{bottom:max(24px,4vh)}
+@media (max-width:820px){.ef-perro{bottom:16px}}
+@media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.ef-perro4{bottom:calc(100% - 42px)}}
