@@ -1098,3 +1098,12 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .prod-fija .c-ped{width:19%}.prod-fija .c-n{width:9%}.prod-fija .c-est{width:11%}.prod-fija .c-rec{width:12%}
 .prod-fija th,.prod-fija td{padding-left:6px!important;padding-right:6px!important}.prod-fija th:first-child,.prod-fija td:first-child{padding-left:14px!important}.prod-fija th:last-child,.prod-fija td:last-child{padding-right:14px!important}
 .prod-fija .c-ped{width:18%}.prod-fija .c-rec{width:13%}
+/* tablas de ancho fijo (ver fijarTablas en base.html) */
+table.fija{table-layout:fixed;width:100%}
+table.fija td,table.fija th{overflow-wrap:break-word}
+table.fija th{white-space:normal}table.fija td .mini{white-space:normal}
+/* en una tabla de ancho fijo lo que no cabe baja de línea (los botones de acción se apilan) */
+table.fija td[style*="nowrap"]{white-space:normal!important}
+table.fija td details.cobro{margin:2px 0}
+.ops-t.fija td,.ops-t.fija th{padding-left:10px;padding-right:10px}
+table.fija .me-acc{white-space:normal!important;min-width:0!important;width:auto!important}table.fija td{padding-left:10px;padding-right:10px}

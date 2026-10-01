@@ -60,6 +60,18 @@ addEventListener('resize',()=>document.querySelectorAll('details.cobro[open] .co
 // un formulario no se manda dos veces: un doble clic anotaba las cosas dos veces
 // un envío que el propio formulario canceló (le faltaba algo, o está preguntando) no cuenta como enviado
 document.addEventListener('submit',e=>{if(e.defaultPrevented)return;const f=e.target;if(f.dataset.enviando){e.preventDefault();return;}f.dataset.enviando='1';setTimeout(()=>{delete f.dataset.enviando},4000);});
+// tablas con columnas de ancho fijo: cada columna mide siempre lo mismo, cambie el mes o el filtro que cambie.
+// data-cols="Encabezado:peso|…" (el encabezado se busca por cómo empieza; "" es la columna sin título); en el teléfono no se toca
+function fijarTablas(){if(!matchMedia('(min-width:821px)').matches)return;
+ document.querySelectorAll('table[data-cols]:not(.fija)').forEach(t=>{const fila=t.querySelector('tr');if(!fila)return;
+  const pesos=t.dataset.cols.split('|').map(p=>{const i=p.lastIndexOf(':');return [p.slice(0,i).trim(),parseFloat(p.slice(i+1))]});
+  const ws=[];[...fila.children].forEach(c=>{const tx=c.textContent.replace(/\s+/g,' ').trim();let w=null,largo=-1;
+   pesos.forEach(([k,v])=>{if(k===''?tx==='':tx.startsWith(k)&&k.length>largo){w=v;largo=k.length}});
+   for(let i=0;i<(c.colSpan||1);i++)ws.push((w==null?8:w)/(c.colSpan||1))});
+  const tot=ws.reduce((a,b)=>a+b,0);const cg=document.createElement('colgroup');
+  ws.forEach(w=>{const col=document.createElement('col');col.style.width=(w/tot*100).toFixed(2)+'%';cg.appendChild(col)});
+  t.insertBefore(cg,t.firstChild);if(t.dataset.min)t.style.minWidth=t.dataset.min+'px';t.classList.add('fija')})}
+fijarTablas();document.addEventListener('DOMContentLoaded',fijarTablas);
 // la pregunta "¿seguro?" con el diseño del ERP en vez del cuadro gris del navegador
 function preguntar(msg,{si='Sí, seguir',no='Cancelar'}={}){const d=document.getElementById('dlg-preg');d.querySelector('.dlg-txt').textContent=msg;
  d.querySelector('[value=si]').textContent=si;d.querySelector('[value=no]').textContent=no;d.returnValue='';d.showModal();

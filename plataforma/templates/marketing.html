@@ -12,18 +12,18 @@
 
 <div class="g2" style="align-items:start">
 <div class="tarjeta"><h3>De dónde vienen</h3>
-{% if origen %}<table class="lineas"><tr><th>Cómo nos conoció</th><th class="num" style="padding-right:16px">Clientes</th><th class="num">Gastan en promedio</th></tr>
+{% if origen %}<table data-cols="Cómo nos conoció:50|Clientes:20|Gastan en promedio:30" class="lineas"><tr><th>Cómo nos conoció</th><th class="num" style="padding-right:16px">Clientes</th><th class="num">Gastan en promedio</th></tr>
 {% for o in origen %}<tr class="fila" onclick="location.href='/clientes?origen={{ o.o|urlencode }}'"><td>{{ o.o }}</td><td class="num" style="padding-right:16px"><b>{{ o.n }}</b></td><td class="num">{{ o.promedio|usd }}</td></tr>{% endfor %}</table>
 <div class="mini" style="margin-top:8px">El que trae más no siempre es el mejor: mira la columna de la derecha.</div>
 {% else %}<div class="vacio">Nadie con origen registrado en {{ anio }}.</div>{% endif %}</div>
 
 <div class="tarjeta"><h3>Quién te refiere</h3>
-{% if refs %}<table class="lineas"><tr><th>Cliente</th><th class="num" style="padding-right:16px">Ha traído</th><th class="num">Le compraron</th></tr>
+{% if refs %}<table data-cols="Cliente:50|Ha traído:25|Le compraron:25" class="lineas"><tr><th>Cliente</th><th class="num" style="padding-right:16px">Ha traído</th><th class="num">Le compraron</th></tr>
 {% for r in refs %}<tr><td><b>{{ r.quien }}</b></td><td class="num" style="padding-right:16px">{{ r.n }}</td><td class="num">{{ r.trajo|usd }}</td></tr>{% endfor %}</table>
 {% else %}<div class="vacio">Todavía nadie registrado como referido. Al crear un cliente elige «Recomendación de otro cliente» y di quién fue.</div>{% endif %}</div>
 </div>
 
 {% if meses %}<div class="tarjeta" style="margin-top:16px"><h3>Meses en que invertiste</h3>
-<table class="lineas"><tr><th>Mes</th><th class="num" style="padding-right:16px">Publicidad</th><th class="num" style="padding-right:16px">Clientes nuevos</th><th class="num">Costo por cliente</th></tr>
+<table data-cols="Mes:25|Publicidad:25|Clientes nuevos:25|Costo por cliente:25" class="lineas"><tr><th>Mes</th><th class="num" style="padding-right:16px">Publicidad</th><th class="num" style="padding-right:16px">Clientes nuevos</th><th class="num">Costo por cliente</th></tr>
 {% for m in meses %}<tr><td>{{ m.mes }}</td><td class="num" style="padding-right:16px">{{ m.gasto|usd }}</td><td class="num" style="padding-right:16px"><b>{{ m.nuevos }}</b></td><td class="num">{% if m.costo is not none %}{{ m.costo|usd }}{% else %}—{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
 {% endblock %}

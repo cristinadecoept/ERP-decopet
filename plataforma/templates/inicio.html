@@ -65,17 +65,17 @@
 {# ---------- 3 · SEGUIMIENTOS #}
 <h2 style="font-size:22px;margin:26px 0 10px;letter-spacing:-.02em">Seguimientos del día</h2>
 <div class="tabla seg-tabla" style="margin-bottom:14px"><div class="seg-head"><span>Repuestos</span><b>{{ seg.repuesto }}</b><a href="/seguimientos">Ver todos →</a></div>
-<table><tr><th>Cliente</th><th>Repuesto</th><th>Tipo de seguimiento</th><th>Status</th><th></th></tr>
+<table data-cols="Cliente:30|Repuesto:22|Tipo de seguimiento:20|Status:14|:14"><tr><th>Cliente</th><th>Repuesto</th><th>Tipo de seguimiento</th><th>Status</th><th></th></tr>
 {% for s in seg.lista_rep %}<tr><td><a class="chip-nombre" href="/clientes/{{ s.cliente_id }}">{{ s.cliente }}</a></td><td>{{ s.que }}</td><td><span class="pago {{ 'por_confirmar' if s.tipo=='primer_repuesto' else 'por_cobrar' }}">{{ s.tipo_txt }}</span></td><td><span class="pago {{ 'pagada' if s.hecho else 'por_cobrar' }}">{{ s.estado }}</span></td>{{ acciones(s) }}</tr>
 {% else %}<tr><td colspan="5" class="vacio">A ningún miembro PRO le toca repuesto hoy.</td></tr>{% endfor %}
 </table>{% if seg.tot_rep > seg.lista_rep|length %}<div class="seg-mas"><a class="btn sec chico" href="/seguimientos">Ver {{ seg.tot_rep - seg.lista_rep|length }} más</a>{% if seg.hechos_rep %}<span class="mini">{{ seg.hechos_rep }} contactado{{ 's' if seg.hechos_rep!=1 }} hoy</span>{% endif %}</div>{% endif %}</div>
 <div class="tabla seg-tabla"><div class="seg-head"><span>🎂 Cumpleaños</span><b>{{ seg.cumples }}</b><a href="/mascotas?ver=cumples">Ver todos →</a></div>
-<table><tr><th>Cliente</th><th>Mascota</th><th>Cuándo</th><th>Status</th><th></th></tr>
+<table data-cols="Cliente:30|Mascota:22|Cuándo:20|Status:14|:14"><tr><th>Cliente</th><th>Mascota</th><th>Cuándo</th><th>Status</th><th></th></tr>
 {% for s in seg.lista_cumples %}<tr><td><a class="chip-nombre" href="/clientes/{{ s.cliente_id }}">{{ s.cliente }}</a></td><td>{{ s.que|replace('🎂 ','') }}</td><td><span class="pago pagada">{{ s.tipo_txt }}</span></td><td><span class="pago {{ 'pagada' if s.hecho else 'por_cobrar' }}">{{ s.estado }}</span></td>{{ acciones(s) }}</tr>
 {% else %}<tr><td colspan="5" class="vacio">Ningún cumpleaños hoy ni en los próximos 2 días.</td></tr>{% endfor %}
 </table>{% if seg.tot_cumples > seg.lista_cumples|length %}<div class="seg-mas"><a class="btn sec chico" href="/mascotas?ver=cumples">Ver {{ seg.tot_cumples - seg.lista_cumples|length }} más</a>{% if seg.hechos_cumples %}<span class="mini">{{ seg.hechos_cumples }} felicitado{{ 's' if seg.hechos_cumples!=1 }} hoy</span>{% endif %}</div>{% endif %}</div>
 {% if rol=='admin' and seg.lista_cobro %}<div class="tabla seg-tabla" style="margin-top:14px"><div class="seg-head"><span>Cobros pendientes</span><b>{{ seg.tot_cobro }}</b><a href="/seguimientos?tipo=cobro">Ver todos →</a></div>
-<table><tr><th>Cliente</th><th>Debe</th><th>Tipo de seguimiento</th><th>Status</th><th></th></tr>
+<table data-cols="Cliente:30|Debe:22|Tipo de seguimiento:20|Status:14|:14"><tr><th>Cliente</th><th>Debe</th><th>Tipo de seguimiento</th><th>Status</th><th></th></tr>
 {% for s in seg.lista_cobro %}<tr><td><a class="chip-nombre" href="/clientes/{{ s.cliente_id }}">{{ s.cliente }}</a></td><td>{{ s.que }}</td><td><span class="pago rechazado">{{ s.tipo_txt }}</span></td><td><span class="pago {{ 'pagada' if s.hecho else 'por_cobrar' }}">{{ s.estado }}</span></td>{{ acciones(s) }}</tr>{% endfor %}</table>{% if seg.tot_cobro > seg.lista_cobro|length %}<div class="seg-mas"><a class="btn sec chico" href="/seguimientos?tipo=cobro">Ver {{ seg.tot_cobro - seg.lista_cobro|length }} más</a></div>{% endif %}</div>{% endif %}
 
 {# ---------- 4 · ESTA SEMANA #}

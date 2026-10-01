@@ -7,7 +7,7 @@
   <p class="cf-d">Esto se cobró en la puerta y todavía no está en el libro. Regístralo como entrada y después márcalo aquí.</p>
   <form method="post" action="/cashflow/efectivo-registrado">
    <input type="hidden" name="volver" value="/cashflow#efectivo">
-   <table class="lineas"><tr><th style="width:28px"><input type="checkbox" checked onchange="document.querySelectorAll('#efectivo input[name=pago_id]').forEach(c=>c.checked=this.checked)"></th>
+   <table data-cols=":5|Fecha:12|Orden:10|Cliente:30|Quién cobró:23|Monto:20" class="lineas"><tr><th style="width:28px"><input type="checkbox" checked onchange="document.querySelectorAll('#efectivo input[name=pago_id]').forEach(c=>c.checked=this.checked)"></th>
     <th>Fecha</th><th>Orden</th><th>Cliente</th><th>Quién cobró</th><th class="num">Monto</th></tr>
    {% for e in efectivo_pend %}<tr>
     <td><input type="checkbox" name="pago_id" value="{{ e.id }}" checked></td>
@@ -70,7 +70,7 @@
  <div>
   <form class="barra-f" method="get"><label class="bf-sel {{ 'act' if caja }}"><span>Caja</span><select name="caja" onchange="this.form.submit()"><option value="">Todas</option>{% for c in activas %}<option value="{{ c.id }}" {{ 'selected' if caja==c.id|string }}>{{ c.codigo }} · {{ c.nombre }}</option>{% endfor %}</select></label>
   <label class="bf-sel {{ 'act' if mes }}"><span>Mes</span><select name="mes" onchange="this.form.submit()"><option value="">Todo</option>{% for m in meses %}<option {{ 'selected' if m==mes }}>{{ m }}</option>{% endfor %}</select></label></form>
-  <div class="tabla"><table class="cf-libro"><tr><th>Fecha</th><th>Concepto</th><th>Código</th><th class="num">Entradas</th><th class="num">Salidas</th><th class="num">Saldo</th><th></th></tr>
+  <div class="tabla"><table data-cols="Fecha:10|Concepto:30|Código:12|Entradas:12|Salidas:12|Saldo:12|:12" class="cf-libro"><tr><th>Fecha</th><th>Concepto</th><th>Código</th><th class="num">Entradas</th><th class="num">Salidas</th><th class="num">Saldo</th><th></th></tr>
   {% for l in lineas %}<tr><td class="mono">{{ l.fecha|dia }}</td><td>{{ l.concepto }}<div class="mini">{% if l.ref[0]=='orden' %}<a href="/ordenes?estado=todas&abrir={{ l.ref[1] }}">{{ l.detalle }}</a>{% else %}{{ l.detalle }}{% endif %}{% if l.moneda=='VES' and l.real %} · Bs {{ '{:,.0f}'.format(l.real) }}{% endif %}</div></td>
   <td class="mono" title="{{ l.caja.nombre if l.caja }}">{{ l.caja.codigo if l.caja else '—' }}</td>
   <td class="num cf-in">{{ l.entrada|usd if l.entrada else '' }}</td><td class="num cf-out">{{ l.salida|usd if l.salida else '' }}</td><td class="num mono"><b>{{ l.saldo|usd }}</b></td>

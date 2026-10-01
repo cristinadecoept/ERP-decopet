@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block titulo %}Finanzas · Decopet{% endblock %}{% block cuerpo %}
 <div class="fila-titulo"><div><h1>Finanzas</h1><div class="sub">Cuánto gana Decopet, mes a mes</div></div><div class="cab-btns"><a class="btn sec" href="/finanzas/exportar?anio={{ anio }}">Exportar a Excel</a><form method="get"><select name="anio" onchange="this.form.submit()" style="width:auto;padding:8px 32px 8px 12px;border-radius:10px">{% for a in anios %}<option {{ 'selected' if a==anio }}>{{ a }}</option>{% endfor %}</select></form></div></div>
-<div class="tabla"><table><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Unidades</th><th class="num">Gastos</th><th class="num">Ganancia</th><th class="num">Sueldo Cristina</th><th class="num">Entrada</th><th class="num">Margen</th></tr>
+<div class="tabla"><table data-cols="Mes:16|Facturación:12|Unidades:10|Gastos:12|Ganancia:12|Sueldo Cristina:13|Entrada:12|Margen:13" data-min="940"><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Unidades</th><th class="num">Gastos</th><th class="num">Ganancia</th><th class="num">Sueldo Cristina</th><th class="num">Entrada</th><th class="num">Margen</th></tr>
 {% set ns = namespace(f=0,u=0,g=0,s=0,gr=0) %}
 {% macro delta(d, ant) %}{% if d is not none %}<div class="vs {{ 'sube' if d > 0 else ('baja' if d < 0 else '') }}">{{ '+' if d > 0 }}{{ d }} %<span> vs {{ ant }}</span></div>{% endif %}{% endmacro %}
 {% for m in meses %}{% set ns.f = ns.f + m.facturacion %}{% set ns.u = ns.u + m.unidades %}{% set ns.g = ns.g + m.gastos %}{% set ns.s = ns.s + m.sueldo %}{% set ns.gr = ns.gr + m.grandes %}
@@ -19,7 +19,7 @@
 <div class="nota-cli" style="margin-top:10px"><span class="t">De dónde sale cada mes</span>{% if auto %}Los meses que cargas a mano mandan. Los demás los calcula el ERP desde {{ cashflow_desde|el_fecha }} con las órdenes y los gastos.{% else %}Cada mes lo cargas tú aquí abajo. Cuando confíes en que el ERP lo haga solo, me avisas y lo prendo.{% endif %}</div>
 
 <h2 class="seccion-t">Cargar o corregir un mes</h2>
-<div class="tabla"><table><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Unidades</th><th class="num">Gastos</th><th class="num">Sueldo</th><th class="num">No es de este mes</th><th>Qué pasó</th><th></th></tr>
+<div class="tabla"><table data-cols="Mes:12|Facturación:11|Unidades:9|Gastos:11|Sueldo:10|No es de este mes:12|Qué pasó:18|:17" data-min="1100"><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Unidades</th><th class="num">Gastos</th><th class="num">Sueldo</th><th class="num">No es de este mes</th><th>Qué pasó</th><th></th></tr>
 {% for h in historial %}<tr><form method="post" action="/finanzas/mes" id="h-{{ loop.index }}"><input type="hidden" name="mes" value="{{ h.mes }}"></form>
  <td><b>{{ MESES_N[h.mes[5:]|int - 1]|capitalize }} {{ h.mes[:4] }}</b></td>
  <td class="num" style="width:120px"><input form="h-{{ loop.index }}" name="facturacion" type="number" step="0.01" value="{{ '%g'|format(h.facturacion or 0) }}" style="text-align:right"></td>

@@ -36,7 +36,7 @@
   <input name="nota" placeholder="por qué (opcional)">
   <button class="btn chico">Anotar</button></form></details>{% endif %}
 {% if p.adelantos %}<div class="eq-av">Le adelantaste {{ p.debe_adelantos|usd }} desde la última quincena{% if p.ultima_quincena %} ({{ p.ultima_quincena|dia }}){% endif %}.  Descuéntalo al pagarle.</div>{% endif %}
- {% if p.pagos %}<table class="lineas"><tr><th>Fecha</th><th>Qué</th><th>De qué caja</th><th class="num">Monto</th></tr>
+ {% if p.pagos %}<table data-cols="Fecha:15|Qué:45|De qué caja:22|Monto:18" class="lineas"><tr><th>Fecha</th><th>Qué</th><th>De qué caja</th><th class="num">Monto</th></tr>
  {% for g in p.pagos[:12] %}<tr>
   <td class="mono" style="width:120px">{{ g.fecha|dia }}
    {% if g.tocaba and g.tocaba != g.fecha %}<div class="mini">tocaba el {{ g.tocaba|dia }}</div>{% endif %}</td>

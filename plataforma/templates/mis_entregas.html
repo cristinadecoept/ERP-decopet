@@ -12,7 +12,7 @@
 
 <h2 class="seccion-t">Lo que te toca hoy</h2>
 <div class="tabla">
-{% if ruta %}<table class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th><th>Status</th><th style="text-align:center">Marcar como</th></tr>
+{% if ruta %}<table data-cols="Quién:15|Dirección:17|Qué lleva:13|Falta pagar:10|Status:14|Marcar como:31" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th><th>Status</th><th style="text-align:center">Marcar como</th></tr>
 {% for f in ruta %}<tr>
  <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ f.telefono|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
   {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ f.recibe_tel|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% endif %}</div>{% endif %}</td>
@@ -58,7 +58,7 @@
 <div class="g2" style="align-items:start;margin-top:16px">
  <div class="tarjeta"><h3>Lo que has entregado</h3>
   <div class="cf-cuerpo">
-  {% if hist %}<table class="lineas me-h"><tr><th>Fecha</th><th>Quién</th><th>Dónde</th><th>Estado</th><th class="num">Te toca</th></tr>
+  {% if hist %}<table data-cols="Fecha:13|Quién:28|Dónde:25|Estado:19|Te toca:15" class="lineas me-h"><tr><th>Fecha</th><th>Quién</th><th>Dónde</th><th>Estado</th><th class="num">Te toca</th></tr>
   {% for h in hist[:20] %}<tr>
    <td class="mono mini" style="width:100px">{{ h.fecha|dia }}</td><td>{{ h.quien }}</td><td class="mini">{% if h.zona %}<b>{{ h.zona }}</b>{% if h.direccion %} · {% endif %}{% endif %}{{ h.direccion or ('' if h.zona else '—') }}</td>
    <td><span class="est {{ h.estado }}">{{ 'No se pudo entregar' if h.estado=='no_entregado' else E_LABEL.get(h.estado, h.estado) }}</span>{% if h.que %}<div class="mini">{{ h.que }}</div>{% endif %}{% if h.estado=='no_entregado' %}<div class="mini">fue al sitio{% if h.nota %} · {{ h.nota }}{% endif %}</div>{% endif %}</td>
@@ -67,7 +67,7 @@
 
  <div class="tarjeta"><h3>Lo que te han pagado</h3>
   <div class="cf-cuerpo">
-  {% if pagos or r.adelantos %}<table class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th></th></tr>
+  {% if pagos or r.adelantos %}<table data-cols="Fecha:25|Entregas:25|Monto:25|:25" class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th></th></tr>
   {% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td class="num mini">adelanto</td><td class="num"><b>{{ a.monto_usd|usd }}</b></td><td></td></tr>{% endfor %}
   {% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num"><b>{{ (p.monto - (p.adelanto_usado or 0))|usd }}</b>{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} ya te lo habían adelantado</div>{% endif %}</td><td style="text-align:right">{% if p.reclamo_en %}<div class="mini ln-alerta" style="margin-bottom:4px">Le avisaste a Cristina{% if p.reclamo_monto is not none %}: te llegaron {{ p.reclamo_monto|usd }}{% endif %}</div>{% endif %}<form method="post" action="/mis-entregas/pago/{{ p.id }}/confirmar" onsubmit="event.preventDefault();preguntar('¿Te llegó este pago? Al confirmarlo sale de tu lista.',{si:'Sí, me llegó',no:'Todavía no'}).then(ok=>ok&&this.submit())"><button class="btn chico">Sí, me llegó</button></form>
    <details class="cobro" style="display:inline-block"><summary class="btn sec chico">Me llegó menos</summary>

@@ -3,7 +3,7 @@
 {% if modo!='prepagados' %}<div class="barra-f"><a class="bf-todas {{ 'act' if ver=='activos' }}" href="/packs?ver=activos">En curso</a><a class="bf-todas {{ 'act' if ver=='todos' }}" href="/packs?ver=todos">Historial</a></div>{% endif %}
 {% if ver=='todos' and modo!='prepagados' %}
 {% set ns = namespace(cli=0) %}
-<div class="tabla pack-t" style="max-width:920px"><table><tr><th>Cliente</th><th class="num">Packs</th><th class="num">Entregas</th><th class="num">Pendientes</th><th>Última entrega</th><th></th></tr>
+<div class="tabla pack-t" style="max-width:920px"><table data-cols="Cliente:30|Packs:12|Entregas:14|Pendientes:14|Última entrega:16|:14"><tr><th>Cliente</th><th class="num">Packs</th><th class="num">Entregas</th><th class="num">Pendientes</th><th>Última entrega</th><th></th></tr>
 {% for k in packs %}{% if k.cliente_id != ns.cli %}{% set ns.cli = k.cliente_id %}
 {% set dels = packs|selectattr('cliente_id','eq',k.cliente_id)|list %}
 <tr class="fila" onclick="location.href='/packs?ver=todos{{ '&cliente=' ~ k.cliente_id if abierto != k.cliente_id }}{{ '&q=' ~ q if q }}'">
@@ -16,13 +16,13 @@
 {% if abierto == k.cliente_id %}<tr><td colspan="6" style="background:var(--fondo)">
  {% for kk in dels %}<div class="tarjeta" style="margin-bottom:10px"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b>Pack {{ kk.unidades }} · {{ kk.tamano or '' }}</b><span class="mini">comprado {{ kk.creado_en|fecha }}{% if kk.orden %} · {{ kk.orden }}{% endif %}</span>{% if kk.saldo>0 %}<span class="pago por_cobrar" style="margin-left:auto">quedan {{ kk.saldo }}</span>{% else %}<span class="pago pagada" style="margin-left:auto">completo</span>{% endif %}</div>
  {% if kk.entregadas_inicio %}<div class="mini" style="margin-top:6px">1 entregado al comprar</div>{% endif %}
- {% if kk.retiros %}<table class="lineas" style="margin-top:8px"><tr><th>Fecha</th><th>Entrega</th><th>Cómo</th><th>Quién lo llevó</th>{% if 'ver_dinero' in puede %}<th class="num" style="padding-right:18px">Delivery</th>{% endif %}<th>Registro</th></tr>
+ {% if kk.retiros %}<table data-cols="Fecha:13|Entrega:14|Cómo:14|Quién lo llevó:21|Delivery:13|Registro:25" class="lineas" style="margin-top:8px"><tr><th>Fecha</th><th>Entrega</th><th>Cómo</th><th>Quién lo llevó</th>{% if 'ver_dinero' in puede %}<th class="num" style="padding-right:18px">Delivery</th>{% endif %}<th>Registro</th></tr>
  {% for e in kk.retiros %}<tr><td class="mono">{{ e.fecha|fecha }}</td><td>{{ loop.index + kk.entregadas_inicio }} de {{ kk.unidades }}</td><td class="mini">{{ ENTREGA.get(e.tipo_entrega, e.tipo_entrega or '—') }}</td><td class="mini">{{ e.despachador or '—' }}</td>{% if 'ver_dinero' in puede %}<td class="num" style="padding-right:18px">{% if e.delivery_cobrado %}{{ e.delivery_cobrado|usd }}{% else %}—{% endif %}</td>{% endif %}<td class="mini">{% if e.notas %}{{ e.notas }}<br>{% endif %}{% if e.usuario %}registró {{ e.usuario }}{% endif %}</td></tr>{% endfor %}</table>
  {% else %}<div class="mini" style="margin-top:6px">Todavía no se le ha entregado ninguno.</div>{% endif %}</div>{% endfor %}
 </td></tr>{% endif %}
 {% endif %}{% else %}<tr><td colspan="6" class="vacio">Sin packs.</td></tr>{% endfor %}</table></div>
 {% else %}
-<div class="tabla pack-t"><table><tr><th>Cliente</th><th>Pack</th><th class="num">Repuestos entregados</th><th class="num">Repuestos pendientes</th><th>Última entrega</th><th>Próxima entrega</th><th></th></tr>
+<div class="tabla pack-t"><table data-cols="Cliente:18|Pack:13|Repuestos e:11|Repuestos p:11|Última entrega:12|Próxima entrega:13|:22"><tr><th>Cliente</th><th>Pack</th><th class="num">Repuestos entregados</th><th class="num">Repuestos pendientes</th><th>Última entrega</th><th>Próxima entrega</th><th></th></tr>
 {% for k in packs %}<tr><td><b><a href="/clientes/{{ k.cliente_id }}" style="color:inherit">{{ k.cliente }}</a></b><div class="mini">{{ k.ciudad or '' }}</div>{% if k.telefono %}<div><a class="wa-link" href="{{ k.telefono|wa }}" target="_blank">WhatsApp ↗</a></div>{% endif %}</td><td style="white-space:nowrap">Pack {{ k.unidades }} · {{ k.tamano }}</td>
 <td class="num">{{ k.entregadas }}</td><td class="num"><b>{{ k.saldo }}</b></td>
 <td>{{ (k.ultima_entrega or k.creado_en)|dia }}<div class="mini">hace {{ k.dias_ultima }} días{% if k.promedio %} · dura ≈ {{ k.promedio }} días{% endif %}</div></td>

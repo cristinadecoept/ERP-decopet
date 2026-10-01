@@ -4,7 +4,7 @@
 {# Lo que tiene algo pendiente sube; lo que está vacío baja al final, en chiquito. #}
 <div class="taller-col">
 <div class="tarjeta {{ '' if pickups else 'vacia' }}" style="order:{{ 0 if pickups else 3 }}"><h3>Pick-up</h3>
-{% if pickups %}<table class="lineas"><tr><th>Quién viene</th><th>Qué se lleva</th><th>Para cuándo</th><th></th></tr>
+{% if pickups %}<table data-cols="Quién viene:30|Qué se lleva:40|Para cuándo:15|:15" class="lineas"><tr><th>Quién viene</th><th>Qué se lleva</th><th>Para cuándo</th><th></th></tr>
 {% for p in pickups %}<tr>
  <td><b>{{ p.recibe or p.quien }}</b>{% if p.recibe %}<div class="mini">de parte de {{ p.quien }}</div>{% endif %}</td>
  <td class="mini">{{ (p.que_lleva or '—')|platos }}</td>
@@ -22,7 +22,7 @@
 {% else %}<div class="vacio">Hoy no se lleva nada nadie.</div>{% endif %}</div>
 
 <div class="tarjeta {{ '' if llegadas else 'vacia' }}" style="order:{{ 0 if llegadas else 3 }}"><h3>Lo que tiene que llegar</h3>
-{% if llegadas %}<table class="lineas"><tr><th>Qué</th><th>Quién lo trae</th><th class="num" style="padding-right:18px">Esperados</th><th style="padding-right:14px">Cuándo</th><th style="width:330px;padding-left:20px">¿Cuántos llegaron?</th></tr>
+{% if llegadas %}<table data-cols="Qué:30|Quién lo trae:20|Esperados:13|Cuándo:15|¿Cuántos llegaron?:22" class="lineas"><tr><th>Qué</th><th>Quién lo trae</th><th class="num" style="padding-right:18px">Esperados</th><th style="padding-right:14px">Cuándo</th><th style="width:330px;padding-left:20px">¿Cuántos llegaron?</th></tr>
 {% for l in llegadas %}<tr>
  <td><b>{{ l.producto or l.pieza or l.descripcion or 'Pedido' }}</b>{% if l.recibido %}<div class="mini">ya llegaron {{ l.recibido }}</div>{% endif %}</td>
  <td class="mini">{{ proveedor_visible(rol, l.responsable) or '—' }}</td>
@@ -57,7 +57,7 @@
  <input name="texto" placeholder="se acabó la cinta negra · llegaron 2 cajas partidas · se dañó una rampa" style="flex:1;min-width:260px" maxlength="400" required>
  <button class="btn chico">Enviar aviso</button>
 </form>
-{% if notas %}<table class="lineas" style="margin-top:10px"><tr><th style="width:90px">Cuándo</th><th>Aviso</th><th style="width:90px">Estado</th></tr>
+{% if notas %}<table data-cols="Cuándo:20|Aviso:60|Estado:20" class="lineas" style="margin-top:10px"><tr><th style="width:90px">Cuándo</th><th>Aviso</th><th style="width:90px">Estado</th></tr>
 {% for n in notas %}<tr><td class="mono">{{ n.fecha|dia }}</td><td>{{ n.texto }}</td><td>{% if n.visto %}<span class="pago pagada">visto</span>{% else %}<span class="pago por_confirmar">enviado</span>{% endif %}</td></tr>{% endfor %}</table>{% endif %}</div>
 </div>
 {% endblock %}

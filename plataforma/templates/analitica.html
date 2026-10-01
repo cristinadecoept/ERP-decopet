@@ -25,17 +25,17 @@
 <h2 class="seccion-t">De dónde vinieron las ventas</h2>
 <div class="g3 an-g">
  <div class="tarjeta"><h3>Por canal</h3>
- {% if am.canales %}<table class="lineas"><tr><th>Canal</th><th class="num">Pedidos</th><th class="num">Ventas</th><th class="num">%</th></tr>
+ {% if am.canales %}<table data-cols="Canal:40|Pedidos:20|Ventas:25|%:15" class="lineas"><tr><th>Canal</th><th class="num">Pedidos</th><th class="num">Ventas</th><th class="num">%</th></tr>
  {% for x in am.canales %}<tr><td>{{ CANAL.get(x.k, x.k) }}</td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td><td class="num mini">{{ x.pct }} %</td></tr>{% endfor %}</table>
  {% else %}<div class="vacio">Sin pedidos este mes.</div>{% endif %}</div>
 
  <div class="tarjeta"><h3>Clientes nuevos · cómo llegaron</h3>
- {% if am.como_llegaron %}<table class="lineas"><tr><th>Cómo llegó</th><th class="num">Clientes</th></tr>
+ {% if am.como_llegaron %}<table data-cols="Cómo llegó:70|Clientes:30" class="lineas"><tr><th>Cómo llegó</th><th class="num">Clientes</th></tr>
  {% for k, n in am.como_llegaron %}<tr><td>{{ k }}</td><td class="num"><b>{{ n }}</b></td></tr>{% endfor %}</table>
  {% else %}<div class="vacio">Ningún cliente nuevo este mes.</div>{% endif %}</div>
 
  <div class="tarjeta"><h3>Por ciudad</h3>
- {% if am.ciudades %}<table class="lineas"><tr><th>Ciudad</th><th class="num">Pedidos</th><th class="num">Ventas</th></tr>
+ {% if am.ciudades %}<table data-cols="Ciudad:46|Pedidos:22|Ventas:32" class="lineas"><tr><th>Ciudad</th><th class="num">Pedidos</th><th class="num">Ventas</th></tr>
  {% for x in am.ciudades %}<tr><td>{{ x.k }}</td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
  {% else %}<div class="vacio">Sin pedidos este mes.</div>{% endif %}</div>
 </div>
@@ -44,12 +44,12 @@
 <h2 class="seccion-t">Qué se vendió</h2>
 <div class="g3 an-g">
  <div class="tarjeta"><h3>Lo más vendido</h3>
- {% if am.top %}<table class="lineas"><tr><th>Producto</th><th class="num">Unidades</th><th class="num">Ventas</th></tr>
+ {% if am.top %}<table data-cols="Producto:52|Unidades:20|Ventas:28" class="lineas"><tr><th>Producto</th><th class="num">Unidades</th><th class="num">Ventas</th></tr>
  {% for p in am.top %}<tr><td>{{ p.nombre }}</td><td class="num"><b>{{ p.u|int }}</b></td><td class="num">{{ p.f|usd }}</td></tr>{% endfor %}</table>
  {% else %}<div class="vacio">Sin ventas este mes.</div>{% endif %}</div>
 
  <div class="tarjeta"><h3>El Porche</h3>
- {% if am.porches %}<table class="lineas"><tr><th>Modelo</th><th class="num">Vendidos</th></tr>
+ {% if am.porches %}<table data-cols="Modelo:70|Vendidos:30" class="lineas"><tr><th>Modelo</th><th class="num">Vendidos</th></tr>
  {% for p in am.porches %}<tr><td>{{ p.k }}</td><td class="num"><b>{{ p.u }}</b></td></tr>{% endfor %}</table>
  {% else %}<div class="vacio">No se vendió ningún porche este mes.</div>{% endif %}</div>
 
