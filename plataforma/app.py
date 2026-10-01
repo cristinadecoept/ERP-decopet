@@ -2961,7 +2961,7 @@ def ordenes_exportar(request: Request, con=Depends(db)):
 def gastos_exportar(request: Request, anio: str = "", con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     anio = anio or str(datetime.date.today().year)
-    cols = [("Fecha", 12, "f"), ("Categoría", 22, ""), ("Subcategoría", 22, ""), ("Qué fue", 32, ""), ("Pagado a", 20, ""),
+    cols = [("Fecha", 12, "f"), ("Categoría", 22, ""), ("Subcategoría", 22, ""), ("Concepto", 32, ""), ("Pagado a", 20, ""),
             ("Cantidad", 11, "n"), ("Unidad", 12, ""), ("Caja", 22, ""), ("Ref/Factura", 16, ""), ("Compra grande", 13, ""), ("Monto", 13, "$")]
     filas = [(_fecha(g["fecha"]), g["categoria"], g["subcategoria"], g["descripcion"], g["proveedor"], g["cantidad"], g["unidad"],
               g["caja"], g["comprobante"], "Sí" if g["compra_grande"] else "", g["monto_usd"])
