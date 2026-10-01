@@ -1003,3 +1003,8 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .ef-blob1{opacity:.32}.ef-blob2{opacity:.38}.ef-blob3{opacity:.14}
 .entrar-frase{font-size:clamp(38px,4.4vw,62px)}
 @media (min-width:1100px){.entrar-frase{white-space:nowrap;font-size:clamp(40px,3.9vw,58px)}}
+/* Entrar: solo el logo, grande, sin frase */
+.entrar-izq .entrar-top{margin:0}
+.entrar-izq .entrar-top .entrar-logo{height:clamp(70px,8vw,120px)}
+.entrar-izq .entrar-r{right:-20px;top:-2px;font-size:16px}
+@media (max-width:820px){.entrar-izq .entrar-top .entrar-logo{height:56px}.entrar-izq .entrar-r{right:-13px;font-size:11px}}
