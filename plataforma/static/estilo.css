@@ -1060,3 +1060,14 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .entrar-c{position:relative}
 .ef-perro3{display:none;position:absolute;right:22px;bottom:calc(100% - 34px);height:130px;width:auto;z-index:-1;pointer-events:none}
 @media (min-width:821px) and (max-height:760px){.ef-perro2{display:none}.ef-perro3{display:block}}
+/* el perrito que saluda se asoma en diagonal desde el borde derecho */
+.ef-perro2{display:block;right:0;top:2vh;height:min(300px,34vh);width:auto}
+.ef-perro3{display:none!important}
+@media (min-width:821px) and (max-height:760px){.ef-perro2{display:block}}
+@media (max-width:820px){.ef-perro2{display:none}}
+/* cuando no cabe en la esquina, se asoma por detrás de la tarjeta */
+.ef-perro4{display:none;position:absolute;right:-6px;bottom:calc(100% - 46px);height:118px;width:auto;z-index:-1;pointer-events:none}
+@media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.ef-perro2{display:none}.ef-perro4{display:block}}
+.ef-perro4{right:34px;bottom:calc(100% - 40px);height:122px}
+@media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.entrar-c{margin-top:44px}.ef-perro4{right:30px;bottom:calc(100% - 24px);height:150px}}
+@media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.ef-perro4{height:126px}}
