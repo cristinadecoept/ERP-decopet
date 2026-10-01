@@ -999,3 +999,7 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .entrar-izq .entrar-top .entrar-logo{height:58px}
 .entrar-izq .entrar-r{right:-15px;font-size:13px}
 @media (max-width:820px){.entrar-izq .entrar-top{margin-bottom:14px}.entrar-izq .entrar-top .entrar-logo{height:40px}.entrar-izq .entrar-r{right:-11px;font-size:10px}}
+/* Entrar, más sobrio: sin íconos, las manchas más suaves y la frase un poco más chica para que quepa en dos líneas */
+.ef-blob1{opacity:.32}.ef-blob2{opacity:.38}.ef-blob3{opacity:.14}
+.entrar-frase{font-size:clamp(38px,4.4vw,62px)}
+@media (min-width:1100px){.entrar-frase{white-space:nowrap;font-size:clamp(40px,3.9vw,58px)}}
