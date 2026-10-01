@@ -1516,6 +1516,17 @@ async def crear_orden(request: Request, con=Depends(db)):
     descuento = float(f.get("descuento") or 0); canal = f.get("canal") or "whatsapp"
     iva = round((subtotal - descuento) * 0.16, 2) if (canal == "cashea" or f.get("factura") == "1") else 0
     delivery = float(f.get("delivery") or 0); total = round(subtotal - descuento + iva + delivery, 2)
+    # pack con delivery: los deliveries de las próximas entregas que deja pagados hoy se cobran ya (cantidad × tarifa de hoy)
+    con_delivery = f.get("tipo_entrega") in ("delivery", "delivery_fuera") and delivery > 0
+    deliv_pack = []   # (línea, entregas futuras pagadas por pack, monto)
+    for li, (p, c, *_r) in enumerate(lineas):
+        if li in packs_deliv_por_linea:
+            ini = packs_inicio_por_linea.get(li, 1)
+            k = max(packs_deliv_por_linea[li] - 1, 0) if (con_delivery and ini >= 1) else 0
+            packs_deliv_por_linea[li] = k + 1 if k else 0
+            if k: deliv_pack.append((li, k, round(k * int(c) * delivery, 2)))
+    monto_dpack = round(sum(m for _, _, m in deliv_pack), 2)
+    subtotal += monto_dpack; total = round(total + monto_dpack, 2)
     ultimo = con.execute("SELECT MAX(CAST(substr(numero,2) AS INTEGER)) FROM ordenes").fetchone()[0] or 0
     hoy_d = datetime.date.today()
     fecha_auto = f.get("fecha_prometida") or hoy_d.isoformat()
@@ -1542,10 +1553,14 @@ async def crear_orden(request: Request, con=Depends(db)):
         if (p["sku"] or "").startswith("PACK"):   # abre el pack con los repuestos que se lleva hoy
             unid = {"PACK3-M": 3, "PACK3-G": 3, "PACK4-M": 4, "PACK4-G": 4, "PACK8-M": 8, "PACK8-G": 8}.get(p["sku"], 3); ini = min(packs_inicio_por_linea.get(li, 1), unid)
             if "deliveries_prepagados" not in [r[1] for r in con.execute("PRAGMA table_info(packs)")]: con.execute("ALTER TABLE packs ADD COLUMN deliveries_prepagados INTEGER DEFAULT 0")
-            dprep = max(packs_deliv_por_linea.get(li, 1) - max(ini, 1), 0)   # deliveries pagados hoy para retiros futuros
+            dprep = max(packs_deliv_por_linea.get(li, 0) - 1, 0)   # deliveries de las próximas entregas, pagados hoy con la orden
             for _ in range(int(c)):
                 con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,creado_en,deliveries_prepagados) VALUES (?,?,?,?,?,?,?,datetime('now','localtime'),?)",
                             (cid, oid, p["id"], "Grande" if p["sku"].endswith("G") else ("Mediano" if p["sku"].endswith("M") else None), unid, ini, "completo" if ini >= unid else "activo", dprep))
+        for li_d, k_d, m_d in deliv_pack:
+            if li_d == li:   # queda anotado dentro de la orden, como lo que se cobra aparte del producto
+                con.execute("""INSERT INTO orden_lineas (orden_id, nombre, cantidad, precio, costo, total, extra_en)
+                               VALUES (?,?,?,?,0,?,?)""", (oid, f"Delivery de las próximas entregas del pack ({k_d * int(c)} × ${delivery:g})", k_d * int(c), delivery, m_d, hoy_d.isoformat()))
         if prepago and (p["sku"] or "").startswith("REP-"):
             for _ in range(int(c)):
                 con.execute("INSERT INTO repuestos_prepagados (cliente_id,orden_id,linea_id,producto_id,tamano,pagado_en,usuario_id) VALUES (?,?,?,?,?,?,?)",
