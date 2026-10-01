@@ -1088,3 +1088,13 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .ef-perro{bottom:max(10px,1.5vh)}@media (max-width:820px){.ef-perro{bottom:8px}}
 /* teléfono: el perrito se achica en pantallas bajitas para no tocar la tarjeta */
 @media (max-width:820px){.ef-perro{height:clamp(0px,calc(100vh - 530px),192px)}}
+/* Producción: las columnas miden siempre lo mismo, cambie el mes que cambie */
+.prod-fija{table-layout:fixed;width:100%}
+.prod-fija .c-ped{width:24%}.prod-fija .c-n{width:8%}.prod-fija .c-resp{width:11%}.prod-fija .c-cost{width:13%}.prod-fija .c-f{width:10%}.prod-fija .c-est{width:9%}.prod-fija .c-rec{width:15%}
+.prod-fija td{overflow-wrap:anywhere}.prod-fija td .mini{white-space:normal!important}.prod-fija td[style*="nowrap"]{white-space:normal!important}
+@media (max-width:820px){.prod-fija{table-layout:auto}}
+.prod-fija .c-ped{width:22%}.prod-fija .c-n{width:7%}.prod-fija .c-resp{width:10%}.prod-fija .c-cost{width:12%}.prod-fija .c-f{width:9%}.prod-fija .c-est{width:10%}.prod-fija .c-rec{width:14%}
+.prod-fija .btn,.prod-fija .pago{white-space:nowrap}.prod-fija .prod-rec input{width:60px!important}
+.prod-fija .c-ped{width:19%}.prod-fija .c-n{width:9%}.prod-fija .c-est{width:11%}.prod-fija .c-rec{width:12%}
+.prod-fija th,.prod-fija td{padding-left:6px!important;padding-right:6px!important}.prod-fija th:first-child,.prod-fija td:first-child{padding-left:14px!important}.prod-fija th:last-child,.prod-fija td:last-child{padding-right:14px!important}
+.prod-fija .c-ped{width:18%}.prod-fija .c-rec{width:13%}
