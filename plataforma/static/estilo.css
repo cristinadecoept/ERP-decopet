@@ -1045,3 +1045,4 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 @media (max-width:820px){.entrar-izq .entrar-sub{width:calc(70px * 4.11);margin:0 0 8px;font-size:13px;padding:6px 0;letter-spacing:.14em}}
 .entrar-w{background:#f2f3f5}  /* el mismo gris claro del ERP de día */
 .entrar-izq .entrar-sub{margin:-8px 0 0}@media (max-width:820px){.entrar-izq .entrar-sub{margin:-10px 0 0}}
+@media (min-width:1200px){.entrar-c{position:relative;left:-90px}}
