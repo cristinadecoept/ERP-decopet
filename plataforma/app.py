@@ -327,7 +327,7 @@ COLUMNAS = (
     ("ordenes", "pago_despachador", "REAL"), ("ordenes", "receptor_cedula", "TEXT"),
     ("ordenes", "receptor_correo", "TEXT"), ("ordenes", "requiere_factura", "INTEGER DEFAULT 0"),
     ("ordenes", "viaje_id", "INTEGER"),
-    ("packs", "deliveries_prepagados", "INTEGER DEFAULT 0"), ("packs", "delivery_pagado", "INTEGER"),
+    ("packs", "deliveries_prepagados", "INTEGER DEFAULT 0"), ("packs", "delivery_pagado", "INTEGER"), ("packs", "tarifa_prepagada", "REAL"), ("packs", "delivery_diferencia", "REAL"), ("packs", "diferencia_pagada", "INTEGER"),
     ("packs", "delivery_programado", "REAL"), ("packs", "despachador_programado", "TEXT"),
     ("packs", "fecha_programada", "TEXT"), ("packs", "nota_programada", "TEXT"),
     ("packs", "retiro_programado", "INTEGER"), ("packs", "tipo_programado", "TEXT"),
@@ -1555,8 +1555,8 @@ async def crear_orden(request: Request, con=Depends(db)):
             if "deliveries_prepagados" not in [r[1] for r in con.execute("PRAGMA table_info(packs)")]: con.execute("ALTER TABLE packs ADD COLUMN deliveries_prepagados INTEGER DEFAULT 0")
             dprep = max(packs_deliv_por_linea.get(li, 0) - 1, 0)   # deliveries de las próximas entregas, pagados hoy con la orden
             for _ in range(int(c)):
-                con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,creado_en,deliveries_prepagados) VALUES (?,?,?,?,?,?,?,datetime('now','localtime'),?)",
-                            (cid, oid, p["id"], "Grande" if p["sku"].endswith("G") else ("Mediano" if p["sku"].endswith("M") else None), unid, ini, "completo" if ini >= unid else "activo", dprep))
+                con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,creado_en,deliveries_prepagados,tarifa_prepagada) VALUES (?,?,?,?,?,?,?,datetime('now','localtime'),?,?)",
+                            (cid, oid, p["id"], "Grande" if p["sku"].endswith("G") else ("Mediano" if p["sku"].endswith("M") else None), unid, ini, "completo" if ini >= unid else "activo", dprep, delivery if dprep else None))
         for li_d, k_d, m_d in deliv_pack:
             if li_d == li:   # queda anotado dentro de la orden, como lo que se cobra aparte del producto
                 con.execute("""INSERT INTO orden_lineas (orden_id, nombre, cantidad, precio, costo, total, extra_en)
@@ -4234,18 +4234,25 @@ def packs(request: Request, ver: str = "activos", q: str = "", con=Depends(db), 
 
 
 @app.post("/packs/{pid}/programar")
-def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entrega: str = Form(""), despachador: str = Form(""), notas: str = Form(""), retiro: str = Form(""), delivery: str = Form("0"), delivery_pagado: str = Form("0"), pago_forma: str = Form(""), volver: str = Form(""), con=Depends(db)):
+def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entrega: str = Form(""), despachador: str = Form(""), notas: str = Form(""), retiro: str = Form(""), delivery: str = Form("0"), delivery_pagado: str = Form("0"), pago_forma: str = Form(""), diferencia: str = Form(""), diferencia_pagada: str = Form("0"), volver: str = Form(""), con=Depends(db)):
     k = con.execute("SELECT * FROM packs WHERE id=?", (pid,)).fetchone()
     dl = float(delivery or 0) if tipo_entrega in ("delivery", "delivery_fuera") else 0.0
     pagado = 1 if delivery_pagado == "1" and dl > 0 else 0
-    if k and (k["deliveries_prepagados"] or 0) > 0 and dl > 0:   # ya lo pagó por adelantado con el pack: no se cobra de nuevo
-        pagado = 2; dl_prep = dl; dl = 0.0
+    dif = 0.0
+    if k and (k["deliveries_prepagados"] or 0) > 0 and tipo_entrega in ("delivery", "delivery_fuera"):   # ya lo pagó por adelantado con el pack: no se cobra de nuevo
+        dif = round(max(float(diferencia or 0), 0), 2)   # salvo una diferencia (un sitio más lejos): se cobra aparte y al despachador se le paga todo
+        pagado = 2; dl_prep = (k["tarifa_prepagada"] or dl or 5) + dif; dl = 0.0
     saldo_k = (k["unidades"] - k["entregadas_inicio"] - con.execute("SELECT COUNT(*) FROM entregas_repuesto WHERE pack_id=?", (pid,)).fetchone()[0]) if k else 1
     cuantos_prog = max(1, min(int(retiro) if retiro.isdigit() else 1, max(saldo_k, 1)))   # cuántos repuestos se lleva ese día
     con.execute("UPDATE packs SET fecha_programada=?, tipo_programado=?, despachador_programado=?, nota_programada=?, retiro_programado=?, delivery_programado=?, delivery_pagado=? WHERE id=?",
                 (fecha or None, tipo_entrega or None, despachador or None, notas or None, cuantos_prog, dl, pagado, pid))
     if pagado == 2:
-        con.execute("UPDATE packs SET delivery_programado=?, delivery_pagado=1 WHERE id=?", (dl_prep, pid))
+        ya = k["diferencia_pagada"] and (k["delivery_diferencia"] or 0) > 0   # si ya la había cobrado al programar, no se cobra otra vez
+        dif_pag = 1 if (ya or (diferencia_pagada == "1" and dif > 0)) else 0
+        con.execute("UPDATE packs SET delivery_programado=?, delivery_pagado=1, delivery_diferencia=?, diferencia_pagada=? WHERE id=?", (dl_prep, dif or None, dif_pag if dif else None, pid))
+        if dif > 0 and dif_pag and not ya and k["orden_id"]:
+            cobro_extra(con, k["orden_id"], "Diferencia de delivery · entrega de pack", dif, pago_forma or "Pago Móvil", datetime.date.today().isoformat(), uid_de(request),
+                        nota=f"entrega programada para el {fmt_fecha(fecha)}" if fecha else None)
     if pagado == 1 and k and k["orden_id"]:   # el delivery ya lo pagó: entra a la orden del pack, contado el día de hoy
         cobro_extra(con, k["orden_id"], "Delivery entrega de pack", dl, pago_forma or "Pago Móvil", datetime.date.today().isoformat(), uid_de(request),
                     nota=f"entrega programada para el {fmt_fecha(fecha)}" if fecha else None)
@@ -4281,6 +4288,10 @@ def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despach
     if dc > 0 and k["orden_id"]:   # el delivery del retiro entra a la orden original del pack, contado el día que se cobra
         forma = pago_forma or ("Efectivo USD" if pago == "confirmado" else "")
         cobro_extra(con, k["orden_id"], "Delivery entrega de pack", dc, forma, fecha or datetime.date.today().isoformat(), uid, pago=pago)
+    if (k["delivery_diferencia"] or 0) > 0 and not k["diferencia_pagada"] and k["orden_id"]:   # la diferencia de delivery que quedó por cobrar al entregar
+        forma = pago_forma or ("Efectivo USD" if pago == "confirmado" else "")
+        cobro_extra(con, k["orden_id"], "Diferencia de delivery · entrega de pack", k["delivery_diferencia"], forma, fecha or datetime.date.today().isoformat(), uid, pago=pago)
+    con.execute("UPDATE packs SET delivery_diferencia=NULL, diferencia_pagada=NULL WHERE id=?", (pid,))
     return True
 
 
