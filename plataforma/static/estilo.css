@@ -1107,3 +1107,7 @@ table.fija td[style*="nowrap"]{white-space:normal!important}
 table.fija td details.cobro{margin:2px 0}
 .ops-t.fija td,.ops-t.fija th{padding-left:10px;padding-right:10px}
 table.fija .me-acc{white-space:normal!important;min-width:0!important;width:auto!important}table.fija td{padding-left:10px;padding-right:10px}
+/* Entrar: El Bar (el comedor) de la guía de estilo, flotando arriba a la izquierda; mismo grosor de línea que los perritos */
+.ef-bar{position:absolute;left:9%;top:7vh;height:calc(min(316px,30vh) * .59);width:auto;transform:rotate(-12deg)}
+@media (min-width:821px) and (max-width:1199px),(min-width:821px) and (max-height:760px){.ef-bar{height:calc(min(316px,30vh) * .539);top:4vh}}
+@media (max-width:820px){.ef-bar{display:none}}
