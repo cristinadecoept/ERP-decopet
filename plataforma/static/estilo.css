@@ -1143,3 +1143,6 @@ html.oscuro .entrar-c .btn{background:#5A9075;color:#fff}html.oscuro .entrar-w{b
 .eq-stats{grid-template-columns:repeat(auto-fill,150px);gap:14px 10px}
 .eq-num .mini{white-space:nowrap}
 @media (max-width:820px){.eq-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Equipo: la flechita del selector no se monta sobre el texto; el panel abierto queda en su sitio (no salta debajo del otro botón) */
+.eq-d .fal-f select{padding-right:36px!important;min-width:130px}
+.eq-d[open]{order:0}
