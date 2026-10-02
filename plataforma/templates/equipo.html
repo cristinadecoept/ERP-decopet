@@ -45,7 +45,7 @@
   <td class="num"><b>{{ g.monto_usd|usd }}</b>{% if g.moneda and g.moneda != 'USD' %}<div class="mini">{{ '%.2f'|format(g.monto_real or 0) }} {{ g.moneda }}</div>{% endif %}</td>
  </tr>{% endfor %}</table>
  {% if p.pagos|length > 12 %}<div class="mini" style="margin-top:6px">y {{ p.pagos|length - 12 }} más · {{ p.total|usd }} en total</div>{% endif %}
- {% else %}<div class="vacio">Todavía no le has registrado ningún pago.</div>{% endif %}
+ {% else %}<div class="mini" style="margin-top:14px">Todavía no le has registrado ningún pago.</div>{% endif %}
 </div>
 {% endfor %}
 <p class="mini">A Víctor, al contador y los alquileres se les paga desde <a href="/finanzas/recurrentes">Pagos recurrentes</a>.</p>
