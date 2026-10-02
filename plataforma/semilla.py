@@ -35,6 +35,12 @@ PRODUCTOS = [  # sku, nombre, categoria, descripcion, precio, precio_par, costo,
     # Opciones (se agregan a una línea, no se venden como producto)
     ("OPC-PERSO", "Personalización con nombre", "opcion", None, 10, None, 3, "opcion", 0, 0, 0),
     ("OPC-MALLA", "Malla agregada al porche", "opcion", None, 20, None, 8, "opcion", 0, 0, 0),
+    # Productos que ya se vendieron en Airtable y el importador de pedidos necesita. Precios: tabla Producto de Airtable.
+    # Costos: Airtable no los guarda; son estimados (por analogía con repuestos/porches) y NO sirven para ver márgenes reales.
+    ("BAS-M", "El Porche Básico Mediano", "porche", "68 × 48 cm", 38, None, 15, "producto", 0, 0, 1),
+    ("BAS-G", "El Porche Básico Grande", "porche", "90 × 60 cm", 38, None, 16, "producto", 0, 0, 1),
+    ("PACK4", "Pack 4 Repuestos Cashea", "repuesto", "4 unidades", 88, None, 36, "producto", 0, 0, 0),
+    ("PACK8", "Pack 8 Repuestos Cashea", "repuesto", "8 unidades", 176, None, 72, "producto", 0, 0, 0),
 ]
 
 ZONAS_CCS = ["La Castellana", "Los Palos Grandes", "Prados del Este", "El Hatillo", "La Trinidad", "Chacao", "Las Mercedes",
