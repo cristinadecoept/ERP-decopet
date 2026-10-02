@@ -1,25 +1,24 @@
 {% extends "base.html" %}{% block titulo %}Equipo · Decopet{% endblock %}{% block cuerpo %}
 <div class="fila-titulo"><div><h1>Equipo</h1></div></div>
 {% for p in gente %}
-<div class="tarjeta" style="margin-bottom:16px">
- <div class="eq-cab">
-  <h3 style="margin:0">{{ p.nombre }}</h3>
-  {% if p.quincena %}<div class="eq-num"><span class="mini">por quincena</span> <b>{{ p.quincena|usd }}</b></div>
-  {% endif %}
-  {% for c in p.comps %}<div class="eq-num"><span class="mini">{{ c.subcategoria or c.nombre }}{{ ' · por semana' if c.frecuencia=='semanal' }}</span>
-   <b>{{ c.monto|usd }}</b>{% if c.prox %}<span class="mini">{{ c.prox|dia }}{% if c.frecuencia=='inicio_mes' %} · hasta el {{ c.dia or 5 }}{% endif %}</span>{% endif %}</div>{% endfor %}
-  <div class="eq-num"><span class="mini">pagado este mes</span> <b>{{ p.mes|usd }}</b></div>
-  {% if p.debe_adelantos %}<div class="eq-num"><span class="mini">adelantos</span> <b class="ln-alerta">−{{ p.debe_adelantos|usd }}</b></div>{% endif %}
-  {% if p.descuento %}<div class="eq-num"><span class="mini">{{ p.faltas|length }} falta{{ 's' if p.faltas|length != 1 }}</span> <b class="ln-alerta">−{{ p.descuento|usd }}</b></div>{% endif %}
-  {% if p.quincena and (p.debe_adelantos or p.descuento) %}<div class="eq-num"><span class="mini">le toca cobrar</span> <b>{{ p.neto|usd }}</b></div>{% endif %}
-  {% if p.mensual %}<div class="eq-num"><span class="mini">próxima quincena</span>
-   <b>{% if p.dias == 0 %}hoy{% elif p.dias == 1 %}mañana{% else %}{{ p.vence|dia }}{% endif %}</b></div>
-  {% endif %}
+<div class="tarjeta eq">
+ <div class="eq-quien"><h3>{{ p.nombre }}</h3><span class="mini">{{ 'cobra por quincena' if p.mensual else 'pagos fijos' }}</span></div>
+ <div class="eq-cuerpo">
+ <div class="eq-stats">
+  {% if p.quincena %}<div class="eq-num"><span class="mini">por quincena</span><b>{{ p.quincena|usd }}</b></div>{% endif %}
+  {% for c in p.comps %}<div class="eq-num"><span class="mini">{{ c.subcategoria or c.nombre }}{{ ' · semanal' if c.frecuencia=='semanal' and 'semanal' not in (c.subcategoria or c.nombre or '')|lower }}</span><b>{{ c.monto|usd }}</b>{% if c.prox %}<span class="mini">{{ c.prox|dia }}{% if c.frecuencia=='inicio_mes' %} · hasta el {{ c.dia or 5 }}{% endif %}</span>{% endif %}</div>{% endfor %}
+  <div class="eq-num"><span class="mini">pagado este mes</span><b>{{ p.mes|usd }}</b></div>
+  {% if p.debe_adelantos %}<div class="eq-num"><span class="mini">adelantos</span><b class="ln-alerta">−{{ p.debe_adelantos|usd }}</b></div>{% endif %}
+  {% if p.descuento %}<div class="eq-num"><span class="mini">{{ p.faltas|length }} falta{{ 's' if p.faltas|length != 1 }}</span><b class="ln-alerta">−{{ p.descuento|usd }}</b></div>{% endif %}
+  {% if p.quincena and (p.debe_adelantos or p.descuento) %}<div class="eq-num"><span class="mini">le toca cobrar</span><b>{{ p.neto|usd }}</b></div>{% endif %}
+  {% if p.mensual %}<div class="eq-num"><span class="mini">próxima quincena</span><b>{% if p.dias == 0 %}hoy{% elif p.dias == 1 %}mañana{% else %}{{ p.vence|dia }}{% endif %}</b></div>{% endif %}
  </div>
  {% if p.faltas %}<div class="eq-av">No vino {{ p.faltas|length }} día{{ 's' if p.faltas|length != 1 }} desde la última quincena ({{ p.diario|usd }} el día):
  {% for f in p.faltas %}<span class="falta-p">{{ f.fecha|dia }}{% if f.nota %} · {{ f.nota }}{% endif %}
   <form method="post" action="/equipo/falta/{{ f.id }}/borrar" style="display:inline"><button title="Quitar">×</button></form></span>{% endfor %}</div>{% endif %}
-{% if p.mensual %}<details class="eq-pagar" {{ 'open' if p.nombre in falta_quincena }}><summary class="btn chico">Pagar</summary>
+ {% if p.adelantos %}<div class="eq-av">Le adelantaste {{ p.debe_adelantos|usd }} desde la última quincena{% if p.ultima_quincena %} ({{ p.ultima_quincena|dia }}){% endif %}. Descuéntalo al pagarle.</div>{% endif %}
+ {% if p.mensual %}<div class="eq-acc">
+ <details class="eq-d" {{ 'open' if p.nombre in falta_quincena }}><summary class="btn chico">Pagar</summary>
  <form method="post" action="/equipo/pagar" class="fal-f">
   <input type="hidden" name="nombre" value="{{ p.nombre }}">
   <select name="que" onchange="this.form.monto.value=this.value=='Quincena'?'{{ '%.2f'|format(p.neto if p.neto is not none else p.quincena) }}':''">
@@ -29,24 +28,24 @@
   <input type="date" name="fecha" value="{{ hoy_iso }}" max="{{ hoy_iso }}">
   <button class="btn chico">Registrar pago</button></form>
  <div class="mini" style="margin-top:6px">Sale de esa caja en el cash flow y queda en gastos como Equipo. Si la caja es en bolívares, se pasa a la tasa BCV de hoy.</div></details>
-<details class="fal-w"><summary>Anotar una falta</summary>
+ <details class="eq-d"><summary class="btn sec chico">Anotar una falta</summary>
  <form method="post" action="/equipo/falta" class="fal-f">
   <input type="hidden" name="nombre" value="{{ p.nombre }}">
   <input type="date" name="fecha" value="{{ hoy_iso }}" max="{{ hoy_iso }}">
   <input name="nota" placeholder="por qué (opcional)">
-  <button class="btn chico">Anotar</button></form></details>{% endif %}
-{% if p.adelantos %}<div class="eq-av">Le adelantaste {{ p.debe_adelantos|usd }} desde la última quincena{% if p.ultima_quincena %} ({{ p.ultima_quincena|dia }}){% endif %}.  Descuéntalo al pagarle.</div>{% endif %}
- {% if p.pagos %}<table data-cols="Fecha:15|Qué:45|De qué caja:22|Monto:18" class="lineas"><tr><th>Fecha</th><th>Qué</th><th>De qué caja</th><th class="num">Monto</th></tr>
+  <button class="btn chico">Anotar</button></form></details>
+ </div>{% else %}<div class="mini eq-nota">Se le paga desde <a href="/finanzas/recurrentes">Pagos recurrentes</a>.</div>{% endif %}
+ {% if p.pagos %}<table data-cols="Fecha:15|Qué:45|De qué caja:22|Monto:18" class="lineas eq-t"><tr><th>Fecha</th><th>Qué</th><th>De qué caja</th><th class="num">Monto</th></tr>
  {% for g in p.pagos[:12] %}<tr>
-  <td class="mono" style="width:120px">{{ g.fecha|dia }}
+  <td class="mono">{{ g.fecha|dia }}
    {% if g.tocaba and g.tocaba != g.fecha %}<div class="mini">tocaba el {{ g.tocaba|dia }}</div>{% endif %}</td>
   <td>{{ g.subcategoria or '—' }}{% if g.categoria and g.categoria != 'Equipo' %}<span class="mini"> · {{ g.categoria }}</span>{% endif %}{% if g.descripcion %}<span class="mini"> · {{ g.descripcion }}</span>{% endif %}</td>
   <td class="mini">{{ g.caja or '—' }}</td>
   <td class="num"><b>{{ g.monto_usd|usd }}</b>{% if g.moneda and g.moneda != 'USD' %}<div class="mini">{{ '%.2f'|format(g.monto_real or 0) }} {{ g.moneda }}</div>{% endif %}</td>
  </tr>{% endfor %}</table>
  {% if p.pagos|length > 12 %}<div class="mini" style="margin-top:6px">y {{ p.pagos|length - 12 }} más · {{ p.total|usd }} en total</div>{% endif %}
- {% else %}<div class="mini" style="margin-top:14px">Todavía no le has registrado ningún pago.</div>{% endif %}
+ {% else %}<div class="mini eq-nota">Todavía no le has registrado ningún pago.</div>{% endif %}
+ </div>
 </div>
 {% endfor %}
-<p class="mini">A Víctor, al contador y los alquileres se les paga desde <a href="/finanzas/recurrentes">Pagos recurrentes</a>.</p>
 {% endblock %}
