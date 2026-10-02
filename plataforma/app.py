@@ -353,6 +353,9 @@ def preparar_base(ruta):
     """Deja una base lista para usar: crea las tablas y agrega las columnas que falten.
     Sirve igual para la base en uso y para una recién creada."""
     con = sqlite3.connect(ruta)
+    # WAL: quien lee no espera a quien guarda. Con varias personas a la vez, más la tasa BCV y el
+    # respaldo trabajando de fondo, sin esto aparece "database is locked". Queda grabado en la base.
+    con.execute("PRAGMA journal_mode=WAL")
     tablas = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "viajes_fallidos" in tablas and "viajes_despachador" not in tablas:   # la primera versión se llamaba así
         con.execute("ALTER TABLE viajes_fallidos RENAME TO viajes_despachador")
