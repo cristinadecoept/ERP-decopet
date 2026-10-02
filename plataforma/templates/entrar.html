@@ -17,10 +17,13 @@
    <h1>Ponle una clave a tu ERP</h1>
    <p class="mini">Hasta ahora cualquiera que abriera esta dirección entraba como administradora. Elige tu clave: no queda escrita en ningún lado y nadie más la ve, ni yo.</p>
    <form method="post" action="/entrar/primera-vez">
-    <label>Tu clave</label><input type="password" name="clave" required minlength="8" autofocus autocomplete="new-password">
+    {% if pide_codigo %}<label>Código de instalación</label><input type="password" name="codigo" required autofocus autocomplete="off">{% endif %}
+    <label>Tu correo o usuario</label><input name="usuario" required autocomplete="username" inputmode="email"{% if not pide_codigo %} autofocus{% endif %}>
+    <label>Tu clave</label><input type="password" name="clave" required minlength="8" autocomplete="new-password">
     <label>Escríbela otra vez</label><input type="password" name="clave2" required minlength="8" autocomplete="new-password">
     {% if mal == 'corta' %}<div class="entrar-mal">Tiene que tener al menos 8 caracteres.</div>{% endif %}
     {% if mal == 'distinta' %}<div class="entrar-mal">Las dos no coinciden.</div>{% endif %}
+    {% if mal == 'codigo' %}<div class="entrar-mal">Ese código no es.</div>{% elif mal == 'frenado' %}<div class="entrar-mal">Demasiados intentos. Espera 15 minutos.</div>{% endif %}
     <button class="btn">Guardar y entrar</button>
    </form>
   {% else %}

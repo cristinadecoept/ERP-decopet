@@ -6,7 +6,7 @@ de datos de mentira. Correrlas antes y después de cualquier cambio:
 
     ./.venv/bin/python pruebas.py
 """
-import os, sqlite3, datetime, tempfile, pathlib, traceback
+import os, re, sqlite3, datetime, tempfile, pathlib, traceback
 os.environ["DECOPET_PRUEBAS"] = "1"
 
 import plataforma.app as A
@@ -419,6 +419,133 @@ def _():
     con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad,nota,usuario_id,creado_en) VALUES (1,'2026-09-28','entrada',10,'producción #1 · Walter',1,datetime('now','localtime'))")
     con.commit()
     assert A.llegada_repetida(con, 1, 1) and not A.llegada_repetida(con, 12, 1)
+
+
+# ─────────────────────────────────────────────── todas las pantallas, con cada rol
+print("\nCADA PANTALLA, CON CADA ROL")
+
+from contextlib import contextmanager
+from fastapi.testclient import TestClient
+
+
+@contextmanager
+def erp_de_prueba(en_servidor=False, con_datos=True):
+    """El ERP entero sobre una base de mentira, con los datos ficticios de la semilla.
+    Nunca toca la base en uso: se cambia la ruta mientras dura la prueba."""
+    import plataforma.semilla as S
+    antes = (A.DB, S.DB, A.EN_SERVIDOR, A.bcv.programar, A.bcv.actualizar)
+    A.DB = S.DB = pathlib.Path(tempfile.mkdtemp()) / "plataforma.db"
+    A.EN_SERVIDOR = en_servidor
+    A.bcv.programar = lambda *a, **k: None          # sin hilos ni internet durante las pruebas
+    A.bcv.actualizar = lambda *a, **k: {}
+    try:
+        if con_datos:
+            import contextlib, io
+            with contextlib.redirect_stdout(io.StringIO()): S.main()
+        A._arranque()
+        yield TestClient(A.app)
+    finally:
+        A.DB, S.DB, A.EN_SERVIDOR, A.bcv.programar, A.bcv.actualizar = antes
+        A.cargar_despachadores(); A.cargar_formas_pago(); A.cargar_ajustes()
+
+
+def sesion_de(cliente, rol):
+    """Un usuario de ese rol, con clave puesta, y su sesión abierta."""
+    con = sqlite3.connect(A.DB)
+    desp = A.DESPACHADORES[0] if rol == "despachador" and A.DESPACHADORES else None
+    uid = con.execute("INSERT INTO usuarios (nombre,usuario,rol,clave_hash,despachador,activo) VALUES (?,?,?,?,?,1)",
+                      (f"Prueba {rol}", f"prueba-{rol}", rol, A.cifrar_clave("clave-de-prueba"), desp)).lastrowid
+    con.commit(); ficha = A.abrir_sesion(con, uid); con.close()
+    cliente.cookies.clear(); cliente.cookies.set("sesion", ficha)
+    if desp: cliente.cookies.set("ver_desp", desp)
+
+
+def rutas_get():
+    """Todas las pantallas del ERP. Las que llevan un número en la dirección se prueban con el 1.
+    Salir y ver-como cambian la sesión: si se recorrieran, el resto se probaría ya desconectado."""
+    from starlette.routing import Route
+    for r in A.app.routes:
+        if isinstance(r, Route) and "GET" in (r.methods or ()) and not r.path.startswith(("/salir", "/ver-como")):
+            yield re.sub(r"\{[^}]+\}", "1", r.path)
+
+
+def sin_sesion(r):
+    """Si una pantalla manda a /entrar es que la prueba perdió la sesión y ya no está probando nada."""
+    return r.status_code == 303 and r.headers.get("location", "").startswith("/entrar")
+
+
+ROLES_CERRADOS = ("taller", "despachador", "logistica")
+
+
+@prueba("Ninguna pantalla se cae con ningún rol (ni un error 500)")
+def _():
+    rotas = []; abiertas = {}
+    with erp_de_prueba() as c:
+        for rol in ("admin",) + ROLES_CERRADOS:
+            sesion_de(c, rol)
+            for ruta in rutas_get():
+                try:
+                    r = c.get(ruta, follow_redirects=False)
+                    if r.status_code >= 500: rotas.append(f"{rol} {ruta} → {r.status_code}")
+                    if sin_sesion(r): rotas.append(f"{rol} {ruta} → perdió la sesión")
+                    if r.status_code == 200: abiertas[rol] = abiertas.get(rol, 0) + 1
+                except Exception as e:
+                    rotas.append(f"{rol} {ruta} → {type(e).__name__}: {e}")
+    assert not rotas, "\n      ".join(["pantallas rotas:"] + rotas)
+    assert abiertas.get("admin", 0) >= 40, f"el admin solo abrió {abiertas.get('admin', 0)} pantallas: la prueba no está entrando"
+
+
+@prueba("Taller, despachador y logística solo abren lo de su lista; el resto los devuelve a su pantalla")
+def _():
+    fuera = []
+    with erp_de_prueba() as c:
+        for rol in ROLES_CERRADOS:
+            permitido, casa = A.PUERTAS[rol]
+            sesion_de(c, rol)
+            for ruta in rutas_get():
+                r = c.get(ruta, follow_redirects=False)
+                assert not sin_sesion(r), f"{rol} perdió la sesión en {ruta}"
+                if r.status_code == 200 and not ruta.startswith(permitido): fuera.append(f"{rol} abrió {ruta}")
+    assert not fuera, "\n      ".join(["vieron algo que no les toca:"] + fuera)
+
+
+@prueba("Ni el taller ni logística llegan a la plata: finanzas, cajas, cashflow, gastos, equipo")
+def _():
+    with erp_de_prueba() as c:
+        for rol in ("taller", "logistica"):
+            sesion_de(c, rol)
+            for ruta in ("/finanzas", "/finanzas/gastos", "/finanzas/recurrentes", "/cashflow", "/cashflow/cajas",
+                         "/cashflow/libro", "/equipo", "/proveedores", "/exportar-todo", "/configuracion"):
+                r = c.get(ruta, follow_redirects=False)
+                assert not sin_sesion(r), f"{rol} perdió la sesión en {ruta}"
+                assert r.status_code != 200, f"{rol} pudo abrir {ruta}"
+
+
+@prueba("En el servidor, sin claves puestas, no entra nadie: la primera clave pide el código de instalación")
+def _():
+    os.environ["DECOPET_CODIGO_INICIAL"] = "codigo-de-prueba"
+    try:
+        with erp_de_prueba(en_servidor=True) as c:
+            r = c.get("/inicio", follow_redirects=False)
+            assert r.status_code == 303 and r.headers["location"] == "/entrar", "abrió el ERP sin clave"
+            datos = {"usuario": "cristina@x.com", "clave": "una-clave-larga", "clave2": "una-clave-larga"}
+            r = c.post("/entrar/primera-vez", data={**datos, "codigo": "otro"}, follow_redirects=False)
+            assert r.headers["location"] == "/entrar?mal=codigo", "aceptó un código equivocado"
+            assert not A.hay_claves()
+            r = c.post("/entrar/primera-vez", data={**datos, "codigo": "codigo-de-prueba"}, follow_redirects=False)
+            assert r.headers["location"] == "/inicio" and A.hay_claves()
+            c.cookies.clear()                       # vuelve a entrar con el usuario que puso
+            r = c.post("/entrar", data={"usuario": "cristina@x.com", "clave": "una-clave-larga"}, follow_redirects=False)
+            assert r.headers["location"] == "/inicio", "no pudo volver a entrar con su usuario"
+    finally:
+        del os.environ["DECOPET_CODIGO_INICIAL"]
+
+
+@prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
+def _():
+    with erp_de_prueba(en_servidor=True, con_datos=False) as c:
+        r = c.get("/health", follow_redirects=False)
+        assert (r.status_code, r.text) == (200, "ok"), (r.status_code, r.text)
 
 
 print("\nRECONSTRUIR DESDE CERO")

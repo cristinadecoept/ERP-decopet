@@ -14,6 +14,10 @@ BASE = Path(__file__).resolve().parent
 DATOS = Path(os.environ.get("DECOPET_DATOS") or (BASE / "data"))
 DATOS.mkdir(parents=True, exist_ok=True)
 DB = DATOS / "plataforma.db"
+# En un servidor (con DECOPET_DATOS) el ERP nunca queda abierto: en la Mac, sin claves puestas,
+# entraba cualquiera como administradora porque solo se abría desde la propia Mac. En internet,
+# la primera clave pide además el código de instalación (DECOPET_CODIGO_INICIAL).
+EN_SERVIDOR = bool(os.environ.get("DECOPET_DATOS"))
 DOCS_DIR = DATOS / "documentos"
 FOTOS_DIR = DATOS / "fotos"
 FOTOS_PRODUCTOS = FOTOS_DIR / "productos"
@@ -253,6 +257,15 @@ ESCUDOS = {
 }
 
 
+def base_responde():
+    try:
+        con = sqlite3.connect(DB, timeout=2)
+        try: con.execute("SELECT 1 FROM usuarios LIMIT 1").fetchone(); return True
+        finally: con.close()
+    except sqlite3.Error:
+        return False
+
+
 def viene_de_fuera(request):
     """Una orden que llega desde otra página web. Así funciona el engaño de hacerte hacer clic
     en un sitio cualquiera para que tu navegador, ya con tu sesión abierta, haga algo aquí."""
@@ -277,6 +290,9 @@ async def puerta(request: Request, call_next):
 
     if ruta == "/robots.txt":
         return con_escudos(PlainTextResponse("User-agent: *\nDisallow: /\n"))
+    if ruta == "/health":   # para Railway: ¿está vivo y puede leer la base? Sin entrar y sin contar nada más.
+        vivo = base_responde()
+        return con_escudos(PlainTextResponse("ok" if vivo else "mal", status_code=200 if vivo else 503))
     if viene_de_fuera(request):
         return con_escudos(JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403))
     try:
@@ -285,7 +301,7 @@ async def puerta(request: Request, call_next):
     except ValueError:
         return con_escudos(JSONResponse({"error": "Orden mal formada"}, status_code=400))
     if not ruta.startswith(ABIERTO):
-        if hay_claves() and not quien_es(request):
+        if (hay_claves() or EN_SERVIDOR) and not quien_es(request):
             return con_escudos(RedirectResponse("/entrar", status_code=303))
         permitido, casa = PUERTAS.get(rol_de(request), (None, None))
         if permitido and not ruta.startswith(permitido):
@@ -502,7 +518,7 @@ def hay_claves(con=None):
 
 def rol_de(request: Request):
     u = quien_es(request)
-    if not u: return "admin" if not hay_claves() else "invitado"
+    if not u: return "admin" if not hay_claves() and not EN_SERVIDOR else "invitado"
     # solo el administrador puede mirar el ERP como si fuera otro, para revisarlo
     if u["rol"] == "admin":
         ver = request.cookies.get("ver_como")
@@ -546,7 +562,7 @@ def render(request, nombre, **ctx):
 def entrar(request: Request, mal: str = "", con=Depends(db)):
     if quien_es(request): return RedirectResponse("/inicio", status_code=303)
     return render(request, "entrar.html", seccion="entrar", primera_vez=not hay_claves(con),
-                  mal=mal, sin_menu=True)
+                  pide_codigo=EN_SERVIDOR, mal=mal, sin_menu=True)
 
 
 @app.post("/entrar")
@@ -568,13 +584,22 @@ def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form("")
 
 
 @app.post("/entrar/primera-vez")
-def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), con=Depends(db)):
+def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), usuario: str = Form(""),
+                   codigo: str = Form(""), con=Depends(db)):
     """La primera vez, Cristina pone su propia clave. Nadie más la ve nunca, ni queda escrita."""
     if hay_claves(con): return RedirectResponse("/entrar", status_code=303)
+    if EN_SERVIDOR:
+        esperado = os.environ.get("DECOPET_CODIGO_INICIAL", "")
+        ip = (request.client.host if request.client else "") or ""
+        if frenado(con, "primera-vez", ip): return RedirectResponse("/entrar?mal=frenado", status_code=303)
+        if not (esperado and secrets.compare_digest(codigo.strip().encode(), esperado.encode())):
+            anotar_intento(con, "primera-vez", ip)
+            return RedirectResponse("/entrar?mal=codigo", status_code=303)
     if len(clave.strip()) < 8 or clave != clave2:
         return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 8 else "distinta"), status_code=303)
     u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
-    con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), u["id"])); con.commit()
+    con.execute("UPDATE usuarios SET clave_hash=?, usuario=COALESCE(?, usuario) WHERE id=?",   # sin usuario no podría volver a entrar
+                (cifrar_clave(clave.strip()), usuario.strip().lower() or None, u["id"])); con.commit()
     r = RedirectResponse("/inicio", status_code=303)
     r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True,
                  samesite="strict", secure=cookie_segura(request))
@@ -2124,15 +2149,6 @@ def libro_caja(con, caja_id=None, mes=None):
     return list(reversed(lineas))
 
 
-@app.get("/cashflow/libro", response_class=HTMLResponse)
-def libro(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
-    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    cs = saldos(con)
-    lineas = libro_caja(con, int(caja) if caja else None, mes or None)
-    meses = sorted({l["fecha"][:7] for l in libro_caja(con)}, reverse=True)
-    return render(request, "libro.html", seccion="cashflow", lineas=lineas[:500], cuentas=cs, caja=caja, mes=mes, meses=meses, total=sum(c["saldo"] for c in cs if c["tipo"] == "operativa"))
-
-
 @app.post("/cashflow/cuentas")
 async def cuentas_guardar(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
@@ -2951,7 +2967,7 @@ def mascotas_exportar(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     cols = [("Mascota", 22, ""), ("Raza", 22, ""), ("Cumpleaños", 14, ""), ("Nacimiento", 14, "f"),
             ("Peso (kg)", 11, "n"), ("Dueño", 26, ""), ("Teléfono", 16, ""), ("Ciudad", 18, "")]
-    filas = [(m["nombre"], m["raza"], m["cumple"], _fecha(m["fecha_nacimiento"]), m["peso"], m["cliente"], m["telefono"], m["ciudad"])
+    filas = [(m["nombre"], m["raza"], m["cumple_mes_dia"], _fecha(m["fecha_nacimiento"]), m["peso_kg"], m["cliente"], m["telefono"], m["ciudad"])
              for m in con.execute("""SELECT m.*, c.nombre cliente, c.telefono, c.ciudad FROM mascotas m
                                      LEFT JOIN clientes c ON c.id=m.cliente_id ORDER BY c.nombre, m.nombre""")]
     return hoja_excel([("Mascotas", cols, filas)], "Decopet mascotas.xlsx", "Mascotas")
