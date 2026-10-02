@@ -16,6 +16,8 @@
  {% if p.faltas %}<div class="eq-av">No vino {{ p.faltas|length }} día{{ 's' if p.faltas|length != 1 }} desde la última quincena ({{ p.diario|usd }} el día):
  {% for f in p.faltas %}<span class="falta-p">{{ f.fecha|dia }}{% if f.nota %} · {{ f.nota }}{% endif %}
   <form method="post" action="/equipo/falta/{{ f.id }}/borrar" style="display:inline"><button title="Quitar">×</button></form></span>{% endfor %}</div>{% endif %}
+ {% if p.mensual %}<details class="eq-faltas"><summary><span class="mini">Faltas</span> esta semana <b>{{ p.n_sem }}</b> · este mes <b>{{ p.n_mes }}</b> · este año <b>{{ p.faltas_anio|length }}</b>{% if p.faltas_anio %} <span class="mini eq-ver">ver fechas</span>{% endif %}</summary>
+ {% if p.faltas_anio %}<div class="eq-f-lista">{% for f in p.faltas_anio %}<span class="falta-p">{{ f.fecha|dia }}{% if f.nota %} · {{ f.nota }}{% endif %}</span>{% endfor %}</div>{% endif %}</details>{% endif %}
  {% if p.adelantos %}<div class="eq-av">Le adelantaste {{ p.debe_adelantos|usd }} desde la última quincena{% if p.ultima_quincena %} ({{ p.ultima_quincena|dia }}){% endif %}. Descuéntalo al pagarle.</div>{% endif %}
  {% if p.mensual %}<div class="eq-acc">
  <details class="eq-d" {{ 'open' if p.nombre in falta_quincena }}><summary class="btn chico">Pagar</summary>

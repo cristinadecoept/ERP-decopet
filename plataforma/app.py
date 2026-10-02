@@ -3465,6 +3465,12 @@ def equipo(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     hoy = datetime.date.today()
     gente = [ficha_equipo(con, n, hoy) for n in cfg_json(con, "equipo", ["Víctor", "Isaías", "Manawa"])]
+    lunes = hoy - datetime.timedelta(days=hoy.weekday())
+    for p in gente:   # cuántas veces faltó: esta semana, este mes y este año, con sus fechas
+        fl = [dict(r) for r in con.execute("SELECT * FROM faltas WHERE nombre=? AND substr(fecha,1,4)=? ORDER BY fecha DESC", (p["nombre"], str(hoy.year)))]
+        p["faltas_anio"] = fl
+        p["n_sem"] = sum(1 for f in fl if f["fecha"] >= lunes.isoformat())
+        p["n_mes"] = sum(1 for f in fl if f["fecha"][:7] == hoy.isoformat()[:7])
     return render(request, "equipo.html", seccion="equipo", gente=gente, hoy_iso=hoy.isoformat(),
                   falta_quincena=quincena_pendiente(con, hoy)[1],
                   CUENTAS=con.execute("""SELECT * FROM cuentas WHERE activa=1 AND tipo='operativa' AND moneda IN ('USD','VES')

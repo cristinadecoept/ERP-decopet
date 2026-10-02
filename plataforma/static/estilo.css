@@ -1146,3 +1146,8 @@ html.oscuro .entrar-c .btn{background:#5A9075;color:#fff}html.oscuro .entrar-w{b
 /* Equipo: la flechita del selector no se monta sobre el texto; el panel abierto queda en su sitio (no salta debajo del otro botón) */
 .eq-d .fal-f select{padding-right:36px!important;min-width:130px}
 .eq-d[open]{order:0}
+/* Equipo: el conteo de faltas (semana, mes, año) con sus fechas al tocar */
+.eq-faltas{margin:0 0 12px;font-size:13.5px}.eq-faltas>summary{list-style:none;cursor:pointer;width:max-content}.eq-faltas>summary::-webkit-details-marker{display:none}
+.eq-faltas .eq-ver{color:var(--verde-osc);text-decoration:underline;margin-left:6px}
+.eq-f-lista{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.eq-faltas>summary{color:var(--tinta-2)}.eq-faltas>summary b{color:var(--tinta)}
