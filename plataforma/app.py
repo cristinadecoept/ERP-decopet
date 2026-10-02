@@ -1424,10 +1424,12 @@ def arrancar_respaldo():
         while True:
             try:
                 if not respaldo_al_dia():
-                    subprocess.run(["/bin/bash", str(BASE.parent / "scripts" / "respaldo.sh")],
-                                   capture_output=True, text=True, timeout=120)
-            except Exception:
-                pass          # un respaldo fallido nunca puede tumbar el ERP
+                    r = subprocess.run(["/bin/bash", str(BASE.parent / "scripts" / "respaldo.sh")],
+                                       capture_output=True, text=True, timeout=120)
+                    if r.returncode != 0:   # no tumba el ERP, pero tiene que quedar a la vista en el registro
+                        print("RESPALDO FALLÓ:", (r.stderr or r.stdout or "sin mensaje")[-600:], flush=True)
+            except Exception as e:
+                print("RESPALDO FALLÓ:", repr(e), flush=True)   # un respaldo fallido nunca puede tumbar el ERP
             time.sleep(30 * 60)
     threading.Thread(target=bucle, daemon=True).start()
 

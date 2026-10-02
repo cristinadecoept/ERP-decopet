@@ -1,0 +1,3 @@
+# Los scripts de shell siempre con fin de línea Unix: con CRLF (Windows) bash no puede ejecutarlos en el servidor.
+*.sh text eol=lf
+Dockerfile text eol=lf

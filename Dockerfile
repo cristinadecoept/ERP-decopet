@@ -19,6 +19,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY plataforma plataforma
 COPY scripts scripts
+# Si se publica desde Windows los .sh llegan con CRLF y bash no los ejecuta: se normalizan aquí, pase lo que pase.
+RUN for f in scripts/*.sh; do tr -d '\015' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done && chmod +x scripts/*.sh
 
 # Un solo proceso a propósito: la tasa BCV y el respaldo corren en hilos dentro del ERP,
 # con dos procesos se harían dos veces. Para ~8 personas sobra.
