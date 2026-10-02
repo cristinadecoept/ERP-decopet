@@ -3,9 +3,9 @@ Uso: ./.venv/bin/python -m plataforma.importar_pedidos "/ruta/archivo.csv" [--ca
 Decisiones de Cristina (20 sep 2026): fechas 2020/2004 → 2026; saldo negativo = delivery pagado aparte; Tarek Atta total $22; Regalo → orden tipo regalo sin pago;
 "Repuesto (pack / orden previa)" era error del bot → Pago Móvil; fecha de pago posterior a la de entrega → se iguala a la de entrega;
 columnas Excel/LDP/Incluir en resumen se ignoran, salvo Excel='R F' que marca factura fiscal hecha; Cashea siempre requiere factura fiscal."""
-import sys, csv, re, sqlite3, datetime, collections
+import sys, csv, re, os, sqlite3, datetime, collections
 from pathlib import Path
-DB = Path(__file__).parent / "data" / "plataforma.db"
+DB = Path(os.environ.get("DECOPET_DATOS") or (Path(__file__).parent / "data")) / "plataforma.db"   # la misma base que abre el ERP
 
 def n(s): return " ".join((s or "").split())
 def money(s): return float((s or "0").replace("$", "").replace(",", "") or 0)

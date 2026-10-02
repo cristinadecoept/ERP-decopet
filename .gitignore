@@ -46,3 +46,6 @@ id_rsa*
 *.HEIC
 plataforma/data/
 data/
+
+# Estructura y ejemplos exportados de Airtable: traen teléfonos y correos de clientes reales
+docs/AirTable/

@@ -1,9 +1,9 @@
 """Carga "Mascotas-Mascotas.csv" (Airtable): completa raza y cumpleaños de los perros ya cargados con los clientes.
 Reglas (Cristina, 20 sep 2026): año 2000 o de 3 cifras = año desconocido → solo día/mes; fecha futura → se guarda día/mes y queda "por revisar";
 sin cliente → se salta (son repetidos); sin raza → "Pendiente"; Frenchie → Bulldog Frances."""
-import sys, csv, re, sqlite3, datetime, collections
+import sys, csv, re, os, sqlite3, datetime, collections
 from pathlib import Path
-DB = Path(__file__).parent / "data" / "plataforma.db"
+DB = Path(os.environ.get("DECOPET_DATOS") or (Path(__file__).parent / "data")) / "plataforma.db"   # la misma base que abre el ERP
 def n(s): return " ".join((s or "").split())
 def fecha(s):
     m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{3,4})$", n(s))
