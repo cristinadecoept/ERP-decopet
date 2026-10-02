@@ -1,10 +1,10 @@
 """Datos de prueba coherentes (ficticios) para probar la plataforma. Se puede volver a correr: borra y recrea."""
-import random, datetime, sqlite3, json, sys
+import random, datetime, sqlite3, json, sys, os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 BASE = Path(__file__).resolve().parent
-DB = BASE / "data" / "plataforma.db"
+DB = Path(os.environ.get("DECOPET_DATOS") or (BASE / "data")) / "plataforma.db"   # la misma base que abre el ERP
 R = random.Random(7)
 HOY = datetime.date.today()
 
@@ -90,8 +90,12 @@ TASA = 152.4  # se reemplaza por la tasa real si se pudo leer del BCV
 
 
 def main():
-    DB.parent.mkdir(exist_ok=True)
-    if DB.exists(): DB.unlink()
+    # En un servidor esta semilla BORRA la base. Solo se permite en el de prueba (DECOPET_STAGING=1).
+    if os.environ.get("DECOPET_DATOS") and os.environ.get("DECOPET_STAGING") != "1":
+        sys.exit("No: esto borraría la base del servidor. La semilla solo corre en staging (DECOPET_STAGING=1).")
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    for f in (DB, DB.with_name(DB.name + "-wal"), DB.with_name(DB.name + "-shm")):   # con WAL la base son tres archivos
+        if f.exists(): f.unlink()
     con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
     con.executescript((BASE / "modelo.sql").read_text())
     con.executemany("INSERT INTO usuarios (id,nombre,rol) VALUES (?,?,?)", [(1, "Cristina", "admin"), (2, "Vale (logística)", "logistica"), (3, "Tina", "sistema")])

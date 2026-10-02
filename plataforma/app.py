@@ -16,10 +16,10 @@ DATOS.mkdir(parents=True, exist_ok=True)
 DB = DATOS / "plataforma.db"
 DOCS_DIR = DATOS / "documentos"
 FOTOS_DIR = DATOS / "fotos"
-for _d in (DOCS_DIR, FOTOS_DIR): _d.mkdir(parents=True, exist_ok=True)
+FOTOS_PRODUCTOS = FOTOS_DIR / "productos"
+for _d in (DOCS_DIR, FOTOS_DIR, FOTOS_PRODUCTOS): _d.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Decopet", docs_url=None, redoc_url=None, openapi_url=None)   # sin manual técnico público: nadie necesita ver cómo está hecho por dentro
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
-(BASE / "data" / "fotos").mkdir(parents=True, exist_ok=True)
 app.mount("/fotos", StaticFiles(directory=FOTOS_DIR), name="fotos")
 tpl = Jinja2Templates(directory=BASE / "templates")
 
@@ -3196,9 +3196,9 @@ async def producto_foto(request: Request, pid: int, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/productos", status_code=303)
     f = await request.form(); a = f.get("foto")
     if a and getattr(a, "filename", None):
-        ext = (a.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]; rosado = f.get("variante") == "rosado"
+        ext = re.sub(r"[^a-z0-9]", "", a.filename.rsplit(".", 1)[-1].lower())[:5] or "jpg"; rosado = f.get("variante") == "rosado"
         nombre = f"producto-{pid}{'-rosado' if rosado else ''}.{ext}"
-        (BASE / "data" / "fotos" / nombre).write_bytes(await a.read())
+        (FOTOS_DIR / nombre).write_bytes(await a.read())
         con.execute(f"UPDATE productos SET {'foto_rosado' if rosado else 'foto'}=? WHERE id=?", (nombre, pid)); con.commit()
     return RedirectResponse("/productos", status_code=303)
 
@@ -3289,9 +3289,9 @@ async def galeria_subir(request: Request, con=Depends(db)):
     f = await request.form(); pid = int(f["producto_id"]); tipo = f.get("tipo") or "sin_fondo"
     for a in f.getlist("archivo"):
         if not getattr(a, "filename", None): continue
-        ext = (a.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]
+        ext = re.sub(r"[^a-z0-9]", "", a.filename.rsplit(".", 1)[-1].lower())[:5] or "jpg"   # solo letras y números: el nombre lo eligió el navegador
         nombre = f"{pid}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{abs(hash(a.filename)) % 100000}.{ext}"
-        (BASE / "data" / "fotos" / "productos" / nombre).write_bytes(await a.read())
+        (FOTOS_PRODUCTOS / nombre).write_bytes(await a.read())
         con.execute("INSERT INTO producto_fotos (producto_id, archivo, tipo, etiqueta) VALUES (?,?,?,?)", (pid, nombre, tipo, f.get("etiqueta") or None))
     con.commit(); return RedirectResponse(f"/galeria?producto={pid}", status_code=303)
 
@@ -3303,7 +3303,7 @@ def galeria_borrar(request: Request, fid: int, con=Depends(db)):
     if r:
         con.execute("DELETE FROM producto_fotos WHERE id=?", (fid,))
         if not con.execute("SELECT 1 FROM producto_fotos WHERE archivo=?", (r["archivo"],)).fetchone():   # el mismo archivo puede servir a varios productos
-            try: (BASE / "data" / "fotos" / "productos" / r["archivo"]).unlink()
+            try: (FOTOS_PRODUCTOS / r["archivo"]).unlink()
             except FileNotFoundError: pass
         con.commit()
     return RedirectResponse(f"/galeria?producto={r['producto_id']}" if r else "/galeria", status_code=303)
