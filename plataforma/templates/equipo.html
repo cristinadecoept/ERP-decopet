@@ -2,7 +2,7 @@
 <div class="fila-titulo"><div><h1>Equipo</h1></div></div>
 {% for p in gente %}
 <div class="tarjeta eq">
- <div class="eq-quien"><h3>{{ p.nombre }}</h3><span class="mini">{{ 'cobra por quincena' if p.mensual else 'pagos fijos' }}</span></div>
+ <div class="eq-quien"><h3>{{ p.nombre }}</h3><span class="mini">{{ 'cobra por quincena' if p.mensual else 'pagos fijos' }}</span>{% if p.mensual %}<a class="mini eq-edit" href="/configuracion#sueldos">cambiar sueldo</a>{% else %}<a class="mini eq-edit" href="/finanzas/recurrentes">cambiar monto</a>{% endif %}</div>
  <div class="eq-cuerpo">
  <div class="eq-stats">
   {% if p.quincena %}<div class="eq-num"><span class="mini">por quincena</span><b>{{ p.quincena|usd }}</b></div>{% endif %}

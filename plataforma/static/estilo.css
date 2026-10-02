@@ -1151,3 +1151,4 @@ html.oscuro .entrar-c .btn{background:#5A9075;color:#fff}html.oscuro .entrar-w{b
 .eq-faltas .eq-ver{color:var(--verde-osc);text-decoration:underline;margin-left:6px}
 .eq-f-lista{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .eq-faltas>summary{color:var(--tinta-2)}.eq-faltas>summary b{color:var(--tinta)}
+.eq-quien .eq-edit{margin-left:auto;color:var(--verde-osc)}
