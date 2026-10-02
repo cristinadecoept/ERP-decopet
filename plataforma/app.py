@@ -3379,6 +3379,8 @@ def quincena_pendiente(con, hoy):
     ant = datetime.date(hoy.year, hoy.month, 1) - datetime.timedelta(days=1)
     # el día de pago que toca ahora: el más reciente que ya llegó, hasta 2 días después
     tocan = [p for p, fin in ventana_pago(ant.year, ant.month) + ventana_pago(hoy.year, hoy.month) if p <= hoy <= fin]
+    arranque = finanzas_desde(con)   # las quincenas de antes del arranque del ERP se pagaron por fuera (en el Excel): no se avisan
+    if arranque: tocan = [p for p in tocan if p.isoformat() >= arranque]
     if not tocan: return False, []
     desde = (max(tocan) - datetime.timedelta(days=3)).isoformat()
     falta = [n for n in (cfg_json(con, "sueldos", {}) or {})
