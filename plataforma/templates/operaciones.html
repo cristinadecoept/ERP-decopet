@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block titulo %}Operaciones · Decopet{% endblock %}{% block cuerpo %}
 {% set qs = '&tipo=' ~ tipo ~ '&agencia=' ~ agencia ~ '&desp=' ~ desp ~ '&vista=' ~ vista ~ ('&q=' ~ q if q else '') %}
 <div class="fila-titulo"><div><h1>Operaciones</h1><div class="sub">{% if cola=='hoy' %}{{ fecha_larga() }} · {{ total }} entrega{{ 's' if total!=1 }}{% elif cola=='manana' %}mañana · {{ total }} entrega{{ 's' if total!=1 }}{% elif cola=='dia' %}{{ dia|dia }} · {{ total }} entrega{{ 's' if total!=1 }}{% else %}{{ colas[cola] }} · {{ total }}{% endif %}</div></div>
-{% if por_desp %}<button class="btn sec" onclick="document.getElementById('resumenes').scrollIntoView({behavior:'smooth'})">Resumen para despachadores</button>{% endif %}</div>
+<div class="cab-btns">{% if por_desp %}<button class="btn sec" onclick="document.getElementById('resumenes').scrollIntoView({behavior:'smooth'})">Resumen para despachadores</button>{% endif %}{% if 'crear' in puede %}<button class="btn" onclick="abrirPanel('/ordenes/nueva/panel')">+ Nueva orden</button>{% endif %}</div></div>
 
 <div class="op-barra">
  <div class="segm"><a class="{{ 'act' if cola=='hoy' }}" href="/operaciones?cola=hoy{{ qs }}">Hoy <span>{{ conteos.hoy }}</span></a><a class="{{ 'act' if cola=='manana' }}" href="/operaciones?cola=manana{{ qs }}">Mañana <span>{{ conteos.manana }}</span></a><label class="{{ 'act' if cola=='dia' }}">Otro día <input type="date" value="{{ dia }}" onchange="location.href='/operaciones?dia='+this.value+'{{ qs }}'"></label><a class="{{ 'act' if cola=='todo' }}" href="/operaciones?cola=todo{{ qs }}">Todo <span>{{ conteos.todo }}</span></a></div>
