@@ -541,6 +541,19 @@ def _():
         del os.environ["DECOPET_CODIGO_INICIAL"]
 
 
+@prueba("En un servidor con la base recién creada (sin nadie todavía) la primera clave crea a la administradora")
+def _():
+    os.environ["DECOPET_CODIGO_INICIAL"] = "codigo-de-prueba"
+    try:
+        with erp_de_prueba(en_servidor=True, con_datos=False) as c:
+            datos = {"usuario": "cristina@x.com", "clave": "una-clave-larga", "clave2": "una-clave-larga", "codigo": "codigo-de-prueba"}
+            r = c.post("/entrar/primera-vez", data=datos, follow_redirects=False)
+            assert r.headers["location"] == "/inicio", r.headers.get("location")
+            assert c.get("/inicio", follow_redirects=False).status_code == 200
+    finally:
+        del os.environ["DECOPET_CODIGO_INICIAL"]
+
+
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
 def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:

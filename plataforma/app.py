@@ -598,6 +598,9 @@ def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form("
     if len(clave.strip()) < 8 or clave != clave2:
         return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 8 else "distinta"), status_code=303)
     u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
+    if not u:   # base recién creada en un servidor: todavía no existe nadie a quien ponerle la clave
+        con.execute("INSERT INTO usuarios (nombre, rol, activo, creado_en) VALUES ('Cristina', 'admin', 1, date('now'))")
+        u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
     con.execute("UPDATE usuarios SET clave_hash=?, usuario=COALESCE(?, usuario) WHERE id=?",   # sin usuario no podría volver a entrar
                 (cifrar_clave(clave.strip()), usuario.strip().lower() or None, u["id"])); con.commit()
     r = RedirectResponse("/inicio", status_code=303)
