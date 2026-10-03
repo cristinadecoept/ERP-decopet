@@ -1194,3 +1194,62 @@ table.lineas.fija td{padding-top:10px;padding-bottom:10px}
 table.lineas.fija td,table.lineas.fija th{overflow-wrap:normal;word-break:normal}
 .me-h.fija td.mono{white-space:nowrap!important}
 .g2>.tarjeta+.tarjeta,.g3>.tarjeta+.tarjeta,.g2>.tabla+.tabla,.g2>.tarjeta+.tabla,.g2>.tabla+.tarjeta{margin-top:0}
+/* ===== Teléfono y tablet: barra de arriba con ☰ y el menú como cajón lateral ===== */
+.barra-movil,.velo-movil,.bm-cerrar{display:none}
+@media (max-width:900px){
+ .barra-movil{display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:30;
+   padding:10px 16px;background:var(--fondo);border-bottom:1px solid var(--linea)}
+ .bm-logo img{height:28px;width:auto;display:block}
+ .bm-menu,.bm-cerrar{border:0;background:var(--sup);box-shadow:var(--sombra);width:40px;height:40px;border-radius:12px;
+   display:flex;align-items:center;justify-content:center;color:var(--tinta);cursor:pointer}
+ .bm-menu svg,.bm-cerrar svg{width:20px;height:20px}
+ /* el menú lateral vuelve a ser una columna, pero escondido a la izquierda */
+ .lat{position:fixed!important;top:0;left:0;bottom:0;height:100dvh!important;width:min(300px,84vw);z-index:41;
+   flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important;padding:18px 14px 22px!important;
+   background:var(--fondo)!important;border:0!important;box-shadow:0 0 40px rgba(0,0,0,.18);overflow-y:auto;
+   transform:translateX(-105%);transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+ html.menu-abierto .lat{transform:none}
+ .velo-movil{display:block;position:fixed;inset:0;z-index:40;background:rgba(20,26,23,.38);opacity:0;pointer-events:none;transition:opacity .2s}
+ html.menu-abierto .velo-movil{opacity:1;pointer-events:auto}
+ html.menu-abierto{overflow:hidden}
+ .bm-cerrar{display:flex;position:absolute;top:14px;right:14px;width:34px;height:34px}
+ .lat .colapsar{display:none!important}
+ .lat .marca{padding:4px 8px 14px!important}.lat .marca img{width:120px!important}
+ .lat nav{display:block!important}
+ .lat nav a span,.lat nav details summary span,.lat nav details summary .car{display:inline!important}
+ .lat nav a,.lat nav details summary{justify-content:flex-start!important;padding:11px 12px!important;font-size:15px!important}
+ .lat nav details a{padding-left:41px!important}
+ .lat .sesion,.lat .rol,.lat .pie{display:flex!important}.lat .pie{display:block!important}
+ .lat .sesion{margin-top:auto}
+ /* aunque en la compu el menú esté colapsado, en el teléfono se ve completo */
+ html.colapsado .lat nav a span,html.colapsado .lat nav details summary span{display:inline!important}
+ /* cabecera y contenido con aire */
+ .cab{padding:12px 16px 4px!important;gap:10px}
+ .cont{padding:8px 16px 32px!important}
+ .fila-titulo{margin-bottom:18px}
+ .fila-titulo .cab-btns,.fila-titulo>div:last-child:has(.btn){width:100%;display:flex;gap:8px}
+ .fila-titulo .cab-btns .btn,.fila-titulo>div:last-child:has(.btn) .btn{flex:1 1 0;justify-content:center;text-align:center}
+}
+@media (max-width:600px){
+ .bm-logo img{height:32px}
+ /* filtros desplegables: uno por fila, todos del mismo ancho (las pastillas tipo "Todos" siguen en línea) */
+ .bf-sel,form.chip-select,label.chip-select,.barra-f>label,.barra-f>select{flex:1 1 100%!important;width:100%!important;max-width:none!important;box-sizing:border-box}
+ .bf-sel select,.chip-select select{flex:1;width:100%!important;max-width:none!important}
+ .fila-titulo .btn{white-space:nowrap;font-size:14px;padding-left:10px;padding-right:10px}
+}
+/* la pantalla de Entrar no lleva menú: sin sesión no hay a dónde ir (y la barra tapaba usuario y clave) */
+.barra-movil{align-self:start}
+body:has(.entrar-w) .barra-movil,body:has(.entrar-w) .velo-movil,body:has(.entrar-w) .lat{display:none!important}
+/* ===== Entrar en el teléfono: todo centrado en una columna (logo, sello, tarjeta y el perrito abajo al medio) ===== */
+@media (max-width:820px){
+ .entrar-m{display:flex!important;flex-direction:column;align-items:center;justify-content:flex-start;gap:28px;padding:56px 24px 210px!important;min-height:100%}
+ .entrar-izq{display:flex;flex-direction:column;align-items:center;text-align:center;width:100%}
+ .entrar-izq .entrar-top{display:flex;justify-content:center;margin:0!important}
+ .entrar-izq .entrar-top .entrar-logo{height:58px!important;width:auto}
+ .entrar-izq .entrar-r{right:-15px!important;top:-2px!important;font-size:13px!important}
+ .entrar-izq .entrar-sub{width:calc(58px * 4.11)!important;margin:12px auto 0!important;font-size:11px!important;letter-spacing:.2em!important;padding:6px 0!important;text-align:center}
+ .entrar-c{width:100%!important;max-width:360px;margin:0 auto!important;left:0!important}
+ .ef-perro{left:50%!important;transform:translateX(-50%);bottom:12px!important;height:min(170px,22vh)!important}
+}
+@media (max-width:900px){.bm-logo img{height:42px!important}.barra-movil{padding:12px 16px}}
+@media (max-width:900px){.bm-logo img{height:34px!important}}

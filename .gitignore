@@ -46,3 +46,5 @@ id_rsa*
 *.HEIC
 plataforma/data/
 data/
+*.backup
+*.zip
