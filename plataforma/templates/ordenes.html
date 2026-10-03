@@ -11,7 +11,7 @@
  {% if f.tipo_entrega=='nacional' %}<label class="bf-sel {{ 'act' if f.agencia }}"><span>Agencia</span><select name="agencia" onchange="this.form.submit()"><option value="">Todas</option>{% for a in AGENCIAS[:-1] %}<option {{ 'selected' if f.agencia==a }}>{{ a }}</option>{% endfor %}</select></label>{% endif %}
  {% if 'ver_dinero' in puede %}<label class="bf-sel {{ 'act' if f.estado=='por_facturar' }}"><span>Facturas fiscales</span><select onchange="location.href=this.value"><option value="/ordenes" {{ 'selected' if f.estado!='por_facturar' }}>Todas</option><option value="/ordenes?estado=por_facturar" {{ 'selected' if f.estado=='por_facturar' }}>Pendientes por hacer{% if conteos.por_facturar %} · {{ conteos.por_facturar }}{% endif %}</option></select></label>{% endif %}
 </form>
-<div class="tabla"><table data-cols="Orden:6|Fecha:7|Canal:9|Cliente:16|Productos:17|Entrega:13|Pago:9|Estado:10|Delivery:6|Total:7" data-min="1320">
+<div class="tabla"><table data-cols="Orden:6|Fecha:6|Canal:10|Cliente:14|Productos:15|Entrega:13|Pago:9|Estado:10|Delivery:7|Total:9" data-min="1320">
 <tr><th>Orden</th><th>Fecha</th><th>Canal</th><th>Cliente</th><th>Productos</th><th>Entrega</th><th>Pago</th><th>Estado</th>{% if 'ver_dinero' in puede %}<th class="num" style="text-align:center">Delivery</th><th class="num">Total</th>{% endif %}</tr>
 {% for o in ordenes %}<tr class="fila {{ 'cerrada' if o.estado in ['entregada','cancelada'] }} e-{{ o.estado }}" data-id="{{ o.id }}" onclick="abrirPanel('/ordenes/{{ o.id }}/panel', this)">
  <td><b class="num-orden">{{ o.numero }}</b></td><td class="mono mini">{{ o.creado_en|fecha }}</td>

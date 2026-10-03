@@ -7,7 +7,7 @@
 <div class="g2"><div><label>¿Cómo nos conoció?</label><select name="origen" onchange="this.form.querySelector('.ref-w').hidden=(this.value!='Recomendación de otro cliente')"><option value="">—</option>{% for o in ORIGENES %}<option>{{ o }}</option>{% endfor %}</select></div>
 <div class="ref-w" hidden><label>¿Quién lo recomendó?</label><input list="ref-cl" name="referido_nombre" placeholder="escribe el nombre" oninput="const o=[...document.getElementById('ref-cl').options].find(x=>x.value===this.value);this.form.querySelector('[name=referido_id]').value=o?o.dataset.id:''"><input type="hidden" name="referido_id"></div></div></div>
 <div class="bloque"><h3>Dirección principal</h3>
-<label>Ciudad</label><input name="ciudad" value="Caracas">
+<label>Ciudad</label><input name="ciudad" value="Caracas" list="ciudades-cn" autocomplete="off"><datalist id="ciudades-cn">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist>
 <label>Dirección escrita</label><input name="direccion" placeholder="Res., edificio, apto, referencia"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
 <div class="bloque"><h3>Perros</h3><table class="lineas" id="masc"><tr><th>Nombre</th><th>Raza</th><th>Cumple (día/mes)</th><th style="width:80px">Año</th><th></th></tr></table>
 <p><button type="button" class="btn sec chico" onclick="agregarMascota()">+ Agregar perro</button></p></div>
