@@ -63,7 +63,7 @@ def cobro_extra(con, oid, concepto, monto, forma, fecha, uid, referencia=None, n
         conf = pago == "confirmado"
         con.execute("""INSERT INTO pagos (orden_id, forma, monto_usd, monto_real, moneda, cuenta, referencia, fecha, estado, confirmado_por, confirmado_en)
                        VALUES (?,?,?,?, 'USD', ?, ?, ?, ?, ?, ?)""",
-                    (oid, forma or None, monto, monto, FORMA_CUENTA.get(forma or "", forma or None), (referencia or "").strip() or None, fecha, pago,
+                    (oid, forma or None, monto, monto, caja_de(forma), (referencia or "").strip() or None, fecha, pago,
                      uid if conf else None, fecha if conf else None))
     o = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()
     pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
@@ -204,8 +204,40 @@ def wa(tel):
     if d.startswith("58"): return "https://wa.me/" + d
     return "https://wa.me/58" + d.lstrip("0")
 tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa=wa)
+# ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
+tpl.env.tests["lower_empieza"] = lambda caja, dijo: bool(dijo) and (caja or "").lower().startswith((dijo or "").lower())
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
                "Mérida", "San Cristóbal", "Maturín", "Cumaná", "Porlamar", "Valera", "Punto Fijo", "Coro", "Cabimas", "Acarigua", "Guanare", "San Felipe", "Barinas", "El Tigre", "Carúpano", "Charallave", "Cúa"]
+# A qué estado pertenece cada ciudad: el estado se llena solo, nadie lo escribe.
+ESTADO_DE_CIUDAD = {"Caracas": "Distrito Capital", "Los Teques": "Miranda", "Guarenas": "Miranda", "Guatire": "Miranda", "Charallave": "Miranda", "Cúa": "Miranda",
+                    "La Guaira": "La Guaira", "Valencia": "Carabobo", "Maracay": "Aragua", "Maracaibo": "Zulia", "Cabimas": "Zulia", "Barquisimeto": "Lara",
+                    "Puerto Ordaz": "Bolívar", "Ciudad Bolívar": "Bolívar", "Puerto La Cruz": "Anzoátegui", "Barcelona": "Anzoátegui", "Lechería": "Anzoátegui", "El Tigre": "Anzoátegui",
+                    "Mérida": "Mérida", "San Cristóbal": "Táchira", "Maturín": "Monagas", "Cumaná": "Sucre", "Carúpano": "Sucre", "Porlamar": "Nueva Esparta",
+                    "Valera": "Trujillo", "Punto Fijo": "Falcón", "Coro": "Falcón", "Acarigua": "Portuguesa", "Guanare": "Portuguesa", "San Felipe": "Yaracuy", "Barinas": "Barinas"}
+ESTADOS_VE = ["Amazonas", "Anzoátegui", "Apure", "Aragua", "Barinas", "Bolívar", "Carabobo", "Cojedes", "Delta Amacuro", "Distrito Capital", "Falcón", "Guárico",
+              "La Guaira", "Lara", "Mérida", "Miranda", "Monagas", "Nueva Esparta", "Portuguesa", "Sucre", "Táchira", "Trujillo", "Yaracuy", "Zulia"]
+def _llave_lugar(s):
+    """'  CARACAS ' / 'caracas' / 'Merida' → 'caracas' / 'merida': sin acentos, mayúsculas ni espacios de más."""
+    import unicodedata
+    s = unicodedata.normalize("NFD", (s or "").strip().lower())
+    return " ".join("".join(c for c in s if unicodedata.category(c) != "Mn").replace(".", " ").split())
+_CIUDAD_POR_LLAVE = {_llave_lugar(c): c for c in CIUDADES_VE} | {"ccs": "Caracas", "distrito capital": "Caracas", "dtto capital": "Caracas", "puerto la cruz": "Puerto La Cruz",
+                                                                    "pto la cruz": "Puerto La Cruz", "pto ordaz": "Puerto Ordaz"}
+_ESTADO_POR_LLAVE = {_llave_lugar(e): e for e in ESTADOS_VE} | {"edo miranda": "Miranda", "estado miranda": "Miranda", "vargas": "La Guaira", "dtto capital": "Distrito Capital",
+                                                              "margarita": "Nueva Esparta", "isla de margarita": "Nueva Esparta"}
+def normalizar_ciudad(texto):
+    """Lo que escribió la persona (o el bot) → (ciudad, estado), siempre igual para poder filtrar.
+    'caracas' → ('Caracas', 'Distrito Capital'). Si dijo un estado y no la ciudad ('Miranda') → ('Pendiente', 'Miranda'):
+    queda marcado para preguntarle. Una ciudad que no está en la lista se guarda tal cual, con mayúscula inicial."""
+    t = (texto or "").strip()
+    if not t: return None, None
+    if t.lower().startswith(("edo.", "edo ", "estado ")): t = t.split(" ", 1)[-1] if " " in t else t[4:]
+    k = _llave_lugar(t)
+    if k in _CIUDAD_POR_LLAVE:
+        c = _CIUDAD_POR_LLAVE[k]; return c, ESTADO_DE_CIUDAD.get(c)
+    if k in _ESTADO_POR_LLAVE: return "Pendiente", _ESTADO_POR_LLAVE[k]
+    if k == "pendiente": return "Pendiente", None
+    return " ".join(p.lower() if i and p.lower() in ("de", "del", "la", "las", "los", "el") else p[:1].upper() + p[1:] for i, p in enumerate(t.split())), None
 def fmt_cant(v, unidad=None):
     """37.8 → '37,8' y 20.0 → '20'. Con unidad: '37,8 litros', '1 rollo'."""
     v = round(float(v or 0), 1)
@@ -1110,7 +1142,7 @@ def volver(oid, request):
 
 
 @app.post("/ordenes/{oid}/estado")
-def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), forma_recibida: str = Form(""), con=Depends(db)):
+def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: str = Form(""), monto_recibido: str = Form(""), moneda_recibida: str = Form("USD"), fecha: str = Form(""), forma_recibida: str = Form(""), forma_otro: str = Form(""), con=Depends(db)):
     rol = rol_de(request); uid = uid_de(request)
     if PERMISO_ESTADO.get(estado) not in PERMISOS[rol]: return volver(oid, request)
     o = cargar_orden(con, oid)
@@ -1127,6 +1159,7 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
         # lo que el despachador cobró en la puerta: contra entrega, o el resto de una orden que quedó con saldo
         cobro_puerta = o["estado_pago"] == "contra_entrega" or (
             o["estado_pago"] in ("abonada", "sin_pago", "rechazado") and (str(monto_recibido).strip() != "" or forma_recibida))
+        forma_recibida = forma_del_despachador(forma_recibida, forma_otro)
         despues = forma_recibida == "despues"   # cliente de la casa: se le entrega y Cristina le cobra después
         digital = forma_recibida and not despues and not forma_recibida.startswith("Efectivo")
         if cobro_puerta and (despues or digital):
@@ -1137,7 +1170,7 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
                 con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,fecha,estado)
                                VALUES (?,?,?,?,?,?,?,?,'por_confirmar')""",
                             (oid, forma_recibida, monto, round(monto * tasa, 2) if en_bs else monto, "VES" if en_bs else "USD",
-                             tasa if en_bs else None, FORMA_CUENTA.get(forma_recibida, forma_recibida), fe))
+                             tasa if en_bs else None, caja_de(forma_recibida), fe))
                 sets.append("estado_pago=?"); args.append("por_confirmar")
                 registrar(con, oid, uid, "pago", f"Al entregar pagó {fmt_usd(monto)} por {forma_recibida}: por revisar"
                           + (f" · quedan {fmt_usd(falta - monto)}" if falta - monto > 0.009 else ""))
@@ -1183,9 +1216,28 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
 
 
 @app.post("/ordenes/{oid}/pago/confirmar")
-def confirmar_pago(request: Request, oid: int, con=Depends(db)):
+def confirmar_pago(request: Request, oid: int, caja: str = Form(""), con=Depends(db)):
     rol = rol_de(request); uid = uid_de(request)
     if "confirmar_pago" not in PERMISOS[rol]: return volver(oid, request)
+    # el despachador dijo "Zelle", "Pago Móvil"…: aquí se anota en qué caja entró de verdad
+    if caja in MONEDA_CAJA:
+        tasa = tasa_hoy(con)["valor"] or 0; en_bs = MONEDA_CAJA.get(caja) == "VES" and tasa
+        reportados = con.execute("SELECT id, forma, monto_usd FROM pagos WHERE orden_id=? AND estado='por_confirmar' AND cuenta IS NULL", (oid,)).fetchall()
+        con.execute("""UPDATE pagos SET cuenta=?, moneda=?, tasa=?, monto_real=ROUND(monto_usd * ?, 2)
+                       WHERE orden_id=? AND estado='por_confirmar' AND cuenta IS NULL""",
+                    (caja, "VES" if en_bs else "USD", tasa if en_bs else None, tasa if en_bs else 1, oid))
+        # Confirmar que llegó = la venta entra a esa caja en Cash flow, sin tener que anotarla otra vez.
+        # (Si las ventas entran solas al libro, no se agrega nada: ya aparecen.)
+        cid = con.execute("SELECT id FROM cuentas WHERE nombre=?", (caja,)).fetchone()
+        if cid and reportados and not ventas_automaticas(con):
+            od = con.execute("SELECT o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?", (oid,)).fetchone()
+            for p in reportados:
+                forma = (p["forma"] or "").replace(" (según despachador)", "")
+                con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_destino_id, monto_usd, monto_real, moneda, concepto, categoria, notas, usuario_id)
+                               VALUES (?,'entrada',?,?,?,'USD',?,'Ventas',?,?)""",
+                            (datetime.date.today().isoformat(), cid[0], p["monto_usd"], p["monto_usd"],
+                             f"Ventas · {od['numero']} · {od['cliente'] or ''} · {forma}", "Cobrado por el despachador, confirmado al llegar", uid))
+                con.execute("UPDATE pagos SET en_cashflow=1 WHERE id=?", (p["id"],))
     con.execute("UPDATE pagos SET estado='confirmado', confirmado_por=?, confirmado_en=datetime('now','localtime') WHERE orden_id=? AND estado='por_confirmar'", (uid, oid))
     o = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()
     pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
@@ -1484,15 +1536,16 @@ async def crear_orden(request: Request, con=Depends(db)):
         if not _sirve(f.get("cliente_correo")): return _falta("El correo del cliente es obligatorio.")
         cliente_recien_creado = True
         np_, ap = f["cliente_nombre_pila"].strip(), (f.get("cliente_apellido") or "").strip() or None
-        cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        ciu, edo = normalizar_ciudad(f.get("cliente_ciudad") or f.get("ciudad"))
+        cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                           (np_, ap, nombre_completo(np_, ap), normalizar_telefono(f.get("cliente_telefono")) or "Pendiente", (f.get("cliente_cedula") or "").strip().upper() or None,
-                           (f.get("cliente_correo") or "").strip() or "Pendiente", (f.get("cliente_ciudad") or f.get("ciudad") or "").strip() or "Pendiente", f.get("canal"),
+                           (f.get("cliente_correo") or "").strip() or "Pendiente", ciu or "Pendiente", edo, f.get("canal"),
                            (f.get("cliente_origen") or "").strip() or None,
                            int(f["cliente_referido_id"]) if (f.get("cliente_referido_id") or "").isdigit() else None))
         cid = cur.lastrowid
         guardar_mascotas(con, cid, f, prefijo="cliente_mascota_")
         if (f.get("cliente_direccion") or "").strip():   # dirección habitual del cliente nuevo
-            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,ciudad,maps,principal) VALUES (?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), (f.get("cliente_ciudad") or "").strip() or None, (f.get("cliente_maps") or "").strip() or None))
+            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), *normalizar_ciudad(f.get("cliente_ciudad")), (f.get("cliente_maps") or "").strip() or None))
     if cid and not cliente_recien_creado:   # cliente que ya existía al que le faltaban datos: se completan desde la orden
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
         for campo, dato in (("telefono", normalizar_telefono(f.get("cl_add_telefono"))), ("correo", (f.get("cl_add_correo") or "").strip()), ("cedula", (f.get("cl_add_cedula") or "").strip().upper())):
@@ -1523,7 +1576,8 @@ async def crear_orden(request: Request, con=Depends(db)):
         if not con.execute("SELECT 1 FROM direcciones WHERE cliente_id=? AND direccion=?", (cid, f["direccion"])).fetchone():
             # cliente recién creado: esta es su dirección habitual; cliente existente: se guarda como dirección adicional
             con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,maps,principal) VALUES (?,?,?,?,?,?,?)", (cid, "Principal" if cliente_recien_creado else "Otra", f["direccion"], f.get("zona") or None, f.get("ciudad") or None, f.get("maps") or None, 1 if cliente_recien_creado else 0))
-            if cliente_recien_creado and f.get("ciudad"): con.execute("UPDATE clientes SET ciudad=? WHERE id=? AND ciudad='Pendiente'", (f["ciudad"], cid))
+            ciu, edo = normalizar_ciudad(f.get("ciudad"))
+            if cliente_recien_creado and ciu and ciu != "Pendiente": con.execute("UPDATE clientes SET ciudad=?, estado=COALESCE(?, estado) WHERE id=? AND ciudad='Pendiente'", (ciu, edo, cid))
     tasa = tasa_hoy(con)["valor"]
     lineas, subtotal, costo = [], 0.0, 0.0
     OPC = {r["sku"]: r for r in con.execute("SELECT * FROM productos WHERE tipo='opcion'")}
@@ -1805,6 +1859,17 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
 
 # ------------------------------------------------------------------ FINANZAS (solo Cristina)
 # forma de pago → caja donde cae la plata
+# Lo que el despachador puede decir que le pagaron. No ve las cajas: si no es efectivo, el pago le llega
+# a Cristina "por revisar" sin caja, y ella elige en cuál entró al confirmarlo.
+FORMAS_DESPACHADOR = ["Zelle", "Binance", "Pago Móvil", "Otro"]
+def forma_del_despachador(forma, otro=""):
+    """'Zelle' → 'Zelle (según despachador)'. Lo que no es de la lista se deja igual."""
+    if forma not in FORMAS_DESPACHADOR: return forma
+    if forma == "Otro" and (otro or "").strip(): forma = (otro or "").strip()[:40]
+    return f"{forma} (según despachador)"
+def caja_de(forma):
+    """La caja donde entra un pago con esa forma, o None si no es una caja (lo reportó el despachador y falta asignarla)."""
+    return FORMA_CUENTA.get(forma or "") or (forma if forma in MONEDA_CAJA else None)
 FORMA_CUENTA = {}   # forma de pago → nombre de caja. Ahora son lo mismo; el dict queda para los nombres viejos.
 NOMBRES_VIEJOS = {"Pago Móvil": "Pago Móvil VES", "BNC": "BNC Cashea", "Zelle": "Zelle Decopet",
                   "Efectivo USD": "Efectivo USD Caracas", "Efectivo Bs": "Efectivo USD Caracas",
@@ -4427,14 +4492,19 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
         if r["ciudad"]: ciudades[r["ciudad"].strip()] = ciudades.get(r["ciudad"].strip(), 0) + 1
     for cdd in CIUDADES_VE: ciudades.setdefault(cdd, 0)
     ciudades = sorted(ciudades.items(), key=lambda x: (-x[1], x[0]))
+    estados_cl = {}
+    for r in rows:
+        if r["estado"]: estados_cl[r["estado"]] = estados_cl.get(r["estado"], 0) + 1
+    estados_cl = sorted(estados_cl.items(), key=lambda x: (-x[1], x[0]))
     if q and ver != "mascotas":
-        ql = q.lower(); rows = [r for r in rows if any(ql in (r[k] or "").lower() for k in ("nombre", "telefono", "correo", "cedula", "perros", "ciudad"))]
+        ql = q.lower(); rows = [r for r in rows if any(ql in (r[k] or "").lower() for k in ("nombre", "telefono", "correo", "cedula", "perros", "ciudad", "estado"))]
     elif ver == "pro": rows = [r for r in rows if r["pro"]]
     elif ver == "basico": rows = [r for r in rows if r["basico"]]
     elif ver == "pendientes": rows = [r for r in rows if r["pendientes"]]
     elif ver == "credito": rows = sorted([r for r in rows if r["credito"]], key=lambda r: -r["credito"])
     elif ver in TIPOS_CLIENTE: rows = [r for r in rows if r["tipo"] == ver]
-    if ciudad: rows = [r for r in rows if ciudad.strip().lower() in (r["ciudad"] or "").lower()]
+    if ciudad.startswith("edo:"): rows = [r for r in rows if (r["estado"] or "") == ciudad[4:]]   # filtro por estado completo
+    elif ciudad: rows = [r for r in rows if ciudad.strip().lower() in (r["ciudad"] or "").lower()]
     if origen: rows = [r for r in rows if (r["origen"] or "Sin registrar") == origen]
     cumples = cumples_proximos(con, 2)
     conteos["cumples"] = sum(1 for s in cumples if s["activo"] and not s["hecho"])
@@ -4450,7 +4520,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
         rows = []
     conteos["mascotas"] = con.execute("SELECT COUNT(*) FROM mascotas").fetchone()[0]
     razas_top = con.execute("SELECT raza, COUNT(*) n FROM mascotas WHERE raza IS NOT NULL AND raza!='' AND raza!='Pendiente' GROUP BY raza ORDER BY raza COLLATE NOCASE").fetchall() if ver == "mascotas" else []
-    return render(request, "clientes.html", seccion=("mascotas" if ver in ("mascotas", "cumples") else "clientes"), clientes=rows[:200], q=q, ver=ver, total=conteos["todos"], conteos=conteos, truncado=len(rows) > 200, cumples=cumples, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, TIPOS_CLIENTE=TIPOS_CLIENTE, ciudad=ciudad, ciudades=ciudades, origen=origen,
+    return render(request, "clientes.html", seccion=("mascotas" if ver in ("mascotas", "cumples") else "clientes"), clientes=rows[:200], q=q, ver=ver, total=conteos["todos"], conteos=conteos, truncado=len(rows) > 200, cumples=cumples, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, TIPOS_CLIENTE=TIPOS_CLIENTE, ciudad=ciudad, ciudades=ciudades, estados_cl=estados_cl, origen=origen,
                   origenes=sorted({(r["origen"] or "Sin registrar") for r in con.execute("SELECT origen FROM clientes")}), mascotas=mascotas, razas_top=razas_top, raza=raza)
 
 
@@ -4464,14 +4534,15 @@ def cliente_nuevo_panel(request: Request, con=Depends(db)):
 async def cliente_crear(request: Request, con=Depends(db)):
     f = await request.form()
     nombre_pila, apellido = f["nombre_pila"].strip(), (f.get("apellido") or "").strip() or None
+    ciu, edo = normalizar_ciudad(f.get("ciudad")); edo = edo or f.get("estado_geo") or None
     cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                       (nombre_pila, apellido, nombre_completo(nombre_pila, apellido), normalizar_telefono(f.get("telefono")), (f.get("cedula") or "").strip().upper() or None,
-                       f.get("correo") or None, f.get("ciudad") or None, f.get("estado_geo") or None, f.get("canal_habitual") or None,
+                       f.get("correo") or None, ciu, edo, f.get("canal_habitual") or None,
                        (f.get("origen") or "").strip() or None, int(f["referido_id"]) if (f.get("referido_id") or "").isdigit() else None))
     cid = cur.lastrowid
     if f.get("direccion"):
         con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,municipio,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,?,1)",
-                    (cid, "Principal", f["direccion"], f.get("zona") or None, f.get("municipio") or None, f.get("ciudad") or None, f.get("estado_geo") or None, f.get("maps") or None))
+                    (cid, "Principal", f["direccion"], f.get("zona") or None, f.get("municipio") or None, ciu, edo, f.get("maps") or None))
     if f.get("nota"):
         con.execute("INSERT INTO notas_cliente (cliente_id,tipo,texto,mostrar_en_orden,mostrar_logistica,autor_id) VALUES (?,?,?,?,?,?)",
                     (cid, "general", f["nota"], 1, 0 if f.get("nota_privada") else 1, uid_de(request)))
@@ -4665,6 +4736,7 @@ async def cliente_editar(request: Request, cid: int, con=Depends(db)):
         "porche_version": lambda v: (v or "").strip() or None,
     }
     campos = {k: fn(f.get(k)) for k, fn in limpiar.items() if k in f}
+    if "ciudad" in f: campos["ciudad"], campos["estado"] = normalizar_ciudad(f.get("ciudad"))
     if "porche_tamano" in f:
         campos["porche_tamano"] = ", ".join(x for x in ("Mediano", "Grande") if x in f.getlist("porche_tamano")) or None
     if "nombre_pila" in campos or "apellido" in campos:
@@ -4684,19 +4756,19 @@ async def cliente_direccion(request: Request, cid: int, con=Depends(db)):
         con.execute("DELETE FROM direcciones WHERE id=? AND cliente_id=?", (did, cid))
     elif did:
         vieja = con.execute("SELECT direccion FROM direcciones WHERE id=? AND cliente_id=?", (did, cid)).fetchone()
-        con.execute("UPDATE direcciones SET etiqueta=?, direccion=?, maps=?, ciudad=? WHERE id=? AND cliente_id=?", (f.get("etiqueta") or "Principal", f["direccion"], f.get("maps") or None, f.get("ciudad") or None, did, cid))
+        con.execute("UPDATE direcciones SET etiqueta=?, direccion=?, maps=?, ciudad=? WHERE id=? AND cliente_id=?", (f.get("etiqueta") or "Principal", f["direccion"], f.get("maps") or None, normalizar_ciudad(f.get("ciudad"))[0], did, cid))
         # las órdenes que todavía no se entregan y usaban esa dirección, se corrigen también:
         # si no, Operaciones y el despachador siguen viendo la vieja
         if vieja:
             n = con.execute("""UPDATE ordenes SET direccion=?, maps=COALESCE(?, maps), ciudad=COALESCE(?, ciudad)
                                WHERE cliente_id=? AND estado IN ('pendiente','en_ruta') AND tipo_entrega NOT IN ('pickup','distribuidor','nacional')
                                  AND (direccion=? OR direccion IS NULL OR direccion='')""",
-                            (f["direccion"], f.get("maps") or None, f.get("ciudad") or None, cid, vieja["direccion"])).rowcount
+                            (f["direccion"], f.get("maps") or None, normalizar_ciudad(f.get("ciudad"))[0], cid, vieja["direccion"])).rowcount
             for (oid,) in con.execute("SELECT id FROM ordenes WHERE cliente_id=? AND estado IN ('pendiente','en_ruta') AND direccion=?", (cid, f["direccion"])).fetchall() if n else []:
                 registrar(con, oid, uid_de(request), "entrega", "Dirección actualizada desde la ficha del cliente")
     elif f.get("direccion"):
         primera = con.execute("SELECT COUNT(*) FROM direcciones WHERE cliente_id=?", (cid,)).fetchone()[0] == 0
-        con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,maps,ciudad,principal) VALUES (?,?,?,?,?,?)", (cid, f.get("etiqueta") or ("Principal" if primera else "Otra"), f["direccion"], f.get("maps") or None, f.get("ciudad") or None, 1 if primera else 0))
+        con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,maps,ciudad,principal) VALUES (?,?,?,?,?,?)", (cid, f.get("etiqueta") or ("Principal" if primera else "Otra"), f["direccion"], f.get("maps") or None, normalizar_ciudad(f.get("ciudad"))[0], 1 if primera else 0))
     con.commit(); return RedirectResponse(f"/clientes/{cid}", 303)
 
 
@@ -4824,6 +4896,8 @@ def mis_entregas(request: Request, con=Depends(db)):
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
     hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre, vigentes=True), key=lambda h: h["fecha"] or "", reverse=True)
+    # "Lo que has entregado" es solo lo que ya hizo: lo pendiente o en ruta está en "Lo que te toca hoy"
+    hist_todo = [h for h in hist_todo if h["estado"] not in ("pendiente", "en_ruta")]
     return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(),
@@ -4937,7 +5011,7 @@ def mis_entregas_confirmar_pago(request: Request, pid: int, con=Depends(db)):
 
 @app.post("/mis-entregas/retiro/{kind}/{rid}/{accion}")
 def mis_entregas_retiro(request: Request, kind: str, rid: int, accion: str, forma_recibida: str = Form(""), monto_recibido: str = Form(""),
-                        fue: str = Form(""), motivo: str = Form(""), con=Depends(db)):
+                        fue: str = Form(""), motivo: str = Form(""), forma_otro: str = Form(""), con=Depends(db)):
     """El despachador con un retiro de pack o un repuesto prepagado: sale, se arrepiente, lo entrega o no pudo entregarlo."""
     u = quien_es(request); yo = (u or {}).get("despachador")
     es_admin = rol_de(request) == "admin" or (u and u["rol"] == "admin")
@@ -4950,6 +5024,7 @@ def mis_entregas_retiro(request: Request, kind: str, rid: int, accion: str, form
     elif accion == "no-pude": retiro_no_recibio(con, "pack" if kind == "pack" else "prep", rid, uid, fue, motivo)
     elif accion == "entregado":
         debe = float((k["delivery_programado"] if kind == "pack" else k["delivery"]) or 0) if not k["delivery_pagado"] else 0
+        forma_recibida = forma_del_despachador(forma_recibida, forma_otro)
         despues = forma_recibida == "despues"
         efectivo = not despues and (forma_recibida or "Efectivo").startswith("Efectivo")
         forma = caja_efectivo(con) if efectivo else (forma_recibida if not despues else "")

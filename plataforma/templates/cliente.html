@@ -34,17 +34,17 @@
 <form method="post" action="/clientes/{{ c.id }}/editar">
 <div class="g2"><div><label>Nombre</label><input name="nombre_pila" value="{{ c.nombre_pila }}" required></div><div><label>Apellido</label><input name="apellido" value="{{ c.apellido or '' }}"></div></div>
 <div class="g2"><div><label>Teléfono{% if c.telefono and c.telefono!='Pendiente' %} · <a class="wa-link" href="{{ c.telefono|wa }}" target="_blank">WhatsApp ↗</a>{% endif %}</label><input name="telefono" value="{{ c.telefono or '' }}"></div><div><label>Cédula / RIF <span class="mini">(envíos nacionales)</span></label><input name="cedula" value="{{ c.cedula or '' }}" placeholder="V-12345678"></div></div>
-<div class="g2"><div><label>Correo</label><input name="correo" value="{{ c.correo or '' }}"></div><div><label>Ciudad</label><input name="ciudad" value="{{ c.ciudad or '' }}"></div></div>
+<div class="g2"><div><label>Correo</label><input name="correo" value="{{ c.correo or '' }}"></div><div><label>Ciudad{% if c.estado %} <span class="mini">· estado {{ c.estado }}</span>{% endif %}</label><input name="ciudad" value="{{ c.ciudad or '' }}" list="ciudades" autocomplete="off">{% if c.ciudad=='Pendiente' and c.estado %}<div class="mini" style="color:#b3402b">Dijo «{{ c.estado }}» pero no la ciudad: pregúntale cuál.</div>{% endif %}<datalist id="ciudades">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist></div></div>
 <div class="g2"><div><label>El Porche Versión <span class="corona" id="corona-pv" {{ '' if c.porche_version=='PRO' else 'hidden' }}></span></label><select name="porche_version" onchange="document.getElementById('corona-pv').hidden=this.value!=='PRO'"><option value="">—</option>{% for v in ['PRO','Básico'] %}<option {{ 'selected' if c.porche_version==v }}>{{ v }}</option>{% endfor %}</select></div><div><label>Tamaño</label><div class="chk-fila">{% for v in ['Mediano','Grande'] %}<label class="chk"><input type="checkbox" name="porche_tamano" value="{{ v }}" {{ 'checked' if v in (c.porche_tamano or '') }}> <span>{{ v }}</span></label>{% endfor %}</div></div></div>
 <p style="margin:10px 0 0"><button type="button" class="btn chico sec" onclick="editar(this)">Editar datos</button><button class="btn chico" hidden>Guardar datos</button></p></form></div>
 
 <div class="tarjeta"><h3>Direcciones</h3>
 {% for d in dirs %}<form method="post" action="/clientes/{{ c.id }}/direccion" class="dir-f"><input type="hidden" name="id" value="{{ d.id }}">
-<div class="g2"><div><label>Nombre de la dirección</label><input name="etiqueta" value="{{ d.etiqueta or '' }}" placeholder="Casa, oficina, casa de la mamá…"></div><div><label>Ciudad</label><input name="ciudad" value="{{ d.ciudad or '' }}"></div></div>
+<div class="g2"><div><label>Nombre de la dirección</label><input name="etiqueta" value="{{ d.etiqueta or '' }}" placeholder="Casa, oficina, casa de la mamá…"></div><div><label>Ciudad</label><input name="ciudad" value="{{ d.ciudad or '' }}" list="ciudades" autocomplete="off"></div></div>
 <label>Dirección escrita</label><input name="direccion" value="{{ d.direccion }}" required><label>GPS</label><input name="maps" value="{{ d.maps or '' }}" placeholder="https://maps.app.goo.gl/…">
 <p style="margin:8px 0 0;display:flex;gap:6px"><button type="button" class="btn chico sec" onclick="editar(this)">Editar</button><button class="btn chico" hidden>Guardar</button>{% if d.maps %}<a class="btn chico sec" href="{{ d.maps }}" target="_blank">Abrir mapa</a>{% endif %}<button class="btn chico pel" name="borrar" value="1" onclick="return confirm('¿Borrar esta dirección?')">Borrar</button></p></form>{% endfor %}
 <details {{ 'open' if not dirs }}><summary class="mini" style="cursor:pointer;margin-top:8px">+ Agregar dirección</summary><form method="post" action="/clientes/{{ c.id }}/direccion">
-<div class="g2"><div><label>Nombre de la dirección</label><input name="etiqueta" placeholder="Casa, oficina, casa de la mamá…"></div><div><label>Ciudad</label><input name="ciudad" value="{{ c.ciudad or 'Caracas' }}"></div></div>
+<div class="g2"><div><label>Nombre de la dirección</label><input name="etiqueta" placeholder="Casa, oficina, casa de la mamá…"></div><div><label>Ciudad</label><input name="ciudad" value="{{ c.ciudad or 'Caracas' }}" list="ciudades" autocomplete="off"></div></div>
 <label>Dirección escrita</label><input name="direccion" required placeholder="Res., edificio, apto, referencia"><label>GPS</label><input name="maps" placeholder="https://maps.app.goo.gl/…">
 <p style="margin:8px 0 0"><button class="btn chico sec">Agregar</button></p></form></details></div>
 
@@ -139,7 +139,7 @@ document.querySelectorAll('form').forEach(f=>{
    <input type="hidden" name="volver_a" value="/clientes/{{ c.id }}">
    <div class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" placeholder="2.50" style="width:100px" required></div>
    <input name="motivo" placeholder="por qué">
-   <button class="btn chico" name="accion" value="sumar">Sumar</button><button class="btn sec chico" name="accion" value="restar">Restar</button>
+   <span style="display:inline-flex;gap:10px"><button class="btn chico" name="accion" value="sumar">+ Sumar</button><button class="btn chico" name="accion" value="restar" style="background:#b45a1c">− Restar</button></span>
   </form></details>
  </div></div>{% endif %}
 {% if rol=='admin' %}{% set n_ord = ordenes|length %}<details style="margin-top:22px" {{ 'open' if request.query_params.get('err')=='confirmar' }}><summary class="no-link" style="font-size:13px;color:#c94a2f">Eliminar cliente</summary>

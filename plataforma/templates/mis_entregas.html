@@ -36,9 +36,10 @@
     <input type="hidden" name="estado" value="entregada">
     {% if f.cobrar %}<input type="hidden" name="moneda_recibida" value="USD">
      <label style="margin-top:0">¿Cómo pagó? <span class="mini">falta pagar {{ f.cobrar|usd }}</span></label>
-     <select name="forma_recibida" onchange="this.form.querySelector('.me-monto').hidden=this.value==='despues'">
-      <option value="Efectivo USD">Efectivo</option>{% for x in FORMAS_COBRO if not x.startswith('Efectivo') %}<option>{{ x }}</option>{% endfor %}
+     <select name="forma_recibida" onchange="this.form.querySelector('.me-monto').hidden=this.value==='despues';this.form.querySelector('.me-otro').hidden=this.value!=='Otro'">
+      <option value="Efectivo USD">Efectivo</option><option>Zelle</option><option>Binance</option><option>Pago Móvil</option><option>Otro</option>
       <option value="despues">No pagó · se le cobra después</option></select>
+     <div class="me-otro" hidden><label>¿Cuál?</label><input name="forma_otro" placeholder="ej. PayPal, transferencia…"></div>
      <div class="me-monto"><label>¿Cuánto?</label><div class="cf-in"><span class="mini">$</span><input name="monto_recibido" inputmode="decimal" value="{{ '%g'|format(f.cobrar) }}" style="width:110px"></div>
      <div class="mini">Si pagó menos, pon lo que pagó de verdad.</div></div>
     {% else %}<div class="mini" style="margin-bottom:6px">Ya está pagado, no hay que cobrar nada.</div>{% endif %}
@@ -58,9 +59,9 @@
 <div class="g2" style="align-items:start;margin-top:16px">
  <div class="tarjeta"><h3>Lo que has entregado</h3>
   <div class="cf-cuerpo">
-  {% if hist %}<table data-cols="Fecha:13|Quién:28|Dónde:25|Estado:19|Te toca:15" class="lineas me-h"><tr><th>Fecha</th><th>Quién</th><th>Dónde</th><th>Estado</th><th class="num">Te toca</th></tr>
+  {% if hist %}<table data-cols="Fecha:17|Quién:20|Dónde:27|Estado:20|Te toca:16" class="lineas me-h"><tr><th>Fecha</th><th>Quién</th><th>Dónde</th><th>Estado</th><th class="num">Te toca</th></tr>
   {% for h in hist[:20] %}<tr>
-   <td class="mono mini" style="width:100px">{{ h.fecha|dia }}</td><td>{{ h.quien }}</td><td class="mini">{% if h.zona %}<b>{{ h.zona }}</b>{% if h.direccion %} · {% endif %}{% endif %}{{ h.direccion or ('' if h.zona else '—') }}</td>
+   <td class="mono mini">{{ h.fecha|dia }}</td><td>{{ h.quien }}</td><td class="mini">{% if h.zona %}<b>{{ h.zona }}</b>{% if h.direccion %} · {% endif %}{% endif %}{{ h.direccion or ('' if h.zona else '—') }}</td>
    <td><span class="est {{ h.estado }}">{{ 'No se pudo entregar' if h.estado=='no_entregado' else E_LABEL.get(h.estado, h.estado) }}</span>{% if h.que %}<div class="mini">{{ h.que }}</div>{% endif %}{% if h.estado=='no_entregado' %}<div class="mini">fue al sitio{% if h.nota %} · {{ h.nota }}{% endif %}</div>{% endif %}</td>
    <td class="num">{% if h.estado in ('entregada', 'no_entregado') %}{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">sin pagar</div>{% else %}<div class="mini ln-pagado">ya te lo pagaron</div>{% endif %}{% else %}<span class="mini">{{ h.pago|usd }} al entregar</span>{% endif %}</td>
   </tr>{% endfor %}</table>{% else %}<div class="vacio">No tienes entregas pendientes de cobro.</div>{% endif %}</div></div>
