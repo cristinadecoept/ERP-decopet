@@ -1,0 +1,29 @@
+# El mismo contrato que servidor/publicar.sh: nada se publica con las pruebas en rojo.
+# Railway está conectado a main con "Wait for CI": si este trabajo falla, no despliega.
+name: pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
+      TZ: America/Caracas          # la misma hora que el servidor: las quincenas y el "hoy" dependen de ella
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # la misma que la imagen de Railway
+          cache: pip
+
+      - name: Dependencias
+        run: pip install -r requirements.txt
+
+      - name: Pruebas (dinero, cada pantalla con cada rol, candado del servidor)
+        run: python pruebas.py

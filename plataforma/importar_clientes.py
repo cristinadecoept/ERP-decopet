@@ -2,10 +2,10 @@
 Uso:  ./.venv/bin/python -m plataforma.importar_clientes "/ruta/archivo.csv" [--cargar]
 Reglas acordadas con Cristina (20 sep 2026): correo/teléfono/ciudad vacíos → "Pendiente" (resaltado y filtrable);
 Duwu es cliente B2B; los perros con apellido son reales; los nombres con paréntesis se dejan tal cual."""
-import sys, csv, re, sqlite3, collections
+import sys, csv, re, os, sqlite3, collections
 from pathlib import Path
 
-DB = Path(__file__).parent / "data" / "plataforma.db"
+DB = Path(os.environ.get("DECOPET_DATOS") or (Path(__file__).parent / "data")) / "plataforma.db"   # la misma base que abre el ERP
 NO_MAIL = {"pendiente", "no tiene", "no tiene disponible", "no quiere", "no", "n/a", "na", "-", "x"}
 EXTERIOR = ("1", "34", "52", "54", "56", "32", "39", "44", "49", "57", "51", "506", "507", "351")
 

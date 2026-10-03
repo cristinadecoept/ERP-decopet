@@ -3,9 +3,9 @@ Uso: ./.venv/bin/python -m plataforma.importar_pedidos "/ruta/archivo.csv" [--ca
 Decisiones de Cristina (20 sep 2026): fechas 2020/2004 → 2026; saldo negativo = delivery pagado aparte; Tarek Atta total $22; Regalo → orden tipo regalo sin pago;
 "Repuesto (pack / orden previa)" era error del bot → Pago Móvil; fecha de pago posterior a la de entrega → se iguala a la de entrega;
 columnas Excel/LDP/Incluir en resumen se ignoran, salvo Excel='R F' que marca factura fiscal hecha; Cashea siempre requiere factura fiscal."""
-import sys, csv, re, sqlite3, datetime, collections
+import sys, csv, re, os, sqlite3, datetime, collections
 from pathlib import Path
-DB = Path(__file__).parent / "data" / "plataforma.db"
+DB = Path(os.environ.get("DECOPET_DATOS") or (Path(__file__).parent / "data")) / "plataforma.db"   # la misma base que abre el ERP
 
 def n(s): return " ".join((s or "").split())
 def money(s): return float((s or "0").replace("$", "").replace(",", "") or 0)
@@ -21,7 +21,11 @@ for cm, sku in (("10", "SLOW-10"), ("15", "SLOW-15"), ("20", "SLOW-20"), ("25", 
     for col in ("azul", "rosado"): PROD[f"slow chow {cm}cm {col}"] = (sku, col, 0)
 PAGO = {"pago movil": "Pago Móvil", "bnc": "Cashea BNC", "zelle": "Zelle", "efectivo": "Efectivo USD", "binance": "Binance USDT", "venmo": "Venmo", "pay pal": "PayPal", "paypal": "PayPal", "pipol pay": "Pipol Pay",
         "repuesto (pack / orden previa)": "Pago Móvil"}
-CUENTA = {"Pago Móvil": "Pago Movil BVC", "Cashea BNC": "Cashea BNC", "Zelle": "Zelle Decopet", "Efectivo USD": "Caja", "Binance USDT": "Caja USDT", "Venmo": "Venmo", "PayPal": "Pay Pal", "Pipol Pay": "Pipol Pay"}
+# Caja donde entró cada pago: los nombres de las cajas reales (los mismos que NOMBRES_VIEJOS en app.py).
+CUENTA = {"Pago Móvil": "Pago Móvil VES", "Cashea BNC": "BNC Cashea", "Zelle": "Zelle Decopet", "Efectivo USD": "Efectivo USD Caracas", "Binance USDT": "Binance USDT Investment", "Venmo": "Venmo", "PayPal": "Wise", "Pipol Pay": "Pipol Pay"}
+# Productos que se vendieron en Airtable y pueden no estar en el catálogo: si faltan se crean INACTIVOS (no aparecen para vender). Precio de Airtable.
+HISTORICOS = {"BAS-M": ("Porche Básico Mediano", "porche", 38), "BAS-G": ("Porche Básico Grande", "porche", 38),
+              "PACK4": ("Pack 4 Repuestos Cashea", "repuesto", 88), "PACK8": ("Pack 8 Repuestos Cashea", "repuesto", 176)}
 AGENCIAS = {"tealca": "Tealca", "mrw": "MRW", "zoom": "Zoom", "liberty express": "Liberty Express"}
 DESPACH = {"ingrid": "Ingrid", "juan": "Juan", "cristina": "Cristina", "tony": "Tony", "fernando": "Fernando"}
 
@@ -77,6 +81,14 @@ def cargar(pedidos):
     cols = [r[1] for r in con.execute("PRAGMA table_info(ordenes)")]
     for c in ("requiere_factura", "factura_hecha"):
         if c not in cols: con.execute(f"ALTER TABLE ordenes ADD COLUMN {c} INTEGER DEFAULT 0")
+    prod = {r["sku"]: dict(r) for r in con.execute("SELECT * FROM productos")}
+    faltan = {sku for p in pedidos for (sku, _, _), _ in p["lineas"]} - set(prod)
+    for sku in sorted(faltan & set(HISTORICOS)):
+        nombre, cat, precio = HISTORICOS[sku]
+        con.execute("INSERT INTO productos (sku,nombre,categoria,precio,costo,tipo,activo) VALUES (?,?,?,?,0,'producto',0)", (sku, nombre, cat, precio))
+        print(f"- producto {sku} no estaba en el catálogo: creado inactivo ({nombre}, ${precio})")
+    if faltan - set(HISTORICOS):   # antes esto revertía todo sin decir por qué
+        sys.exit(f"Faltan en el catálogo estos productos que los pedidos necesitan: {sorted(faltan - set(HISTORICOS))}. No se cargó nada.")
     prod = {r["sku"]: dict(r) for r in con.execute("SELECT * FROM productos")}
     opc_malla = prod["OPC-MALLA"]; opc_perso = prod["OPC-PERSO"]
     cli = {n(r["nombre"]).lower(): r["id"] for r in con.execute("SELECT id, nombre FROM clientes")}

@@ -14,12 +14,16 @@ BASE = Path(__file__).resolve().parent
 DATOS = Path(os.environ.get("DECOPET_DATOS") or (BASE / "data"))
 DATOS.mkdir(parents=True, exist_ok=True)
 DB = DATOS / "plataforma.db"
+# En un servidor (con DECOPET_DATOS) el ERP nunca queda abierto: en la Mac, sin claves puestas,
+# entraba cualquiera como administradora porque solo se abría desde la propia Mac. En internet,
+# la primera clave pide además el código de instalación (DECOPET_CODIGO_INICIAL).
+EN_SERVIDOR = bool(os.environ.get("DECOPET_DATOS"))
 DOCS_DIR = DATOS / "documentos"
 FOTOS_DIR = DATOS / "fotos"
-for _d in (DOCS_DIR, FOTOS_DIR): _d.mkdir(parents=True, exist_ok=True)
+FOTOS_PRODUCTOS = FOTOS_DIR / "productos"
+for _d in (DOCS_DIR, FOTOS_DIR, FOTOS_PRODUCTOS): _d.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Decopet", docs_url=None, redoc_url=None, openapi_url=None)   # sin manual técnico público: nadie necesita ver cómo está hecho por dentro
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
-(BASE / "data" / "fotos").mkdir(parents=True, exist_ok=True)
 app.mount("/fotos", StaticFiles(directory=FOTOS_DIR), name="fotos")
 tpl = Jinja2Templates(directory=BASE / "templates")
 
@@ -285,6 +289,15 @@ ESCUDOS = {
 }
 
 
+def base_responde():
+    try:
+        con = sqlite3.connect(DB, timeout=2)
+        try: con.execute("SELECT 1 FROM usuarios LIMIT 1").fetchone(); return True
+        finally: con.close()
+    except sqlite3.Error:
+        return False
+
+
 def viene_de_fuera(request):
     """Una orden que llega desde otra página web. Así funciona el engaño de hacerte hacer clic
     en un sitio cualquiera para que tu navegador, ya con tu sesión abierta, haga algo aquí."""
@@ -309,6 +322,9 @@ async def puerta(request: Request, call_next):
 
     if ruta == "/robots.txt":
         return con_escudos(PlainTextResponse("User-agent: *\nDisallow: /\n"))
+    if ruta == "/health":   # para Railway: ¿está vivo y puede leer la base? Sin entrar y sin contar nada más.
+        vivo = base_responde()
+        return con_escudos(PlainTextResponse("ok" if vivo else "mal", status_code=200 if vivo else 503))
     if viene_de_fuera(request):
         return con_escudos(JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403))
     try:
@@ -317,7 +333,7 @@ async def puerta(request: Request, call_next):
     except ValueError:
         return con_escudos(JSONResponse({"error": "Orden mal formada"}, status_code=400))
     if not ruta.startswith(ABIERTO):
-        if hay_claves() and not quien_es(request):
+        if (hay_claves() or EN_SERVIDOR) and not quien_es(request):
             return con_escudos(RedirectResponse("/entrar", status_code=303))
         permitido, casa = PUERTAS.get(rol_de(request), (None, None))
         if permitido and not ruta.startswith(permitido):
@@ -385,6 +401,9 @@ def preparar_base(ruta):
     """Deja una base lista para usar: crea las tablas y agrega las columnas que falten.
     Sirve igual para la base en uso y para una recién creada."""
     con = sqlite3.connect(ruta)
+    # WAL: quien lee no espera a quien guarda. Con varias personas a la vez, más la tasa BCV y el
+    # respaldo trabajando de fondo, sin esto aparece "database is locked". Queda grabado en la base.
+    con.execute("PRAGMA journal_mode=WAL")
     tablas = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "viajes_fallidos" in tablas and "viajes_despachador" not in tablas:   # la primera versión se llamaba así
         con.execute("ALTER TABLE viajes_fallidos RENAME TO viajes_despachador")
@@ -531,7 +550,7 @@ def hay_claves(con=None):
 
 def rol_de(request: Request):
     u = quien_es(request)
-    if not u: return "admin" if not hay_claves() else "invitado"
+    if not u: return "admin" if not hay_claves() and not EN_SERVIDOR else "invitado"
     # solo el administrador puede mirar el ERP como si fuera otro, para revisarlo
     if u["rol"] == "admin":
         ver = request.cookies.get("ver_como")
@@ -575,7 +594,7 @@ def render(request, nombre, **ctx):
 def entrar(request: Request, mal: str = "", con=Depends(db)):
     if quien_es(request): return RedirectResponse("/inicio", status_code=303)
     return render(request, "entrar.html", seccion="entrar", primera_vez=not hay_claves(con),
-                  mal=mal, sin_menu=True)
+                  pide_codigo=EN_SERVIDOR, mal=mal, sin_menu=True)
 
 
 @app.post("/entrar")
@@ -597,13 +616,25 @@ def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form("")
 
 
 @app.post("/entrar/primera-vez")
-def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), con=Depends(db)):
+def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), usuario: str = Form(""),
+                   codigo: str = Form(""), con=Depends(db)):
     """La primera vez, Cristina pone su propia clave. Nadie más la ve nunca, ni queda escrita."""
     if hay_claves(con): return RedirectResponse("/entrar", status_code=303)
+    if EN_SERVIDOR:
+        esperado = os.environ.get("DECOPET_CODIGO_INICIAL", "")
+        ip = (request.client.host if request.client else "") or ""
+        if frenado(con, "primera-vez", ip): return RedirectResponse("/entrar?mal=frenado", status_code=303)
+        if not (esperado and secrets.compare_digest(codigo.strip().encode(), esperado.encode())):
+            anotar_intento(con, "primera-vez", ip)
+            return RedirectResponse("/entrar?mal=codigo", status_code=303)
     if len(clave.strip()) < 8 or clave != clave2:
         return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 8 else "distinta"), status_code=303)
     u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
-    con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), u["id"])); con.commit()
+    if not u:   # base recién creada en un servidor: todavía no existe nadie a quien ponerle la clave
+        con.execute("INSERT INTO usuarios (nombre, rol, activo, creado_en) VALUES ('Cristina', 'admin', 1, date('now'))")
+        u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
+    con.execute("UPDATE usuarios SET clave_hash=?, usuario=COALESCE(?, usuario) WHERE id=?",   # sin usuario no podría volver a entrar
+                (cifrar_clave(clave.strip()), usuario.strip().lower() or None, u["id"])); con.commit()
     r = RedirectResponse("/inicio", status_code=303)
     r.set_cookie("sesion", abrir_sesion(con, u["id"]), max_age=DURACION_SESION, httponly=True,
                  samesite="strict", secure=cookie_segura(request))
@@ -1445,10 +1476,12 @@ def arrancar_respaldo():
         while True:
             try:
                 if not respaldo_al_dia():
-                    subprocess.run(["/bin/bash", str(BASE.parent / "scripts" / "respaldo.sh")],
-                                   capture_output=True, text=True, timeout=120)
-            except Exception:
-                pass          # un respaldo fallido nunca puede tumbar el ERP
+                    r = subprocess.run(["/bin/bash", str(BASE.parent / "scripts" / "respaldo.sh")],
+                                       capture_output=True, text=True, timeout=120)
+                    if r.returncode != 0:   # no tumba el ERP, pero tiene que quedar a la vista en el registro
+                        print("RESPALDO FALLÓ:", (r.stderr or r.stdout or "sin mensaje")[-600:], flush=True)
+            except Exception as e:
+                print("RESPALDO FALLÓ:", repr(e), flush=True)   # un respaldo fallido nunca puede tumbar el ERP
             time.sleep(30 * 60)
     threading.Thread(target=bucle, daemon=True).start()
 
@@ -2184,15 +2217,6 @@ def libro_caja(con, caja_id=None, mes=None):
     if caja_id: lineas = [l for l in lineas if l["caja"] and l["caja"]["id"] == caja_id]
     if mes: lineas = [l for l in lineas if l["fecha"][:7] == mes]
     return list(reversed(lineas))
-
-
-@app.get("/cashflow/libro", response_class=HTMLResponse)
-def libro(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
-    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    cs = saldos(con)
-    lineas = libro_caja(con, int(caja) if caja else None, mes or None)
-    meses = sorted({l["fecha"][:7] for l in libro_caja(con)}, reverse=True)
-    return render(request, "libro.html", seccion="cashflow", lineas=lineas[:500], cuentas=cs, caja=caja, mes=mes, meses=meses, total=sum(c["saldo"] for c in cs if c["tipo"] == "operativa"))
 
 
 @app.post("/cashflow/cuentas")
@@ -3013,7 +3037,7 @@ def mascotas_exportar(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     cols = [("Mascota", 22, ""), ("Raza", 22, ""), ("Cumpleaños", 14, ""), ("Nacimiento", 14, "f"),
             ("Peso (kg)", 11, "n"), ("Dueño", 26, ""), ("Teléfono", 16, ""), ("Ciudad", 18, "")]
-    filas = [(m["nombre"], m["raza"], m["cumple"], _fecha(m["fecha_nacimiento"]), m["peso"], m["cliente"], m["telefono"], m["ciudad"])
+    filas = [(m["nombre"], m["raza"], m["cumple_mes_dia"], _fecha(m["fecha_nacimiento"]), m["peso_kg"], m["cliente"], m["telefono"], m["ciudad"])
              for m in con.execute("""SELECT m.*, c.nombre cliente, c.telefono, c.ciudad FROM mascotas m
                                      LEFT JOIN clientes c ON c.id=m.cliente_id ORDER BY c.nombre, m.nombre""")]
     return hoja_excel([("Mascotas", cols, filas)], "Decopet mascotas.xlsx", "Mascotas")
@@ -3261,9 +3285,9 @@ async def producto_foto(request: Request, pid: int, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/productos", status_code=303)
     f = await request.form(); a = f.get("foto")
     if a and getattr(a, "filename", None):
-        ext = (a.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]; rosado = f.get("variante") == "rosado"
+        ext = re.sub(r"[^a-z0-9]", "", a.filename.rsplit(".", 1)[-1].lower())[:5] or "jpg"; rosado = f.get("variante") == "rosado"
         nombre = f"producto-{pid}{'-rosado' if rosado else ''}.{ext}"
-        (BASE / "data" / "fotos" / nombre).write_bytes(await a.read())
+        (FOTOS_DIR / nombre).write_bytes(await a.read())
         con.execute(f"UPDATE productos SET {'foto_rosado' if rosado else 'foto'}=? WHERE id=?", (nombre, pid)); con.commit()
     return RedirectResponse("/productos", status_code=303)
 
@@ -3354,9 +3378,9 @@ async def galeria_subir(request: Request, con=Depends(db)):
     f = await request.form(); pid = int(f["producto_id"]); tipo = f.get("tipo") or "sin_fondo"
     for a in f.getlist("archivo"):
         if not getattr(a, "filename", None): continue
-        ext = (a.filename.rsplit(".", 1)[-1] or "jpg").lower()[:5]
+        ext = re.sub(r"[^a-z0-9]", "", a.filename.rsplit(".", 1)[-1].lower())[:5] or "jpg"   # solo letras y números: el nombre lo eligió el navegador
         nombre = f"{pid}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{abs(hash(a.filename)) % 100000}.{ext}"
-        (BASE / "data" / "fotos" / "productos" / nombre).write_bytes(await a.read())
+        (FOTOS_PRODUCTOS / nombre).write_bytes(await a.read())
         con.execute("INSERT INTO producto_fotos (producto_id, archivo, tipo, etiqueta) VALUES (?,?,?,?)", (pid, nombre, tipo, f.get("etiqueta") or None))
     con.commit(); return RedirectResponse(f"/galeria?producto={pid}", status_code=303)
 
@@ -3368,7 +3392,7 @@ def galeria_borrar(request: Request, fid: int, con=Depends(db)):
     if r:
         con.execute("DELETE FROM producto_fotos WHERE id=?", (fid,))
         if not con.execute("SELECT 1 FROM producto_fotos WHERE archivo=?", (r["archivo"],)).fetchone():   # el mismo archivo puede servir a varios productos
-            try: (BASE / "data" / "fotos" / "productos" / r["archivo"]).unlink()
+            try: (FOTOS_PRODUCTOS / r["archivo"]).unlink()
             except FileNotFoundError: pass
         con.commit()
     return RedirectResponse(f"/galeria?producto={r['producto_id']}" if r else "/galeria", status_code=303)
