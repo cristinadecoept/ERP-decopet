@@ -49,3 +49,6 @@ data/
 
 # Estructura y ejemplos exportados de Airtable: traen teléfonos y correos de clientes reales
 docs/AirTable/
+
+# Copias de la base que se pasan a mano (traen datos del negocio y claves cifradas)
+*.backup
