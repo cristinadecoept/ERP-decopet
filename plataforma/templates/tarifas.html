@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block titulo %}Tarifas de delivery · Decopet{% endblock %}{% block cuerpo %}
-<div class="fila-titulo"><div><h1>Tarifas de delivery</h1><div class="sub">Cuánto le cobras de delivery al cliente en cada zona. Al crear una orden eliges la zona y el monto se pone solo. Al despachador siempre le pagas ese mismo delivery.</div></div></div>
+<div class="fila-titulo"><div><h1>Tarifas de delivery</h1></div></div>
 
 <div class="tabla" style="max-width:820px"><table data-cols="Zona:30|Delivery al:20|Notas:35|:15"><tr><th>Zona</th><th class="num">Delivery al cliente</th><th>Notas</th>{% if rol=='admin' %}<th></th>{% endif %}</tr>
 {% for z in tarifas %}<tr>{% if rol=='admin' %}<form method="post" action="/tarifas/guardar" id="t-{{ z.id }}"><input type="hidden" name="id" value="{{ z.id }}"></form>
@@ -22,5 +22,18 @@
 {% for a in AGENCIAS if a!='Otra' %}<tr><td>{{ a }}</td><td class="num" style="width:180px">{% if rol=='admin' %}<input name="ag_{{ a }}" form="t-ag" type="number" step="0.5" value="{{ '%g'|format(tarifas_ag[a]) }}" style="text-align:right">{% else %}${{ '%g'|format(tarifas_ag[a]) }}{% endif %}</td></tr>{% endfor %}
 <tr><td>Cualquier otra oficina</td><td class="num">{% if rol=='admin' %}<input name="ag_otra" form="t-ag" type="number" step="0.5" value="{{ '%g'|format(tarifas_ag['Otra']) }}" style="text-align:right">{% else %}${{ '%g'|format(tarifas_ag['Otra']) }}{% endif %}</td></tr>
 {% if rol=='admin' %}<tr style="background:var(--fondo)"><td class="mini">Se paga igual lleve 1 pedido o lleve 6.</td><td class="num"><button class="btn chico" form="t-ag">Guardar</button></td></tr>{% endif %}
+</table></div>
+
+<div class="tabla" style="max-width:820px;margin-top:20px"><table data-cols="Diligencia:60|Le pagas:20|:20"><tr><th>Diligencia</th><th class="num">Le pagas</th>{% if rol=='admin' %}<th></th>{% endif %}</tr>
+{% for t in tarifas_dil %}<tr>{% if rol=='admin' %}<form method="post" action="/tarifas/diligencias" id="td-{{ t.id }}"><input type="hidden" name="id" value="{{ t.id }}"></form>
+ <td><input name="nombre" form="td-{{ t.id }}" value="{{ t.nombre }}" required></td>
+ <td class="num" style="width:120px"><input name="precio" form="td-{{ t.id }}" type="number" step="0.5" value="{{ '%g'|format(t.precio) }}" style="text-align:right"></td>
+ <td style="white-space:nowrap;text-align:right"><button class="btn chico" form="td-{{ t.id }}">Guardar</button> <button class="btn pel chico" form="td-{{ t.id }}" name="borrar" value="1" onclick="return confirm('¿Borrar esta diligencia?')">Borrar</button></td>
+{% else %}<td>{{ t.nombre }}</td><td class="num">${{ '%g'|format(t.precio) }}</td>{% endif %}</tr>
+{% else %}<tr><td colspan="3" class="vacio">Todavía no hay diligencias con precio.</td></tr>{% endfor %}
+{% if rol=='admin' %}<tr style="background:var(--fondo)"><form method="post" action="/tarifas/diligencias" id="td-nueva"></form>
+ <td><input name="nombre" form="td-nueva" placeholder="Nueva diligencia (ej. buscar tela en el centro)" required></td>
+ <td class="num"><input name="precio" form="td-nueva" type="number" step="0.5" placeholder="$" style="text-align:right"></td>
+ <td style="text-align:right"><button class="btn chico" form="td-nueva">+ Agregar</button></td></tr>{% endif %}
 </table></div>
 {% endblock %}

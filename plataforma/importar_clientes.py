@@ -56,15 +56,61 @@ def leer(ruta):
     return out, avisos
 
 
+import unicodedata
+_PART = {"de", "del", "la", "las", "los", "y", "da", "di", "van", "von", "san", "santa"}
+def _k(w): return "".join(c for c in unicodedata.normalize("NFD", w.lower()) if unicodedata.category(c) != "Mn")
+def _tokens(nombre):
+    """'María de los Ángeles Pérez' → ['María', 'de los Ángeles', 'Pérez']: las partículas van con la palabra que sigue."""
+    out, pend = [], []
+    for w in nombre.split():
+        if _k(w) in _PART: pend.append(w); continue
+        out.append(" ".join(pend + [w])); pend = []
+    if pend:
+        if out: out[-1] += " " + " ".join(pend)
+        else: out.append(" ".join(pend))
+    return out
+
+def vocabulario(nombres):
+    """Aprende de los propios datos qué palabras suelen ser nombre y cuáles apellido."""
+    pri, ult = collections.Counter(), collections.Counter()
+    for n in nombres:
+        t = _tokens(n)
+        if len(t) >= 2: pri[_k(t[0])] += 1; ult[_k(t[-1])] += 1
+        if len(t) == 4: pri[_k(t[1])] += 1; ult[_k(t[2])] += 1   # en 4 palabras la 2ª es segundo nombre
+    return pri, ult
+
+def partir_nombre(nombre, pri, ult):
+    """Airtable guarda el nombre completo en un solo campo. 'Abel David Rico León' → ('Abel David', 'Rico León')."""
+    t = _tokens(nombre)
+    es_nombre = lambda w: pri[_k(w)] > ult[_k(w)] or len(w.rstrip(".")) == 1   # una inicial ("Ricardo E Nava") es segundo nombre
+    if len(t) <= 1: return (t[0] if t else nombre), None
+    if len(t) == 2: return t[0], t[1]
+    if len(t) == 3: return (" ".join(t[:2]), t[2]) if es_nombre(t[1]) else (t[0], " ".join(t[1:]))
+    n = 1
+    while n < len(t) - 1 and n < 3 and (es_nombre(t[n]) or (n == 1 and len(t) == 4)): n += 1
+    return " ".join(t[:n]), " ".join(t[n:])
+
+
+_MINUS = {"de", "del", "la", "las", "los", "y"}
+def mayuscula(nombre, inicio=True):
+    """La misma regla del ERP (capitalizar en app.py): 'CRISTINA RAFFALLI' → 'Cristina Raffalli', 'María de los Ángeles'."""
+    pal = lambda w: re.sub(r"[^\W\d_]+", lambda m: m.group(0)[:1].upper() + m.group(0)[1:].lower(), w)
+    nombre = unicodedata.normalize("NFC", nombre or "")   # la tilde suelta partía la palabra ("MaríA")
+    return " ".join(w.lower() if ((i or not inicio) and w.lower() in _MINUS) else pal(w) for i, w in enumerate(nombre.split()))
+
+
 def cargar(clientes):
     con = sqlite3.connect(DB)
     cols = [r[1] for r in con.execute("PRAGMA table_info(clientes)")]
     for c in ("porche_version", "porche_tamano"):
         if c not in cols: con.execute(f"ALTER TABLE clientes ADD COLUMN {c} TEXT")
+    pri, ult = vocabulario([c["nombre"] for c in clientes])
     for c in clientes:
-        partes = c["nombre"].split(" ", 1)
+        partes = partir_nombre(c["nombre"], pri, ult)
+        partes = (mayuscula(partes[0]), mayuscula(partes[1], inicio=False) or None)
+        c = dict(c, nombre=mayuscula(c["nombre"]))
         cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,canal_habitual,origen_excel,porche_version,porche_tamano) VALUES (?,?,?,?,?,?,?,?,1,?,?)",
-                          (partes[0], partes[1] if len(partes) > 1 else None, c["nombre"], c["telefono"] or "Pendiente", c["cedula"], c["correo"] or "Pendiente", c["ciudad"] or "Pendiente", c["canal"], c["porche_version"], c["porche_tamano"]))
+                          (partes[0], partes[1], c["nombre"], c["telefono"] or "Pendiente", c["cedula"], c["correo"] or "Pendiente", c["ciudad"] or "Pendiente", c["canal"], c["porche_version"], c["porche_tamano"]))
         cid = cur.lastrowid
         if c["direccion"] or c["gps"]:
             con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,ciudad,maps,principal) VALUES (?,?,?,?,?,1)", (cid, "Principal", c["direccion"] or "(solo GPS)", c["ciudad"] or None, c["gps"] or None))

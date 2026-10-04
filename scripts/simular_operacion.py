@@ -24,9 +24,9 @@ CONSULTAS = {"clientes": "SELECT COUNT(*) FROM clientes WHERE nombre!='Sin nombr
              "delivery $": "SELECT SUM(delivery) FROM ordenes", "pagado $": "SELECT SUM(monto_usd) FROM pagos"}
 
 
-def correr(args, titulo):
+def correr(args, titulo, env=None):
     print(f"\n▸ {titulo}")
-    r = subprocess.run([PY, *args], cwd=RAIZ, env=ENV, capture_output=True, text=True, encoding="utf-8")
+    r = subprocess.run([PY, *args], cwd=RAIZ, env=env or ENV, capture_output=True, text=True, encoding="utf-8")
     sal = (r.stdout + r.stderr).strip()
     if r.returncode != 0:
         print(sal[-1500:]); sys.exit(f"Falló: {titulo}")
@@ -78,7 +78,9 @@ def main():
     a = ap.parse_args()
     if a.sobre and not Path(a.sobre).is_file(): sys.exit(f"No encuentro {a.sobre}")
     if not a.sin_descargar:
-        print(correr(["scripts/airtable_descargar.py", "--ultimos", str(a.ultimos)], f"Bajando de Airtable los {a.ultimos} pedidos más recientes"))
+        # el descargador guarda en <DECOPET_DATOS>/airtable: se le apunta a CSV.parent, porque SIM se borra entero más abajo
+        print(correr(["scripts/airtable_descargar.py", "--ultimos", str(a.ultimos)], f"Bajando de Airtable los {a.ultimos} pedidos más recientes",
+                     env={**ENV, "DECOPET_DATOS": str(CSV.parent)}))
     for f in ("Clientes-Ficha clientes.csv", "Mascotas-Mascotas.csv", "Pedidos-Todos los pedidos.csv"):
         if not (CSV / f).exists(): sys.exit(f"Falta {f}. Corre sin --sin-descargar.")
     shutil.rmtree(SIM, ignore_errors=True)

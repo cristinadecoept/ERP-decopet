@@ -1,125 +1,90 @@
 {% extends "base.html" %}{% block titulo %}{{ c.nombre }} · Decopet{% endblock %}{% block cuerpo %}
 <p class="mini" style="margin:0 0 10px"><a href="/clientes">← Clientes</a></p>
-<div class="fila-titulo"><div><h1>{{ c.nombre }}</h1><div class="sub">{% for e in etiquetas %}<span class="canal {{ 'pro' if e.startswith('Miembro PRO') }}">{{ e }}</span> {% endfor %}{% if incid %}<a href="#incidencias" onclick="event.preventDefault();verIncid()" class="canal" style="color:#b3321b;border-color:#e6b8ae;background:#fbe9e5;cursor:pointer">⚠️ {{ incid|length }} incidencia{{ 's' if incid|length != 1 }}</a> {% endif %}{% if not c.cedula and c.ciudad and c.ciudad!='Caracas' %}<span class="canal" style="color:#b3402b;border-color:#e6b8ae">sin cédula · necesaria para envío nacional</span>{% endif %}{% if primera %}<span class="mini" style="margin-left:6px">cliente desde {{ primera|el_fecha }}</span>{% endif %}</div></div>
-<button class="btn" onclick="location.href='/ordenes?estado=todas&nueva={{ c.id }}'">+ Nueva orden</button></div>
-
-<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:16px">
- {% if rol=='admin' and credito %}<div class="tile"><b style="color:var(--verde-osc)">{{ credito|usd }}</b><span>Saldo a favor</span><i>se le descuenta en su próxima compra</i></div>{% endif %}
- <div class="tile"><b>{{ nums.n }}</b><span>Pedidos</span><i>{{ nums.unidades|int }} productos en total</i></div>
- {% if rol=='admin' %}<div class="tile"><b>{{ nums.total|usd }}</b><span>Total gastado</span><i>{% if nums.mejor_que is not none %}compra más que el {{ nums.mejor_que }} % de tus clientes{% else %}&nbsp;{% endif %}</i></div>
- <div class="tile"><b>{{ nums.ticket|usd }}</b><span>Ticket promedio</span><i>{% if nums.mayor %}su pedido más grande fue de {{ nums.mayor.total|usd }} {{ nums.mayor.creado_en|el_fecha }}{% else %}—{% endif %}</i></div>{% endif %}
- <div class="tile"><b>{% if nums.dias_sin is not none %}{{ nums.dias_sin }} días{% else %}—{% endif %}</b><span>Sin comprar</span><i>{% if ultima %}último pedido {{ ultima|el_fecha }}{% else %}nunca ha comprado{% endif %}</i></div>
- <div class="tile"><b>{% if nums.cada %}{{ nums.cada }} días{% else %}—{% endif %}</b><span>Frecuencia de compra</span><i>{% if nums.cada %}pide cada {{ nums.cada }} días en promedio{% elif nums.n==1 %}solo ha comprado una vez{% else %}—{% endif %}</i></div>
- {% if porche %}<div class="tile"><b>{% if proximo %}{{ proximo|fecha }}{% else %}—{% endif %}</b><span>Próximo repuesto</span></div>{% endif %}
- {% if saldo_pack %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ saldo_pack }}</b><span>Repuestos del pack por entregar</span><i><a href="/packs?q={{ c.nombre|urlencode }}">ver</a></i></div>{% endif %}
- {% if n_prepagados %}<div class="tile" style="border:1.5px solid var(--verde)"><b>{{ n_prepagados }}</b><span>Repuesto{{ 's' if n_prepagados != 1 }} prepagado{{ 's' if n_prepagados != 1 }} por entregar</span><i><a href="/prepagados">ver</a></i></div>{% endif %}
+{% set nsr = namespace(r=None) %}{% for s in segs if s.tipo in ['primer_repuesto','repuesto'] %}{% if loop.first %}{% set nsr.r = s.resultado %}{% endif %}{% endfor %}
+<div class="tarjeta perfil-cab">
+ <div class="perfil-av">{{ ((c.nombre_pila or c.nombre or '?')|trim)[:1]|upper }}</div>
+ <div class="perfil-info"><h1>{{ c.nombre }}</h1>
+  <div class="perfil-chips">{% for e in etiquetas %}<span class="canal {{ 'pro' if e.startswith('Miembro PRO') }}">{{ e }}</span>{% endfor %}{% if nsr.r == 'no_se_adapto' %}<span class="canal chip-alerta">El perro no se adaptó</span>{% elif nsr.r == 'ya_no_usa' %}<span class="canal chip-alerta">Ya no usa el porche</span>{% endif %}{% if incid %}<a href="#" onclick="event.preventDefault();verTab('incid')" class="canal chip-alerta">⚠️ {{ incid|length }} incidencia{{ 's' if incid|length != 1 }}</a>{% endif %}{% if not c.cedula and c.ciudad and c.ciudad not in ['Caracas','Pendiente'] %}<span class="canal chip-alerta">sin cédula · necesaria para envío nacional</span>{% endif %}</div>
+  <div class="perfil-contacto">{% if c.telefono and c.telefono!='Pendiente' %}<a class="wa-link" href="{{ c.telefono|wa }}" target="_blank" rel="noreferrer">{{ c.telefono }} · WhatsApp ↗</a>{% endif %}{% if c.ciudad and c.ciudad!='Pendiente' %}<span>📍 {{ c.ciudad }}</span>{% endif %}{% if primera %}<span>Cliente desde {{ primera|el_fecha }}</span>{% endif %}{% if c.origen %}<span>Nos conoció por {{ c.origen }}</span>{% endif %}</div>
+ </div>
+ <div class="perfil-acc"><button class="btn" onclick="location.href='/ordenes?estado=todas&nueva={{ c.id }}'">+ Nueva orden</button></div>
 </div>
-{% if nums.n %}<div class="tarjeta" style="margin-bottom:16px"><div class="num-graf">
+<div class="tarjeta stats-bar">
+ {% if rol=='admin' %}<div><span>Gastado</span><b>{{ nums.total|usd }}</b></div>{% endif %}
+ <div><span>Pedidos</span><b>{{ nums.n }}</b></div>
+ {% if rol=='admin' %}<div><span>Ticket promedio</span><b>{{ nums.ticket|usd }}</b></div>{% endif %}
+ <div><span>Último pedido</span><b>{% if nums.dias_sin is not none %}{{ 'hoy' if nums.dias_sin==0 else 'hace ' ~ nums.dias_sin ~ ' d' }}{% else %}—{% endif %}</b></div>
+ <div><span>Compra cada</span><b>{% if nums.cada %}{{ nums.cada }} d{% else %}—{% endif %}</b></div>
+ {% if porche %}<div><span>Próximo repuesto</span><b>{% if proximo %}{{ proximo|dia }}{% else %}—{% endif %}</b></div>{% endif %}
+ {% if rol=='admin' and credito %}<div class="acento"><span>Saldo a favor</span><b>{{ credito|usd }}</b></div>{% endif %}
+ {% if saldo_pack %}<div class="acento"><span>Pack por entregar</span><b><a href="/packs?q={{ c.nombre|urlencode }}">{{ saldo_pack }}</a></b></div>{% endif %}
+ {% if n_prepagados %}<div class="acento"><span>Prepagados</span><b><a href="/prepagados">{{ n_prepagados }}</a></b></div>{% endif %}
+</div>
+<div class="perfil-grid">
+<div class="perfil-main">
+{% set uo = ordenes|rejectattr('estado','equalto','cancelada')|first %}{% if uo %}<div class="tarjeta ult-ped" onclick="location.href='/ordenes?estado=todas&abrir={{ uo.id }}'">
+ <div class="ult-cab"><h3>Último pedido</h3><span class="mini">{{ uo.numero }} · {{ uo.creado_en|fecha }}</span></div>
+ <div class="ult-cuerpo"><span>{{ uo.productos or '—' }}</span>{% if rol=='admin' %}<b>{{ uo.total|usd }}</b>{% endif %}</div>
+ <div class="ult-est">{% if rol=='admin' %}<span class="pago {{ uo.estado_pago }}">{{ P_LABEL.get(uo.estado_pago, uo.estado_pago) }}</span>{% endif %}<span class="est {{ uo.estado }}">{{ E_LABEL.get(uo.estado, uo.estado) }}</span></div>
+</div>{% endif %}
+<div class="tarjeta"><div class="hogar-g"><div>
+<h4 class="sub-t">Perros</h4>
+
+{% for m in perros %}<div class="ver-ln perro-ver"><div><b>{{ m.nombre }}</b><div class="mini">{{ m.raza if m.raza and m.raza!="Pendiente" else "raza sin dato" }}{% if m.edad is not none %} · {{ m.edad }} año{{ "s" if m.edad!=1 }}{% endif %}{% if m.fecha_nacimiento %} · 🎂 {{ m.fecha_nacimiento[8:10] }}/{{ m.fecha_nacimiento[5:7] }}{% elif m.md %} · 🎂 {{ m.md[3:5] }}/{{ m.md[:2] }}{% endif %}{% if m.cumple and m.faltan==0 %} · <b style="color:var(--naranja)">¡hoy cumple!</b>{% endif %}</div>{% if m.notas %}<div class="mini">{{ m.notas }}</div>{% endif %}</div><button type="button" class="link-ed" onclick="abrirEd(this)">Editar</button></div><div class="ed-caja" hidden><form method="post" action="/clientes/{{ c.id }}/perro" class="perro-f"><input type="hidden" name="id" value="{{ m.id }}">
+<div class="perro-g3"><div><label>Nombre</label><input name="nombre" value="{{ m.nombre }}" required></div><div><label>Raza{% if m.raza=='Pendiente' %} <span class="sin-nombre" style="font-size:10.5px">preguntar</span>{% endif %}</label><input name="raza" value="{{ m.raza or '' }}" list="razas"></div><div><label>Cumpleaños{% if m.edad is not none %} <span class="mini">· {{ m.edad }} año{{ 's' if m.edad!=1 }}</span>{% endif %}{% if m.revisar %} <span class="sin-nombre" style="font-size:10.5px">por revisar</span>{% endif %}</label><input name="cumple" value="{% if m.fecha_nacimiento %}{{ m.fecha_nacimiento[8:10] }}/{{ m.fecha_nacimiento[5:7] }}/{{ m.fecha_nacimiento[:4] }}{% elif m.md %}{{ m.md[3:5] }}/{{ m.md[:2] }}{% endif %}" placeholder="21/09/2024 o 21/09"></div></div>
+{% if m.cumple and (m.faltan<=7 or m.revisar) %}<div class="mini" style="margin-top:6px">{% if m.faltan==0 %}<b style="color:var(--naranja)">🎂 ¡hoy es su cumpleaños!</b>{% elif m.faltan<=7 %}<b style="color:var(--naranja)">🎂 cumple en {{ m.faltan }} día{{ 's' if m.faltan!=1 }}</b>{% endif %}{% if m.revisar %}{% if m.faltan<=7 %} · {% endif %}<span style="color:#b45a1c">la fecha vino rara en Airtable, confirmar con el cliente</span>{% endif %}</div>{% endif %}
+<label>Notas del perro</label><input name="notas" value="{{ m.notas or '' }}" placeholder="ej. come muy rápido, tiene artrosis, le da miedo la rampa">
+<p style="margin:8px 0 0;display:flex;gap:6px"><button type="button" class="btn chico sec" onclick="editar(this)">Editar</button><button class="btn chico" hidden>Guardar</button><button class="btn chico pel" name="borrar" value="1" onclick="return confirm('¿Borrar a {{ m.nombre }}?')">Borrar</button></p></form></div>{% endfor %}
+<details {{ 'open' if not perros }}><summary class="mini" style="cursor:pointer;margin-top:8px">+ Agregar perro</summary><form method="post" action="/clientes/{{ c.id }}/perro">
+<div class="perro-g3"><div><label>Nombre</label><input name="nombre" required placeholder="Toby"></div><div><label>Raza</label><input name="raza" list="razas" autocomplete="off"></div><div><label>Cumpleaños <span class="mini">(con año si se sabe)</span></label><input name="cumple" placeholder="21/09/2024 o 21/09"></div></div>
+<label>Notas del perro</label><input name="notas"><p style="margin:8px 0 0"><button class="btn chico sec">Agregar</button></p></form></details>
+</div><div><h4 class="sub-t">Qué ha comprado</h4>
+
+{% set ns = namespace(n=0) %}<div class="compras-l">{% for p in catalogo %}{% set r = comprado.get(p.id) %}{% set tam = 'Grande' if (p.sku or '').endswith('-G') else 'Mediano' %}{% set de_ficha = not r and (((p.sku or '').startswith('PRO-') and c.porche_version=='PRO') or ((p.sku or '').startswith('BAS-') and c.porche_version=='Básico')) and tam in (c.porche_tamano or '') %}{% if r or de_ficha %}{% set ns.n = ns.n + 1 %}<div class="compra-ln"><span class="compra-n">{{ (r.n|int ~ '×') if r else '✓' }}</span><b>{{ p.nombre }}</b><span class="mini">{% if r %}última vez {{ r.ultima|fecha }}{% else %}antes de los pedidos registrados{% endif %}</span></div>{% endif %}{% endfor %}
+{% if not ns.n %}<p class="mini">Todavía no ha comprado nada.</p>{% endif %}</div>
+
+{% if oportunidades %}<h4 class="sub-t" style="margin-top:16px">Qué ofrecerle</h4><div class="op-chips">{% for t, por in oportunidades %}<span class="op-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
+</div></div></div>
+<div class="tarjeta perfil-tabs"><div class="tabs-bar">{% if true %}<button type="button" class="tab-b" data-tab="ordenes" onclick="verTab('ordenes')">Órdenes{% if 'ordenes'=='incid' %} <span class="tab-n">{{ incid|length }}</span>{% endif %}</button>{% endif %}{% if (porche or packs) %}<button type="button" class="tab-b" data-tab="porche" onclick="verTab('porche')">El Porche{% if 'porche'=='incid' %} <span class="tab-n">{{ incid|length }}</span>{% endif %}</button>{% endif %}{% if segs %}<button type="button" class="tab-b" data-tab="segs" onclick="verTab('segs')">Seguimientos{% if 'segs'=='incid' %} <span class="tab-n">{{ incid|length }}</span>{% endif %}</button>{% endif %}{% if nums.n %}<button type="button" class="tab-b" data-tab="compra" onclick="verTab('compra')">Cómo compra{% if 'compra'=='incid' %} <span class="tab-n">{{ incid|length }}</span>{% endif %}</button>{% endif %}{% if incid %}<button type="button" class="tab-b" data-tab="incid" onclick="verTab('incid')">Incidencias{% if 'incid'=='incid' %} <span class="tab-n">{{ incid|length }}</span>{% endif %}</button>{% endif %}{% if rol=='admin' %}<button type="button" class="tab-b" data-tab="saldo" onclick="verTab('saldo')">Saldo a favor{% if 'saldo'=='incid' %} <span class="tab-n">{{ incid|length }}</span>{% endif %}</button>{% endif %}</div>
+{% if true %}<div class="tab-p" data-p="ordenes" hidden>
+
+{% if ordenes %}<table data-cols="Fecha:12|Orden:10|Productos:40|Total:12|Pago:13|Estado:13" class="lineas"><tr><th>Fecha</th><th>Orden</th><th>Productos</th>{% if rol=='admin' %}<th class="num">Total</th><th>Pago</th>{% endif %}<th>Estado</th></tr>
+{% for o in ordenes %}<tr class="fila" onclick="location.href='/ordenes?estado=todas&abrir={{ o.id }}'"><td class="mono">{{ o.creado_en|fecha }}</td><td class="mini">{{ o.numero }}</td><td class="mini">{{ o.productos or '—' }}</td>{% if rol=='admin' %}<td class="num" style="padding-right:14px">{{ o.total|usd }}</td><td class="mini" style="padding-right:10px">{{ P_LABEL.get(o.estado_pago, o.estado_pago) }}</td>{% endif %}<td class="mini">{{ E_LABEL.get(o.estado, o.estado) }}</td></tr>{% endfor %}</table>
+{% else %}<p class="mini">Todavía no tiene órdenes.</p>{% endif %}
+</div>{% endif %}
+{% if (porche or packs) %}<div class="tab-p" data-p="porche" hidden>
+
+<div class="mini" style="margin-bottom:8px">Miembro desde {{ porche.ultima|fecha if porche else '—' }}{% if ult_rep %} · último repuesto {{ ult_rep|fecha }}{% endif %}{% if ritmo %} · compra repuesto cada <b>{{ ritmo }} días</b> ({{ confianza }} intervalos medidos){% endif %}</div>
+{% for k in packs %}{% set saldo = k.unidades - k.entregadas_inicio - k.entregadas %}<div class="op" style="flex-direction:row;align-items:center;justify-content:space-between;gap:10px"><div><b>Pack de {{ k.unidades }} {{ k.tamano or '' }}</b><span style="display:block">{{ 'quedan ' ~ saldo ~ ' por entregar' if saldo>0 else 'completo' }} · comprado {{ k.creado_en|fecha }}{% if k.fecha_programada %} · <b style="color:var(--verde-osc)">entrega programada {{ k.fecha_programada|dia }}</b>{% endif %}</span></div>
+{% if saldo>0 %}<details class="cobro"><summary class="btn chico {{ 'sec' if k.fecha_programada }}">{{ 'Reprogramar' if k.fecha_programada else 'Programar entrega' }}</summary><form method="post" action="/packs/{{ k.id }}/programar" class="cobro-f" style="min-width:280px"><input type="hidden" name="volver" value="/clientes/{{ c.id }}"><label style="margin-top:0">¿Cuántos se lleva?</label><select name="retiro">{% for n in range(1, saldo + 1) %}<option value="{{ n }}" {{ 'selected' if n == (k.retiro_programado or 1) }}>{{ n }}{% if n == saldo %} · los que le quedan{% endif %}</option>{% endfor %}</select><label>Fecha solicitada</label><input type="date" name="fecha" value="{{ k.fecha_programada or hoy_iso }}" required><label>Tipo de entrega</label><select name="tipo_entrega" onchange="const d=['delivery','delivery_fuera'].includes(this.value);this.form.querySelector('.pr-desp').hidden=!d;this.form.querySelector('.pr-deliv').hidden=!d"><option value="">—</option>{% for kk,v in ENTREGA.items() if kk in ['pickup','delivery','delivery_fuera','nacional'] %}<option value="{{ kk }}" {{ 'selected' if k.tipo_programado==kk }}>{{ v }}</option>{% endfor %}</select><div class="pr-desp" {{ 'hidden' if k.tipo_programado not in ['delivery','delivery_fuera'] }}><label>Despachador</label><select name="despachador"><option value="">—</option>{% for d in DESPACHADORES %}<option {{ 'selected' if k.despachador_programado==d }}>{{ d }}</option>{% endfor %}</select></div><div class="pr-deliv" {{ 'hidden' if k.tipo_programado not in ['delivery','delivery_fuera'] }}>{% if k.deliveries_prepagados %}<div class="no-nota" style="margin-top:6px">{% if k.deliveries_prepagados >= saldo %}Este cliente ya pagó todos sus deliveries. Esta entrega no se le cobra.{% else %}Este cliente ya pagó el delivery de {{ k.deliveries_prepagados }} de sus próximas entregas. Esta no se le cobra.{% endif %}</div>
+<label class="chk" style="margin-top:8px"><input type="checkbox" {{ 'checked' if k.delivery_diferencia }} onchange="this.form.querySelector('.pr-dif').hidden=!this.checked;if(!this.checked)this.form.querySelector('[name=diferencia]').value=''"> <span>¿Necesitas cobrarle una diferencia?</span></label>
+<div class="pr-dif" {{ 'hidden' if not k.delivery_diferencia }}><div class="mini">Por ejemplo, si esta vez lo quiere en un sitio más lejos.</div><div class="g2"><div><label>Diferencia USD</label><input type="number" step="0.01" min="0" name="diferencia" value="{{ '%g'|format(k.delivery_diferencia) if k.delivery_diferencia else '' }}" placeholder="3"></div><div><label>¿Pagada?</label><select name="diferencia_pagada"><option value="0" {{ 'selected' if not k.diferencia_pagada }}>No · se cobra al entregar</option><option value="1" {{ 'selected' if k.diferencia_pagada }}>Sí</option></select></div></div><label>Pagada con</label><select name="pago_forma"><option value="" selected>Elegir…</option>{% for x in FORMAS_COBRO %}<option value="{{ x }}">{{ x|caja }}</option>{% endfor %}</select></div>
+<input type="hidden" name="delivery" value="{{ '%g'|format(k.tarifa_prepagada or 5) }}"><input type="hidden" name="delivery_pagado" value="0">{% else %}<div class="g2"><div><label>Delivery USD</label><input type="number" step="0.01" name="delivery" value="{{ k.delivery_programado if k.delivery_programado else 5 }}"></div><div><label>¿Pagado?</label><select name="delivery_pagado"><option value="0" {{ 'selected' if not k.delivery_pagado }}>No</option><option value="1" {{ 'selected' if k.delivery_pagado }}>Sí</option></select></div></div><label>Pagado con</label><select name="pago_forma"><option value="" selected>Elegir…</option>{% for x in FORMAS_COBRO %}<option value="{{ x }}">{{ x|caja }}</option>{% endfor %}</select>{% endif %}</div><label>Nota</label><input name="notas" value="{{ k.nota_programada or '' }}"><p style="margin:8px 0 0"><button class="btn chico">Guardar</button></p></form></details>{% endif %}</div>{% endfor %}
+{% if entregas %}<h3 style="margin-top:14px">Historial de entregas</h3>
+<table data-cols="Fecha:13|Entrega:14|Cómo:14|Quién lo llevó:21|Delivery:13|Registro:25" class="lineas"><tr><th>Fecha</th><th>Entrega</th><th>Cómo</th><th>Quién lo llevó</th>{% if 'ver_dinero' in puede %}<th class="num">Delivery</th>{% endif %}<th>Registro</th></tr>
+{% for e in entregas %}<tr><td class="mono">{{ e.fecha|fecha }}</td><td>{{ e.n_retiro }} de {{ e.unidades }} <span class="mini">· {{ e.tamano or '' }}</span></td><td class="mini">{{ ENTREGA.get(e.tipo_entrega, e.tipo_entrega or '—') }}</td><td class="mini">{{ e.despachador or '—' }}</td>{% if 'ver_dinero' in puede %}<td class="num" style="padding-right:14px">{% if e.delivery_cobrado %}{{ e.delivery_cobrado|usd }}{% else %}—{% endif %}</td>{% endif %}<td class="mini">{% if e.notas %}{{ e.notas }}<br>{% endif %}{% if e.usuario %}registró {{ e.usuario }}{% endif %}</td></tr>{% endfor %}</table>{% endif %}
+</div>{% endif %}
+{% if segs %}<div class="tab-p" data-p="segs" hidden>
+<table data-cols="Fecha:14|Resultado:22|Nota:46|Quién:18" class="lineas"><tr><th>Fecha</th><th>Resultado</th><th>Nota</th><th>Quién</th></tr>{% for s in segs %}<tr><td class="mono">{{ s.hecho_en|fecha }}</td><td>{{ RESULTADOS.get(s.resultado, s.resultado) if RESULTADOS is defined else s.resultado }}</td><td class="mini">{{ s.nota or '' }}</td><td class="mini">{{ s.usuario or '' }}</td></tr>{% endfor %}</table>
+</div>{% endif %}
+{% if nums.n %}<div class="tab-p" data-p="compra" hidden>
+<div class="num-graf">
  <div><h3>Últimos 12 meses{% if rol!='admin' %} (pedidos){% endif %}</h3><svg viewBox="0 0 240 70" class="mini-barras">{% for m,v in nums.meses %}{% set h = (v/nums.max_mes*48) if nums.max_mes else 0 %}<rect x="{{ loop.index0*20+2 }}" y="{{ 52-h }}" width="16" height="{{ h }}" rx="3" fill="{{ 'var(--verde)' if v else 'var(--linea)' }}"{% if not v %} height="3" y="49"{% endif %}/><text x="{{ loop.index0*20+10 }}" y="65" text-anchor="middle">{{ m }}</text>{% endfor %}</svg></div>
  <div><h3>Por qué canal compra</h3>{% set tot = canales|map(attribute='n')|sum %}{% for r in canales %}<div class="barra-h"><span>{{ CANAL.get(r.canal, r.canal or '—') }}</span><i><b style="width:{{ (r.n/tot*100)|round }}%"></b></i><em>{{ r.n }}</em></div>{% endfor %}</div>
  {% if rol=='admin' %}<div><h3>Cómo paga</h3>{% set totp = formas|map(attribute='n')|sum %}{% for r in formas %}<div class="barra-h"><span>{{ r.forma }}</span><i><b style="width:{{ (r.n/totp*100)|round }}%"></b></i><em>{{ r.n }}</em></div>{% else %}<p class="mini">Sin pagos registrados.</p>{% endfor %}</div>{% endif %}
  <div><h3>Cómo recibe</h3>{% set tote = entregas_tipo|map(attribute='n')|sum %}{% for r in entregas_tipo %}<div class="barra-h"><span>{{ ENTREGA.get(r.tipo_entrega, r.tipo_entrega) }}</span><i><b style="width:{{ (r.n/tote*100)|round }}%"></b></i><em>{{ r.n }}</em></div>{% endfor %}
 </div>
-</div> <div class="mini" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">{% if nums.favorito %}Lo que más compra: <b>{{ nums.favorito.nombre }}</b> ({{ nums.favorito.n|int }} veces){% endif %}{% if nums.canceladas %} · {{ nums.canceladas }} pedido{{ 's' if nums.canceladas>1 }} cancelado{{ 's' if nums.canceladas>1 }}{% endif %}{% if nums.problemas %} · <a href="#incidencias" onclick="event.preventDefault();verIncid()" style="color:#b3321b">{{ nums.problemas }} incidencia{{ 's' if nums.problemas>1 }}</a>{% endif %}{% if rol=='admin' and nums.rechazados %} · {{ nums.rechazados }} pago{{ 's' if nums.rechazados>1 }} rechazado{{ 's' if nums.rechazados>1 }}{% endif %}</div></div>{% endif %}
-{% if incid %}<script>function verIncid(){const t=document.getElementById('incidencias');t.scrollIntoView({behavior:'smooth',block:'center'});t.style.transition='box-shadow .3s';t.style.boxShadow='0 0 0 3px #e6b8ae';setTimeout(()=>t.style.boxShadow='',1800);}</script>
-<div class="tarjeta" id="incidencias" style="margin-bottom:16px;scroll-margin-top:90px"><h3>Incidencias en sus entregas</h3>
+</div> <div class="mini" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">{% if nums.favorito %}Lo que más compra: <b>{{ nums.favorito.nombre }}</b> ({{ nums.favorito.n|int }} veces){% endif %}{% if nums.canceladas %} · {{ nums.canceladas }} pedido{{ 's' if nums.canceladas>1 }} cancelado{{ 's' if nums.canceladas>1 }}{% endif %}{% if nums.problemas %} · <a href="#incidencias" onclick="event.preventDefault();verIncid()" style="color:#b3321b">{{ nums.problemas }} incidencia{{ 's' if nums.problemas>1 }}</a>{% endif %}{% if rol=='admin' and nums.rechazados %} · {{ nums.rechazados }} pago{{ 's' if nums.rechazados>1 }} rechazado{{ 's' if nums.rechazados>1 }}{% endif %}</div>
+</div>{% endif %}
+{% if incid %}<div class="tab-p" data-p="incid" hidden>
+
 <table data-cols="Fecha:12|Pedido:10|Qué pasó:46|Avisó:16|Estado:16" class="lineas"><tr><th>Fecha</th><th>Pedido</th><th>Qué pasó</th><th>Avisó</th><th>Estado</th></tr>
 {% for i in incid %}<tr><td class="mono" style="width:100px">{{ i.fecha|dia }}</td><td class="mono"><a href="/ordenes?estado=todas&abrir={{ i.orden_id }}">{{ i.numero }}</a></td>
 <td><b>{{ i.tipo or '' }}</b>{% if i.descripcion %}<div class="mini">“{{ i.descripcion }}”</div>{% endif %}{% if i.resolucion %}<div class="mini">Se resolvió: {{ i.resolucion }}</div>{% endif %}</td>
-<td class="mini">{{ i.responsable or '—' }}</td><td>{% if i.estado=='abierta' %}<span class="est no_entregado">Abierta</span>{% else %}<span class="est entregada">Resuelta</span>{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
-<div class="ficha">
-<div class="ficha-col">
+<td class="mini">{{ i.responsable or '—' }}</td><td>{% if i.estado=='abierta' %}<span class="est no_entregado">Abierta</span>{% else %}<span class="est entregada">Resuelta</span>{% endif %}</td></tr>{% endfor %}</table>
+</div>{% endif %}
+{% if rol=='admin' %}<div class="tab-p" data-p="saldo" hidden>
 
-<div class="tarjeta"><h3>Datos</h3>
-<form method="post" action="/clientes/{{ c.id }}/editar">
-<div class="g2"><div><label>Nombre</label><input name="nombre_pila" value="{{ c.nombre_pila }}" required></div><div><label>Apellido</label><input name="apellido" value="{{ c.apellido or '' }}"></div></div>
-<div class="g2"><div><label>Teléfono{% if c.telefono and c.telefono!='Pendiente' %} · <a class="wa-link" href="{{ c.telefono|wa }}" target="_blank">WhatsApp ↗</a>{% endif %}</label><input name="telefono" value="{{ c.telefono or '' }}"></div><div><label>Cédula / RIF <span class="mini">(envíos nacionales)</span></label><input name="cedula" value="{{ c.cedula or '' }}" placeholder="V-12345678"></div></div>
-<div class="g2"><div><label>Correo</label><input name="correo" value="{{ c.correo or '' }}"></div><div><label>Ciudad{% if c.estado %} <span class="mini">· estado {{ c.estado }}</span>{% endif %}</label><input name="ciudad" value="{{ c.ciudad or '' }}" list="ciudades" autocomplete="off">{% if c.ciudad=='Pendiente' and c.estado %}<div class="mini" style="color:#b3402b">Dijo «{{ c.estado }}» pero no la ciudad: pregúntale cuál.</div>{% endif %}<datalist id="ciudades">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist></div></div>
-<div class="g2"><div><label>El Porche Versión <span class="corona" id="corona-pv" {{ '' if c.porche_version=='PRO' else 'hidden' }}></span></label><select name="porche_version" onchange="document.getElementById('corona-pv').hidden=this.value!=='PRO'"><option value="">—</option>{% for v in ['PRO','Básico'] %}<option {{ 'selected' if c.porche_version==v }}>{{ v }}</option>{% endfor %}</select></div><div><label>Tamaño</label><div class="chk-fila">{% for v in ['Mediano','Grande'] %}<label class="chk"><input type="checkbox" name="porche_tamano" value="{{ v }}" {{ 'checked' if v in (c.porche_tamano or '') }}> <span>{{ v }}</span></label>{% endfor %}</div></div></div>
-<p style="margin:10px 0 0"><button type="button" class="btn chico sec" onclick="editar(this)">Editar datos</button><button class="btn chico" hidden>Guardar datos</button></p></form></div>
-
-<div class="tarjeta"><h3>Direcciones</h3>
-{% for d in dirs %}<form method="post" action="/clientes/{{ c.id }}/direccion" class="dir-f"><input type="hidden" name="id" value="{{ d.id }}">
-<div class="g2"><div><label>Nombre de la dirección</label><input name="etiqueta" value="{{ d.etiqueta or '' }}" placeholder="Casa, oficina, casa de la mamá…"></div><div><label>Ciudad</label><input name="ciudad" value="{{ d.ciudad or '' }}" list="ciudades" autocomplete="off"></div></div>
-<label>Dirección escrita</label><input name="direccion" value="{{ d.direccion }}" required><label>GPS</label><input name="maps" value="{{ d.maps or '' }}" placeholder="https://maps.app.goo.gl/…">
-<p style="margin:8px 0 0;display:flex;gap:6px"><button type="button" class="btn chico sec" onclick="editar(this)">Editar</button><button class="btn chico" hidden>Guardar</button>{% if d.maps %}<a class="btn chico sec" href="{{ d.maps }}" target="_blank">Abrir mapa</a>{% endif %}<button class="btn chico pel" name="borrar" value="1" onclick="return confirm('¿Borrar esta dirección?')">Borrar</button></p></form>{% endfor %}
-<details {{ 'open' if not dirs }}><summary class="mini" style="cursor:pointer;margin-top:8px">+ Agregar dirección</summary><form method="post" action="/clientes/{{ c.id }}/direccion">
-<div class="g2"><div><label>Nombre de la dirección</label><input name="etiqueta" placeholder="Casa, oficina, casa de la mamá…"></div><div><label>Ciudad</label><input name="ciudad" value="{{ c.ciudad or 'Caracas' }}" list="ciudades" autocomplete="off"></div></div>
-<label>Dirección escrita</label><input name="direccion" required placeholder="Res., edificio, apto, referencia"><label>GPS</label><input name="maps" placeholder="https://maps.app.goo.gl/…">
-<p style="margin:8px 0 0"><button class="btn chico sec">Agregar</button></p></form></details></div>
-
-<div class="tarjeta"><h3>Perros</h3>
-{% for m in perros %}<form method="post" action="/clientes/{{ c.id }}/perro" class="perro-f"><input type="hidden" name="id" value="{{ m.id }}">
-<div class="perro-g3"><div><label>Nombre</label><input name="nombre" value="{{ m.nombre }}" required></div><div><label>Raza{% if m.raza=='Pendiente' %} <span class="sin-nombre" style="font-size:10.5px">preguntar</span>{% endif %}</label><input name="raza" value="{{ m.raza or '' }}" list="razas"></div><div><label>Cumpleaños{% if m.edad is not none %} <span class="mini">· {{ m.edad }} año{{ 's' if m.edad!=1 }}</span>{% endif %}{% if m.revisar %} <span class="sin-nombre" style="font-size:10.5px">por revisar</span>{% endif %}</label><input name="cumple" value="{% if m.fecha_nacimiento %}{{ m.fecha_nacimiento[8:10] }}/{{ m.fecha_nacimiento[5:7] }}/{{ m.fecha_nacimiento[:4] }}{% elif m.md %}{{ m.md[3:5] }}/{{ m.md[:2] }}{% endif %}" placeholder="21/09/2024 o 21/09"></div></div>
-{% if m.cumple and (m.faltan<=7 or m.revisar) %}<div class="mini" style="margin-top:6px">{% if m.faltan==0 %}<b style="color:var(--naranja)">🎂 ¡hoy es su cumpleaños!</b>{% elif m.faltan<=7 %}<b style="color:var(--naranja)">🎂 cumple en {{ m.faltan }} día{{ 's' if m.faltan!=1 }}</b>{% endif %}{% if m.revisar %}{% if m.faltan<=7 %} · {% endif %}<span style="color:#b45a1c">la fecha vino rara en Airtable, confirmar con el cliente</span>{% endif %}</div>{% endif %}
-<label>Notas del perro</label><input name="notas" value="{{ m.notas or '' }}" placeholder="ej. come muy rápido, tiene artrosis, le da miedo la rampa">
-<p style="margin:8px 0 0;display:flex;gap:6px"><button type="button" class="btn chico sec" onclick="editar(this)">Editar</button><button class="btn chico" hidden>Guardar</button><button class="btn chico pel" name="borrar" value="1" onclick="return confirm('¿Borrar a {{ m.nombre }}?')">Borrar</button></p></form>{% endfor %}
-<details {{ 'open' if not perros }}><summary class="mini" style="cursor:pointer;margin-top:8px">+ Agregar perro</summary><form method="post" action="/clientes/{{ c.id }}/perro">
-<div class="perro-g3"><div><label>Nombre</label><input name="nombre" required placeholder="Toby"></div><div><label>Raza</label><input name="raza" list="razas" autocomplete="off"></div><div><label>Cumpleaños <span class="mini">(con año si se sabe)</span></label><input name="cumple" placeholder="21/09/2024 o 21/09"></div></div>
-<label>Notas del perro</label><input name="notas"><p style="margin:8px 0 0"><button class="btn chico sec">Agregar</button></p></form></details></div>
-
-<div class="tarjeta"><h3>Notas</h3>
-{% for n in notas %}<div class="{{ 'nota-log' if n.mostrar_logistica else 'nota-cli' }}" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>{{ '🚚' if n.mostrar_logistica else '🔒' }} {{ n.texto }}<div class="mini">{{ n.creado_en|fecha }}{% if n.autor %} · {{ n.autor }}{% endif %}</div></div><form method="post" action="/clientes/{{ c.id }}/nota"><button class="btn chico pel" name="borrar" value="{{ n.id }}" onclick="return confirm('¿Borrar nota?')">×</button></form></div>{% else %}<p class="mini">Sin notas.</p>{% endfor %}
-<form method="post" action="/clientes/{{ c.id }}/nota" style="margin-top:10px"><textarea name="texto" rows="2" placeholder="ej. Recibe el conserje; avisar al llegar"></textarea>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px">{% if rol=='admin' %}<label class="chk"><input type="checkbox" name="privada" value="1"> Solo la veo yo</label>{% else %}<span></span>{% endif %}<button class="btn chico sec">Agregar nota</button></div></form></div>
-
-</div>
-<div class="ficha-col">
-
-<div class="tarjeta"><h3>Qué ha comprado</h3>
-<div class="prod-grid">{% for p in catalogo %}{% set r = comprado.get(p.id) %}<div class="prod-c {{ 'si' if r else 'no' }}"><b>{{ p.nombre }}</b>{% if r %}<span>{{ r.n|int }} × · {{ r.ultima|fecha }}</span>{% else %}<span>nunca</span>{% endif %}</div>{% endfor %}</div>
-{% if oportunidades %}<h4 class="op-t">Oportunidades</h4>{% for t, por in oportunidades %}<div class="op"><b>{{ t }}</b><span>{{ por }}</span></div>{% endfor %}{% endif %}</div>
-
-{% if refirio or lo_trajo or c.origen %}<div class="tarjeta" style="margin-bottom:16px"><h3>Cómo llegó y a quién trajo</h3>
-<div class="dato"><b>Nos conoció por</b><span>{{ c.origen or '—' }}{% if lo_trajo %} · lo trajo <a href="/clientes/{{ lo_trajo.id }}">{{ lo_trajo.nombre }}</a>{% endif %}</span></div>
-{% if refirio %}<div class="dato"><b>Ha traído</b><span>{{ refirio|length }} cliente{{ 's' if refirio|length!=1 }}</span></div>
-<table data-cols="Cliente:50|Desde:25|Ha comprado:25" class="lineas" style="margin-top:8px"><tr><th>Cliente</th><th>Desde</th>{% if 'ver_dinero' in puede %}<th class="num">Ha comprado</th>{% endif %}</tr>
-{% for r in refirio %}<tr class="fila" onclick="location.href='/clientes/{{ r.id }}'"><td>{{ r.nombre }}</td><td class="mono mini">{{ r.desde|dia }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ r.gastado|usd }}</td>{% endif %}</tr>{% endfor %}</table>{% endif %}</div>{% endif %}
-
-{% if porche or packs %}<div class="tarjeta"><h3>El Porche</h3>
-<div class="mini" style="margin-bottom:8px">Miembro desde {{ porche.ultima|fecha if porche else '—' }}{% if ult_rep %} · último repuesto {{ ult_rep|fecha }}{% endif %}{% if ritmo %} · compra repuesto cada <b>{{ ritmo }} días</b> ({{ confianza }} intervalos medidos){% endif %}</div>
-{% for k in packs %}{% set saldo = k.unidades - k.entregadas_inicio - k.entregadas %}<div class="op" style="flex-direction:row;align-items:center;justify-content:space-between;gap:10px"><div><b>Pack de {{ k.unidades }} {{ k.tamano or '' }}</b><span style="display:block">{{ 'quedan ' ~ saldo ~ ' por entregar' if saldo>0 else 'completo' }} · comprado {{ k.creado_en|fecha }}{% if k.fecha_programada %} · <b style="color:var(--verde-osc)">entrega programada {{ k.fecha_programada|dia }}</b>{% endif %}</span></div>
-{% if saldo>0 %}<details class="cobro"><summary class="btn chico {{ 'sec' if k.fecha_programada }}">{{ 'Reprogramar' if k.fecha_programada else 'Programar entrega' }}</summary><form method="post" action="/packs/{{ k.id }}/programar" class="cobro-f" style="min-width:280px"><input type="hidden" name="volver" value="/clientes/{{ c.id }}"><label style="margin-top:0">¿Cuántos se lleva?</label><select name="retiro">{% for n in range(1, saldo + 1) %}<option value="{{ n }}" {{ 'selected' if n == (k.retiro_programado or 1) }}>{{ n }}{% if n == saldo %} · los que le quedan{% endif %}</option>{% endfor %}</select><label>Fecha solicitada</label><input type="date" name="fecha" value="{{ k.fecha_programada or hoy_iso }}" required><label>Tipo de entrega</label><select name="tipo_entrega" onchange="const d=['delivery','delivery_fuera'].includes(this.value);this.form.querySelector('.pr-desp').hidden=!d;this.form.querySelector('.pr-deliv').hidden=!d"><option value="">—</option>{% for kk,v in ENTREGA.items() if kk in ['pickup','delivery','delivery_fuera','nacional'] %}<option value="{{ kk }}" {{ 'selected' if k.tipo_programado==kk }}>{{ v }}</option>{% endfor %}</select><div class="pr-desp" {{ 'hidden' if k.tipo_programado not in ['delivery','delivery_fuera'] }}><label>Despachador</label><select name="despachador"><option value="">—</option>{% for d in DESPACHADORES %}<option {{ 'selected' if k.despachador_programado==d }}>{{ d }}</option>{% endfor %}</select></div><div class="pr-deliv" {{ 'hidden' if k.tipo_programado not in ['delivery','delivery_fuera'] }}>{% if k.deliveries_prepagados %}<div class="no-nota" style="margin-top:6px">{% if k.deliveries_prepagados >= saldo %}Este cliente ya pagó todos sus deliveries. Esta entrega no se le cobra.{% else %}Este cliente ya pagó el delivery de {{ k.deliveries_prepagados }} de sus próximas entregas. Esta no se le cobra.{% endif %}</div>
-<label class="chk" style="margin-top:8px"><input type="checkbox" {{ 'checked' if k.delivery_diferencia }} onchange="this.form.querySelector('.pr-dif').hidden=!this.checked;if(!this.checked)this.form.querySelector('[name=diferencia]').value=''"> <span>¿Necesitas cobrarle una diferencia?</span></label>
-<div class="pr-dif" {{ 'hidden' if not k.delivery_diferencia }}><div class="mini">Por ejemplo, si esta vez lo quiere en un sitio más lejos.</div><div class="g2"><div><label>Diferencia USD</label><input type="number" step="0.01" min="0" name="diferencia" value="{{ '%g'|format(k.delivery_diferencia) if k.delivery_diferencia else '' }}" placeholder="3"></div><div><label>¿Pagada?</label><select name="diferencia_pagada"><option value="0" {{ 'selected' if not k.diferencia_pagada }}>No · se cobra al entregar</option><option value="1" {{ 'selected' if k.diferencia_pagada }}>Sí</option></select></div></div><label>Pagada con</label><select name="pago_forma"><option value="" selected>Elegir…</option>{% for x in FORMAS_COBRO %}<option>{{ x }}</option>{% endfor %}</select></div>
-<input type="hidden" name="delivery" value="{{ '%g'|format(k.tarifa_prepagada or 5) }}"><input type="hidden" name="delivery_pagado" value="0">{% else %}<div class="g2"><div><label>Delivery USD</label><input type="number" step="0.01" name="delivery" value="{{ k.delivery_programado if k.delivery_programado else 5 }}"></div><div><label>¿Pagado?</label><select name="delivery_pagado"><option value="0" {{ 'selected' if not k.delivery_pagado }}>No</option><option value="1" {{ 'selected' if k.delivery_pagado }}>Sí</option></select></div></div><label>Pagado con</label><select name="pago_forma"><option value="" selected>Elegir…</option>{% for x in FORMAS_COBRO %}<option>{{ x }}</option>{% endfor %}</select>{% endif %}</div><label>Nota</label><input name="notas" value="{{ k.nota_programada or '' }}"><p style="margin:8px 0 0"><button class="btn chico">Guardar</button></p></form></details>{% endif %}</div>{% endfor %}
-{% if entregas %}<h3 style="margin-top:14px">Historial de entregas</h3>
-<table data-cols="Fecha:13|Entrega:14|Cómo:14|Quién lo llevó:21|Delivery:13|Registro:25" class="lineas"><tr><th>Fecha</th><th>Entrega</th><th>Cómo</th><th>Quién lo llevó</th>{% if 'ver_dinero' in puede %}<th class="num">Delivery</th>{% endif %}<th>Registro</th></tr>
-{% for e in entregas %}<tr><td class="mono">{{ e.fecha|fecha }}</td><td>{{ e.n_retiro }} de {{ e.unidades }} <span class="mini">· {{ e.tamano or '' }}</span></td><td class="mini">{{ ENTREGA.get(e.tipo_entrega, e.tipo_entrega or '—') }}</td><td class="mini">{{ e.despachador or '—' }}</td>{% if 'ver_dinero' in puede %}<td class="num" style="padding-right:14px">{% if e.delivery_cobrado %}{{ e.delivery_cobrado|usd }}{% else %}—{% endif %}</td>{% endif %}<td class="mini">{% if e.notas %}{{ e.notas }}<br>{% endif %}{% if e.usuario %}registró {{ e.usuario }}{% endif %}</td></tr>{% endfor %}</table>{% endif %}</div>{% endif %}
-
-<div class="tarjeta"><h3>Órdenes</h3>
-{% if ordenes %}<table data-cols="Fecha:12|Orden:10|Productos:40|Total:12|Pago:13|Estado:13" class="lineas"><tr><th>Fecha</th><th>Orden</th><th>Productos</th>{% if rol=='admin' %}<th class="num">Total</th><th>Pago</th>{% endif %}<th>Estado</th></tr>
-{% for o in ordenes %}<tr class="fila" onclick="location.href='/ordenes?estado=todas&abrir={{ o.id }}'"><td class="mono">{{ o.creado_en|fecha }}</td><td class="mini">{{ o.numero }}</td><td class="mini">{{ o.productos or '—' }}</td>{% if rol=='admin' %}<td class="num" style="padding-right:14px">{{ o.total|usd }}</td><td class="mini" style="padding-right:10px">{{ P_LABEL.get(o.estado_pago, o.estado_pago) }}</td>{% endif %}<td class="mini">{{ E_LABEL.get(o.estado, o.estado) }}</td></tr>{% endfor %}</table>
-{% else %}<p class="mini">Todavía no tiene órdenes.</p>{% endif %}</div>
-
-{% if segs %}<div class="tarjeta"><h3>Seguimientos</h3><table data-cols="Fecha:14|Resultado:22|Nota:46|Quién:18" class="lineas"><tr><th>Fecha</th><th>Resultado</th><th>Nota</th><th>Quién</th></tr>{% for s in segs %}<tr><td class="mono">{{ s.hecho_en|fecha }}</td><td>{{ RESULTADOS.get(s.resultado, s.resultado) if RESULTADOS is defined else s.resultado }}</td><td class="mini">{{ s.nota or '' }}</td><td class="mini">{{ s.usuario or '' }}</td></tr>{% endfor %}</table></div>{% endif %}
-
-{% if fotos %}<div class="tarjeta"><h3>Fotos</h3><div class="fotos-mini">{% for f in fotos %}<a href="/galeria?abrir={{ f.id }}"><img src="/fotos/{{ f.archivo }}" alt=""></a>{% endfor %}</div></div>{% endif %}
-
-</div></div>
-
-<script>
-// los datos ya están guardados: se bloquean para que nadie los cambie sin querer.
-// Hay que darle a Editar para tocarlos, y ahí aparece Guardar.
-function campos(f){ return [...f.querySelectorAll('input,select,textarea')].filter(e=>e.type!=='hidden'); }
-function editar(btn){
-  const f = btn.closest('form');
-  campos(f).forEach(e=>{ e.readOnly=false; e.disabled=false; e.classList.remove('bloqueado'); });
-  btn.hidden = true;
-  const g = f.querySelector('button:not([type=button])'); if(g) g.hidden = false;
-  const p = campos(f)[0]; if(p) p.focus();
-}
-document.querySelectorAll('form').forEach(f=>{
-  if(!f.querySelector('button[onclick^="editar"]')) return;
-  campos(f).forEach(e=>{
-    if(e.tagName==='SELECT'||e.type==='checkbox'||e.type==='date') e.disabled = true;
-    else e.readOnly = true;
-    e.classList.add('bloqueado');
-  });
-});
-</script>
-
-{% if rol=='admin' %}<div class="tarjeta cf-b" style="margin-top:16px"><h3>Saldo a favor</h3>
  <div class="cf-cuerpo">
   <p class="cf-d">{% if credito %}Tiene <b>{{ credito|usd }}</b> a favor.{% else %}No tiene saldo a favor.{% endif %}</p>
   {% if credito_mov %}<table data-cols="Fecha:20|Qué pasó:55|Monto:25" class="lineas"><tr><th>Fecha</th><th>Qué pasó</th><th class="num">Monto</th></tr>
@@ -131,7 +96,7 @@ document.querySelectorAll('form').forEach(f=>{
   {% if credito %}<details class="cobro" style="margin-top:10px"><summary class="btn chico">Devolverle la plata</summary>
   <form method="post" action="/clientes/{{ c.id }}/credito/devolver" class="cobro-f" style="min-width:260px">
    <label style="margin-top:0">¿Cuánto le devuelves?</label><input name="monto" inputmode="decimal" value="{{ '%.2f'|format(credito) }}" required>
-   <label>¿De qué caja sale?</label><select name="caja" required><option value="" selected disabled>Elegir…</option>{% for ca in cajas %}<option value="{{ ca.id }}">{{ ca.nombre }}</option>{% endfor %}</select>
+   <label>¿De qué caja sale?</label><select name="caja" required><option value="" selected disabled>Elegir…</option>{% for ca in cajas %}<option value="{{ ca.id }}">{{ ca.nombre|caja }}</option>{% endfor %}</select>
    <label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}">
    <p style="margin:8px 0 0"><button class="btn chico">Listo</button></p></form></details>{% endif %}
   <details style="margin-top:10px"><summary class="no-link" style="font-size:13px">Corregir el saldo a mano</summary>
@@ -141,7 +106,84 @@ document.querySelectorAll('form').forEach(f=>{
    <input name="motivo" placeholder="por qué">
    <span style="display:inline-flex;gap:10px"><button class="btn chico" name="accion" value="sumar">+ Sumar</button><button class="btn chico" name="accion" value="restar" style="background:#b45a1c">− Restar</button></span>
   </form></details>
- </div></div>{% endif %}
+ </div>
+</div>{% endif %}
+</div>
+</div>
+<div class="perfil-side">
+<div class="tarjeta"><div class="ver-cab"><h3>Contacto</h3><button type="button" class="link-ed" onclick="abrirEd(this, true)">Editar</button></div>
+<div class="datos-ver">
+ <div><span>Teléfono</span><div>{% if c.telefono and c.telefono!='Pendiente' %}<a class="wa-link" href="{{ c.telefono|wa }}" target="_blank" rel="noreferrer">{{ c.telefono }} ↗</a>{% else %}—{% endif %}</div></div>
+ <div><span>Correo</span><div>{% if c.correo and c.correo!='Pendiente' %}<a href="mailto:{{ c.correo }}">{{ c.correo }}</a>{% else %}—{% endif %}</div></div>
+ <div><span>Cédula</span><div>{% if c.cedula %}{{ c.cedula }}{% else %}—{% endif %}</div></div>
+ <div><span>Ciudad</span><div>{% if c.ciudad and c.ciudad!='Pendiente' %}{{ c.ciudad }}{% if c.estado %} <i>· {{ c.estado }}</i>{% endif %}{% else %}—{% if c.estado %} <i>· dijo «{{ c.estado }}»</i>{% endif %}{% endif %}</div></div>
+ <div><span>Porche</span><div>{% if c.porche_version %}{{ c.porche_version }}{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% else %}—{% endif %}</div></div>
+</div>
+<div class="ed-caja" hidden>
+<form method="post" action="/clientes/{{ c.id }}/editar">
+<div class="g2"><div><label>Nombre</label><input name="nombre_pila" value="{{ c.nombre_pila }}" required></div><div><label>Apellido</label><input name="apellido" value="{{ c.apellido or '' }}"></div></div>
+<div class="g2"><div><label>Teléfono{% if c.telefono and c.telefono!='Pendiente' %} · <a class="wa-link" href="{{ c.telefono|wa }}" target="_blank">WhatsApp ↗</a>{% endif %}</label><input name="telefono" value="{{ c.telefono or '' }}"></div><div><label>Cédula / RIF</label><input name="cedula" value="{{ c.cedula or '' }}" placeholder="V-12345678"></div></div>
+<div class="g2"><div><label>Correo</label><input name="correo" value="{{ c.correo or '' }}"></div><div><label>Ciudad{% if c.estado %} <span class="mini">· estado {{ c.estado }}</span>{% endif %}</label><input name="ciudad" value="{{ c.ciudad or '' }}" list="ciudades" autocomplete="off">{% if c.ciudad=='Pendiente' and c.estado %}<div class="mini" style="color:#b3402b">Dijo «{{ c.estado }}» pero no la ciudad: pregúntale cuál.</div>{% endif %}<datalist id="ciudades">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist></div></div>
+<div class="g2"><div><label>El Porche Versión <span class="corona" id="corona-pv" {{ '' if c.porche_version=='PRO' else 'hidden' }}></span></label><select name="porche_version" onchange="document.getElementById('corona-pv').hidden=this.value!=='PRO'"><option value="">—</option>{% for v in ['PRO','Básico'] %}<option {{ 'selected' if c.porche_version==v }}>{{ v }}</option>{% endfor %}</select></div><div><label>Tamaño</label><div class="chk-fila">{% for v in ['Mediano','Grande'] %}<label class="chk"><input type="checkbox" name="porche_tamano" value="{{ v }}" {{ 'checked' if v in (c.porche_tamano or '') }}> <span>{{ v }}</span></label>{% endfor %}</div></div></div>
+<p style="margin:10px 0 0"><button type="button" class="btn chico sec" onclick="editar(this)">Editar datos</button><button class="btn chico" hidden>Guardar datos</button></p></form></div></div>
+<div class="tarjeta"><h3>Dirección{{ "es" if dirs|length > 1 }}</h3>
+{% for d in dirs %}<form method="post" action="/clientes/{{ c.id }}/direccion" class="dir-f"><input type="hidden" name="id" value="{{ d.id }}">
+<input type="hidden" name="etiqueta" value="{{ d.etiqueta or '' }}"><input type="hidden" name="ciudad" value="{{ d.ciudad or c.ciudad or '' }}">
+<div class="dir-ver"><b>{{ d.direccion }}</b></div><div class="ed-caja" hidden><label>Dirección escrita</label><input name="direccion" value="{{ d.direccion }}" required></div>
+{% if d.maps or d.direccion %}<iframe class="dir-mapa" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="{{ mapa_embed(d.maps, d.direccion, d.ciudad or c.ciudad) }}" title="Mapa de {{ d.direccion }}"></iframe>
+{% if not d.maps %}<div class="mini">Ubicación aproximada por la dirección escrita: falta el link GPS.</div>{% endif %}{% endif %}
+<div class="dir-gps" hidden><label>GPS</label><input name="maps" value="{{ d.maps or '' }}" placeholder="https://maps.app.goo.gl/…"></div>
+<p style="margin:8px 0 0;display:flex;gap:6px"><button type="button" class="btn chico sec" onclick="editar(this)">Editar</button><button class="btn chico" hidden>Guardar</button>{% if d.maps %}<a class="btn chico sec" href="{{ d.maps }}" target="_blank">Abrir mapa</a>{% endif %}<button class="btn chico pel" name="borrar" value="1" onclick="return confirm('¿Borrar esta dirección?')">Borrar</button></p></form>{% endfor %}
+<details {{ 'open' if not dirs }}><summary class="mini" style="cursor:pointer;margin-top:8px">+ Agregar dirección</summary><form method="post" action="/clientes/{{ c.id }}/direccion">
+<input type="hidden" name="ciudad" value="{{ c.ciudad or '' }}">
+<label>Dirección escrita</label><input name="direccion" required placeholder="Res., edificio, apto, referencia"><label>GPS</label><input name="maps" placeholder="https://maps.app.goo.gl/…">
+<p style="margin:8px 0 0"><button class="btn chico sec">Agregar</button></p></form></details></div>
+<div class="tarjeta"><h3>Notas</h3>
+{% for n in notas %}<div class="{{ 'nota-log' if n.mostrar_logistica else 'nota-cli' }}" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>{{ '🚚' if n.mostrar_logistica else '🔒' }} {{ n.texto }}<div class="mini">{{ n.creado_en|fecha }}{% if n.autor %} · {{ n.autor }}{% endif %}</div></div><form method="post" action="/clientes/{{ c.id }}/nota"><button class="btn chico pel" name="borrar" value="{{ n.id }}" onclick="return confirm('¿Borrar nota?')">×</button></form></div>{% endfor %}
+{% if notas %}<form method="post" action="/clientes/{{ c.id }}/nota" style="margin-top:10px"><textarea name="texto" rows="2" placeholder="ej. Recibe el conserje; avisar al llegar"></textarea>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px">{% if rol=='admin' %}<label class="chk"><input type="checkbox" name="privada" value="1"> Solo la veo yo</label>{% else %}<span></span>{% endif %}<button class="btn chico sec">Agregar nota</button></div></form>{% else %}<details><summary class="mini" style="cursor:pointer">+ Agregar nota</summary><form method="post" action="/clientes/{{ c.id }}/nota" style="margin-top:10px"><textarea name="texto" rows="2" placeholder="ej. Recibe el conserje; avisar al llegar"></textarea>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px">{% if rol=='admin' %}<label class="chk"><input type="checkbox" name="privada" value="1"> Solo la veo yo</label>{% else %}<span></span>{% endif %}<button class="btn chico sec">Agregar nota</button></div></form></details>{% endif %}</div>
+{% if refirio or lo_trajo or c.origen %}<div class="tarjeta" style="margin-bottom:16px"><h3>Cómo llegó y a quién trajo</h3>
+<div class="dato"><b>Nos conoció por</b><span>{{ c.origen or '—' }}{% if lo_trajo %} · lo trajo <a href="/clientes/{{ lo_trajo.id }}">{{ lo_trajo.nombre }}</a>{% endif %}</span></div>
+{% if refirio %}<div class="dato"><b>Ha traído</b><span>{{ refirio|length }} cliente{{ 's' if refirio|length!=1 }}</span></div>
+<table data-cols="Cliente:50|Desde:25|Ha comprado:25" class="lineas" style="margin-top:8px"><tr><th>Cliente</th><th>Desde</th>{% if 'ver_dinero' in puede %}<th class="num">Ha comprado</th>{% endif %}</tr>
+{% for r in refirio %}<tr class="fila" onclick="location.href='/clientes/{{ r.id }}'"><td>{{ r.nombre }}</td><td class="mono mini">{{ r.desde|dia }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ r.gastado|usd }}</td>{% endif %}</tr>{% endfor %}</table>{% endif %}</div>{% endif %}
+{% if fotos %}<div class="tarjeta"><h3>Fotos</h3><div class="fotos-mini">{% for f in fotos %}<a href="/galeria?abrir={{ f.id }}"><img src="/fotos/{{ f.archivo }}" alt=""></a>{% endfor %}</div></div>{% endif %}
+</div>
+</div>
+<script>
+// los datos ya están guardados: se bloquean para que nadie los cambie sin querer.
+// Hay que darle a Editar para tocarlos, y ahí aparece Guardar.
+function abrirEd(btn, cab){
+  const caja = cab ? btn.closest('.tarjeta').querySelector('.ed-caja') : btn.closest('.ver-ln').nextElementSibling;
+  if (cab) btn.closest('.tarjeta').querySelector('.datos-ver').hidden = true; else btn.closest('.ver-ln').hidden = true;
+  btn.hidden = cab ? true : btn.hidden; caja.hidden = false;
+  const e = caja.querySelector('button[onclick^="editar"]'); if (e) e.click();
+}
+function campos(f){ return [...f.querySelectorAll('input,select,textarea')].filter(e=>e.type!=='hidden'); }
+function editar(btn){
+  const f = btn.closest('form');
+  campos(f).forEach(e=>{ e.readOnly=false; e.disabled=false; e.classList.remove('bloqueado'); });
+  btn.hidden = true;
+  f.querySelectorAll('.dir-gps, .ed-caja').forEach(x => x.hidden = false);   // la dirección y el GPS solo se ven al editar; si no, texto y mapa
+  f.querySelectorAll('.dir-ver').forEach(x => x.hidden = true);
+  const g = f.querySelector('button:not([type=button])'); if(g) g.hidden = false;
+  const p = campos(f)[0]; if(p) p.focus();
+}
+document.querySelectorAll('form').forEach(f=>{
+  if(!f.querySelector('button[onclick^="editar"]')) return;
+  campos(f).forEach(e=>{
+    if(e.tagName==='SELECT'||e.type==='checkbox'||e.type==='date') e.disabled = true;
+    else e.readOnly = true;
+    e.classList.add('bloqueado');
+  });
+});
+function verTab(k){document.querySelectorAll('.tab-b').forEach(b=>b.classList.toggle('act',b.dataset.tab===k));
+  document.querySelectorAll('.tab-p').forEach(p=>p.hidden=p.dataset.p!==k);
+  const t=document.querySelector('.perfil-tabs'); if(t&&location.hash!=='#'+k){history.replaceState(null,'','#'+k);} }
+{ const h=location.hash.slice(1); const b=document.querySelector('.tab-b[data-tab="'+h+'"]')||document.querySelector('.tab-b'); if(b) verTab(b.dataset.tab); }
+if(location.hash==='#incid') document.querySelector('.perfil-tabs')?.scrollIntoView();
+</script>
 {% if rol=='admin' %}{% set n_ord = ordenes|length %}<details style="margin-top:22px" {{ 'open' if request.query_params.get('err')=='confirmar' }}><summary class="no-link" style="font-size:13px;color:#c94a2f">Eliminar cliente</summary>
 <div class="tarjeta" style="margin-top:10px;display:block"><p style="margin:0 0 10px">Se borra <b>{{ c.nombre }}</b>{% if n_ord %} con sus <b>{{ n_ord }} orden{{ 'es' if n_ord != 1 }}</b>{% endif %}, sus mascotas, direcciones, notas{% if credito %} y su saldo a favor{% endif %}. <b>No se puede deshacer.</b></p>
 {% if request.query_params.get('err')=='confirmar' %}<p class="ln-alerta" style="margin:0 0 8px">El nombre no coincide. No se borró nada.</p>{% endif %}

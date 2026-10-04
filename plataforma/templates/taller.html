@@ -15,9 +15,9 @@
 
 <div class="tarjeta {{ '' if salidas else 'vacia' }}" style="order:{{ 0 if salidas else 3 }}"><h3>Lo que se lleva cada despachador</h3>
 {% if salidas %}<table class="lineas">{% for g in salidas %}<tr>
- <td style="width:150px"><b>{{ g.quien_lleva }}</b></td>
+ <td style="width:150px"><b>{{ g.quien_lleva }}</b>{% if g.falta and g.quien_lleva != 'Sin despachador' %}<div class="mini">falta quién la lleve</div>{% endif %}</td>
  <td>{% if g.cosas %}<div>{{ g.cosas|platos }}</div>{% endif %}
-  {% if g.agencia %}<div>{{ g.agencia|platos }} <span class="ag-t">va a la agencia · embalar</span></div>{% endif %}</td>
+  {% if g.agencia %}<div>{{ g.agencia|platos }} <span class="ag-t">{{ 'embalar' if g.quien_lleva.startswith('Para ') else 'va a la agencia · embalar' }}</span></div>{% endif %}</td>
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">Hoy no se lleva nada nadie.</div>{% endif %}</div>
 

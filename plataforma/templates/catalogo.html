@@ -33,4 +33,4 @@
   if(document.documentElement.classList.contains('dinero-oculto')){n.textContent='••••';return;}
  n.textContent=(pr&&!isNaN(c))?('deja $'+(pr-c).toFixed(2)+' · '+Math.round((pr-c)/pr*100)+' %'):'';}</script>
 {% endblock %}
-<script>const IVA={{ IVA }};function conIva(i){const b=i.parentNode.querySelector('.con-iva b');if(b)b.textContent=((parseFloat(i.value)||0)*(1+IVA)).toFixed(2)}</script>
+<script>const IVA={{ IVA }};function conIva(i){const b=i.parentNode.querySelector('.con-iva b');if(b)b.textContent=((parseFloat(i.value)||0)*(1+IVA)).toFixed(2);const c=i.closest('.cat-der')?.querySelector('.cat-costo');if(c&&i.name.startsWith('precio_')){c.dataset.precio=i.value;margen(c)}}</script>

@@ -35,12 +35,12 @@
 
 <div class="g3">
  <div><label>Monto <span class="mini">en $</span></label><input type="number" step="0.01" id="l-monto" name="monto" required inputmode="decimal" placeholder="0.00" class="cf-monto"></div>
- <div><label id="lb-caja">Forma de pago</label><select name="caja_id" required><option value="" selected disabled>¿Qué caja?</option>{% for c in activas %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+ <div><label id="lb-caja">Forma de pago</label><select name="caja_id" required><option value="" selected disabled>¿Qué caja?</option>{% for c in activas %}<option value="{{ c.id }}">{{ c.nombre|caja }}</option>{% endfor %}</select></div>
  <div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy }}"></div>
 </div>
 
 <div id="sw-w" hidden><div class="g2">
- <div><label>¿A qué caja entra?</label><select name="destino" id="sw-dest">{% for c in activas %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+ <div><label>¿A qué caja entra?</label><select name="destino" id="sw-dest">{% for c in activas %}<option value="{{ c.id }}">{{ c.nombre|caja }}</option>{% endfor %}</select></div>
  <div><label>Nota <span class="mini">opcional</span></label><input name="descripcion_swap" placeholder="cambié efectivo a Facebank"></div></div></div>
 
 <div id="clasif-w"><div class="g3">
@@ -86,7 +86,7 @@
   {% else %}<div class="tabla cf-card"><div class="cf-t">Proporción en caja</div><div class="vacio" style="padding:22px 14px">El gráfico aparece cuando haya saldo en alguna caja.</div></div>{% endif %}
 
   <div class="tabla cf-card"><div class="cf-t">Cada caja<b>{{ total|usd }}</b></div>
-  <table class="cf-saldos">{% for c in activas|sort(attribute='saldo', reverse=true) %}<tr class="{{ 'cero' if not c.saldo }}"><td><span class="mono cf-cod">{{ c.codigo }}</span> {{ c.nombre }}</td><td class="num">{{ c.saldo|usd }}</td></tr>{% endfor %}</table></div>
+  <table class="cf-saldos">{% for c in activas|sort(attribute='codigo') %}<tr class="{{ 'cero' if not c.saldo }}"><td>{% set det = detalle.get(c.id) %}{% if det %}<span class="cf-det" tabindex="0"><span class="mono cf-cod">{{ c.codigo }}</span> <u>{{ c.nombre }}</u><span class="cf-det-pop"><table><tr><th>Responsable</th><th>Concepto</th><th class="num">Monto</th></tr>{% for x in det %}<tr><td>{{ x.responsable or '' }}</td><td>{{ x.concepto or '' }}</td><td class="num">{{ x.monto|usd }}</td></tr>{% endfor %}{% set tot = det|sum(attribute='monto') %}<tr class="cf-det-tot"><td colspan="2">Total</td><td class="num">{{ tot|usd }}</td></tr></table>{% if (tot - c.saldo)|abs > 0.009 %}<span class="cf-det-aviso">No cuadra con el saldo de la caja ({{ c.saldo|usd }})</span>{% endif %}</span></span>{% else %}<span class="mono cf-cod">{{ c.codigo }}</span> {{ c.nombre }}{% endif %}</td><td class="num">{{ c.saldo|usd }}</td></tr>{% endfor %}</table></div>
  </aside>
 </div>
 <div class="cf-tip" id="cf-tip" hidden></div>

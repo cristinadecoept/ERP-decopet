@@ -136,11 +136,12 @@
   <label class="cf-check"><input type="checkbox" name="ventas_auto" {{ 'checked' if ventas_auto }}>
    <span>Las ventas entran solas al Cash flow<div class="mini">Apagado, las registras tú a mano. Encendido, cada pago confirmado entra solo al libro y a su caja.</div></span></label>
   <div class="g2" style="margin-top:14px">
-   <div><label>El Cash flow cuenta desde</label><input type="date" name="cashflow_desde" value="{{ cashflow_desde }}">
-    <div class="cf-d" style="margin-top:6px">Nada anterior a esta fecha entra a los saldos.</div></div>
+   <div><label>Las ventas entran solas desde</label><input type="date" name="cashflow_desde" value="{{ cashflow_desde }}">
+    <div class="cf-d" style="margin-top:6px">Solo sirve si prendes "las ventas entran solas": desde este día, cada venta cobrada se suma sola a su caja. Lo que anotas tú (gastos, ajustes, movimientos) cuenta siempre, sin importar esta fecha.</div></div>
    <div><label>Clave de Resultados</label><input name="clave" type="password" placeholder="dejar en blanco para no cambiarla" autocomplete="new-password">
     <div class="cf-d" style="margin-top:6px">Protege Resultados, Registro de ventas y el botón del ojo.</div></div>
   </div>
+
   <p><button class="btn chico">Guardar</button></p>
  </form>
  </div>

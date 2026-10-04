@@ -6,9 +6,11 @@ from pathlib import Path
 DB = Path(os.environ.get("DECOPET_DATOS") or (Path(__file__).parent / "data")) / "plataforma.db"   # la misma base que abre el ERP
 def n(s): return " ".join((s or "").split())
 def fecha(s):
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{3,4})$", n(s))
-    if not m: return None, None, False
-    mm, dd, yy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{3,4})$", n(s))          # como lo exporta Airtable a CSV: mes/día/año
+    iso = re.match(r"^(\d{3,4})-(\d{1,2})-(\d{1,2})", n(s))         # como lo entrega la API de Airtable: año-mes-día
+    if m: mm, dd, yy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    elif iso: yy, mm, dd = int(iso.group(1)), int(iso.group(2)), int(iso.group(3))
+    else: return None, None, False
     try: datetime.date(2024, mm, dd)
     except ValueError: return None, None, True
     md = f"{mm:02d}-{dd:02d}"
@@ -33,8 +35,11 @@ def main(ruta, cargar=False):
         fn, md, rev = fecha(r["Cumpleanos"])
         if rev: revisar.append((nombre, cliente, n(r["Cumpleanos"])))
         cid = cli[cliente.lower()]
-        m = con.execute("SELECT id, fecha_nacimiento FROM mascotas WHERE cliente_id=? AND lower(trim(nombre))=?", (cid, nombre.lower())).fetchone()
+        # se compara en Python: el lower() de SQLite no pasa a minúscula las letras con acento (Árata ≠ árata) y duplicaba
+        m = next((x for x in con.execute("SELECT id, nombre, fecha_nacimiento FROM mascotas WHERE cliente_id=?", (cid,))
+                  if n(x["nombre"]).casefold() == nombre.casefold()), None)
         if not cargar: st["actualizar" if m else "crear"] += 1; continue
+        if m and m["fecha_nacimiento"] and not fn: md = None   # Airtable tiene perros repetidos: una fila incompleta no pisa una fecha completa
         if m:
             # si ya tenía fecha completa y esta fila trae solo día/mes, no la pisamos
             con.execute("UPDATE mascotas SET raza=?, fecha_nacimiento=COALESCE(?, fecha_nacimiento), cumple_mes_dia=COALESCE(?, cumple_mes_dia), revisar=? WHERE id=?", (raza, fn, md, 1 if rev else 0, m["id"]))
