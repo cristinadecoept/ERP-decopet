@@ -2,9 +2,9 @@
    Los campos del formulario son los de siempre: se ven igual, se envían igual y el resto del código los usa igual.
    Lo único que cambia es lo que se abre al tocarlos: en vez de la lista o el calendario de Windows, uno del ERP.
    En el teléfono se dejan los del teléfono: la rueda para elegir es más cómoda con el dedo que cualquier lista.
-   Dónde se usa: ZONA (por ahora, el panel de Nueva orden). Para sumar otra pantalla, se agrega su selector. */
+   Dónde se usa: en todo el ERP (ZONA). Las listas de selección múltiple no se tocan: esas se ven abiertas, no se despliegan. */
 (function () {
-  const ZONA = 'form.no-form';
+  const ZONA = 'body';
   if (!matchMedia('(pointer:fine)').matches) return;
 
   const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -193,7 +193,7 @@
   let pendiente = false;
   function mejorar() {
     pendiente = false;
-    document.querySelectorAll(`${ZONA} select:not([data-ctl])`).forEach(mejorarSelect);
+    document.querySelectorAll(`${ZONA} select:not([data-ctl]):not([multiple]):not([size])`).forEach(mejorarSelect);
     document.querySelectorAll(`${ZONA} input[list]:not([data-ctl])`).forEach(mejorarCombo);
     document.querySelectorAll(`${ZONA} input[type=date]:not([data-ctl])`).forEach(mejorarFecha);
   }
