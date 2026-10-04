@@ -554,6 +554,23 @@ def _():
         del os.environ["DECOPET_CODIGO_INICIAL"]
 
 
+@prueba("Un ?volver= nunca te manda fuera del ERP")
+def _():
+    for malo in ("https://otro-sitio.com", "//otro-sitio.com", "/\\otro-sitio.com", "javascript:alert(1)", "", None):
+        assert A.volver_seguro(malo) is None, malo
+    assert A.volver_seguro("/operaciones?cola=hoy") == "/operaciones?cola=hoy"
+
+
+@prueba("Crear una orden desde Operaciones te deja en Operaciones con la orden abierta; desde otro lado, en Órdenes")
+def _():
+    pide = lambda v: type("R", (), {"query_params": {"volver": v} if v is not None else {}})()
+    assert A.volver_tras_crear(844, pide("/operaciones")) == "/operaciones?abrir=844"
+    assert A.volver_tras_crear(844, pide("/operaciones?cola=hoy&dia=")) == "/operaciones?cola=hoy&dia=&abrir=844"
+    assert A.volver_tras_crear(844, pide("/clientes?q=ana")) == "/ordenes?abrir=844"     # en Clientes "abrir" es un cliente
+    assert A.volver_tras_crear(844, pide("https://otro-sitio.com/operaciones")) == "/ordenes?abrir=844"
+    assert A.volver_tras_crear(844, pide(None)) == "/ordenes?abrir=844"
+
+
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
 def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:

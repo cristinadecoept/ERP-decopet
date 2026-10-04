@@ -91,6 +91,7 @@ document.addEventListener('submit',async e=>{
   history.replaceState(null,'',destino.pathname+destino.search);
   if(f.closest('#pc')&&typeof cerrarPanel==='function')cerrarPanel();
   aviso('Listo');
+  if(typeof trasGuardar==='function')trasGuardar(destino);   // cada pantalla puede hacer algo más (Operaciones: abrir la orden nueva)
  }finally{h.classList.remove('guardando');delete f.dataset.enviando;}
 });
 // tablas con columnas de ancho fijo: cada columna mide siempre lo mismo, cambie el mes o el filtro que cambie.

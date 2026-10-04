@@ -96,6 +96,10 @@ async function abrirPanel(url){const r=await fetch(url+'?volver='+encodeURICompo
  pc.querySelectorAll('form').forEach(f=>{if(f.action.includes('/ordenes/')&&!f.action.includes('volver='))f.action+=(f.action.includes('?')?'&':'?')+'volver='+encodeURIComponent(location.pathname+location.search);});
  pc.querySelectorAll('script').forEach(s=>{const n=document.createElement('script');n.textContent=s.textContent;s.replaceWith(n);});}
 function cerrarPanel(){document.getElementById('panel').classList.remove('on');document.getElementById('velo').classList.remove('on');}
+// ?abrir=ID: la orden recién creada aparece abierta en el panel, para seguir coordinándola sin cambiar de pantalla.
+// Se quita de la dirección para que recargar no la vuelva a abrir.
+function trasGuardar(url){const id=url.searchParams.get('abrir');if(!id)return;url.searchParams.delete('abrir');history.replaceState(null,'',url.pathname+url.search);abrirPanel('/ordenes/'+id+'/panel');}
+trasGuardar(new URL(location.href));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarPanel();});
 </script><script>
 // si paga con su saldo a favor, el monto no puede pasarse de lo que tiene

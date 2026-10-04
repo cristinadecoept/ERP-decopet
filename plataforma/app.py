@@ -1135,10 +1135,23 @@ def registrar(con, oid, uid, accion, detalle=None, motivo=None):
     con.execute("UPDATE ordenes SET actualizado_en=datetime('now','localtime') WHERE id=?", (oid,))
 
 
+def volver_seguro(v):
+    """Solo direcciones de este mismo ERP: un enlace armado con ?volver=https://otro-sitio no puede mandarte afuera."""
+    return v if v and v.startswith("/") and not v.startswith("//") and "\\" not in v else None
+
+
 def volver(oid, request):
-    v = request.query_params.get("volver")
+    v = volver_seguro(request.query_params.get("volver"))
     if v: return RedirectResponse(v, status_code=303)
     return RedirectResponse(f"/ordenes?estado={request.query_params.get('estado','todas')}&abrir={oid}", status_code=303)
+
+
+def volver_tras_crear(oid, request):
+    """Crear una orden desde Operaciones te deja en Operaciones, con la orden recién creada abierta; desde otro lado, en Órdenes.
+    Solo Operaciones: en otras pantallas "abrir" quiere decir otra cosa (en Clientes abre un cliente)."""
+    v = volver_seguro(request.query_params.get("volver"))
+    if v and v.startswith("/operaciones"): return f"{v}{'&' if '?' in v else '?'}abrir={oid}"
+    return f"/ordenes?abrir={oid}"
 
 
 @app.post("/ordenes/{oid}/estado")
@@ -1704,7 +1717,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
     actualizar_porche_cliente(con, oid); fijar_pago_despachador(con, oid)
     pasar_entrega_a_prepagado(con, oid, uid)
-    con.commit(); return RedirectResponse(f"/ordenes?abrir={oid}", status_code=303)
+    con.commit(); return RedirectResponse(volver_tras_crear(oid, request), status_code=303)
 
 
 @app.get("/tasa", response_class=HTMLResponse)
