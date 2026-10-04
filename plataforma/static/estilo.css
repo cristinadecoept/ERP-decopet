@@ -1253,3 +1253,14 @@ body:has(.entrar-w) .barra-movil,body:has(.entrar-w) .velo-movil,body:has(.entra
 }
 @media (max-width:900px){.bm-logo img{height:42px!important}.barra-movil{padding:12px 16px}}
 @media (max-width:900px){.bm-logo img{height:34px!important}}
+
+/* Piloto "sin recarga" (Operaciones): aviso flotante, barra de guardando y transiciones */
+.aviso-flot{position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);background:var(--tinta);color:#fff;padding:10px 18px;border-radius:99px;font-size:13.5px;font-weight:600;box-shadow:0 10px 30px -10px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:200}
+.aviso-flot::before{content:"✓ "}.aviso-flot.mal{background:#b4432a}.aviso-flot.mal::before{content:""}
+.aviso-flot.on{opacity:1;transform:translate(-50%,0)}
+html.guardando{cursor:progress}
+html.guardando::before{content:"";position:fixed;top:0;left:0;height:3px;width:100%;z-index:300;background:linear-gradient(90deg,transparent,var(--verde),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:guardando 1s linear infinite}
+html.guardando main[data-sin-recarga] form button{opacity:.6;pointer-events:none}
+@keyframes guardando{from{background-position:-40% 0}to{background-position:140% 0}}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.18s}
+@media (prefers-reduced-motion:reduce){.aviso-flot{transition:none}html.guardando::before{animation:none}::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
