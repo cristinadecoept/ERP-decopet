@@ -89,13 +89,20 @@ document.addEventListener('submit',async e=>{
   const nuevo=new DOMParser().parseFromString(await r.text(),'text/html').querySelector('main.cont');
   if(!nuevo||nuevo.querySelector('script')){location.href=r.url;return;}
   const cambiar=()=>{main.innerHTML=nuevo.innerHTML;fijarTablas();};
-  if(document.startViewTransition&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.startViewTransition(cambiar);else cambiar();
+  // la transición solo con la pestaña a la vista: en segundo plano el navegador la aborta y deja un error en la consola
+  if(document.startViewTransition&&document.visibilityState==='visible'&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.startViewTransition(cambiar);else cambiar();
   history.replaceState(null,'',destino.pathname+destino.search);
   // cada pantalla puede hacer algo más al terminar (Órdenes: volver a abrir la orden). Si reabre el panel, no se cierra antes.
   const sigue=typeof trasGuardar==='function'&&trasGuardar(destino);
   if(f.closest('#pc')&&!sigue&&typeof cerrarPanel==='function')cerrarPanel();
   // ?err= / ?mal=: el servidor no lo guardó y lo explica en la pantalla. "Listo" sería mentira.
-  if(destino.searchParams.has('err')||destino.searchParams.has('mal'))aviso('No se guardó: mira el aviso en la pantalla',true);else aviso('Listo');
+  // y se lleva la pantalla hasta ese aviso: si estabas más abajo, el mensaje quedaba arriba fuera de vista
+  if(destino.searchParams.has('err')||destino.searchParams.has('mal')){
+   aviso('No se guardó: mira el aviso en la pantalla',true);
+   const m=main.querySelector('.cf-err,.entrar-mal,.err,[data-error]');
+   const como=document.visibilityState==='visible'?'smooth':'auto';   // con la pestaña oculta el desplazamiento suave no avanza
+   setTimeout(()=>m?m.scrollIntoView({block:'center',behavior:como}):scrollTo({top:0,behavior:como}),50);
+  }else aviso('Listo');
  }finally{h.classList.remove('guardando');delete f.dataset.enviando;}
 });
 // tablas con columnas de ancho fijo: cada columna mide siempre lo mismo, cambie el mes o el filtro que cambie.
