@@ -99,6 +99,10 @@ dice dónde puedes entrar.
 | `taller` | Isaías, Manawa | solo `taller` |
 | `despachador` | Ingrid, Fernando, Juan | entregar · mis entregas · incidencia |
 | `sistema` | Tina (bot) | nada todavía |
+| `ninguno` | Miguel (contador), Víctor | está en la nómina, no entra al ERP |
+
+Las personas, su acceso y su nómina se manejan en una sola pantalla, **Equipo** (`/equipo`, solo
+admin). Es una sola lista: la tabla `usuarios`. Lo que cambia ahí queda en `accesos_registro`.
 
 `taller` y `despachador` están cerrados por lista blanca de rutas: una página
 nueva **no la ven por defecto**. `admin`, `logistica` y `sistema` no tienen esa
@@ -111,9 +115,12 @@ proveedores; el despachador sí ve dinero, pero solo el suyo.
 
 ## Seguridad
 
-- Claves con `pbkdf2_hmac` sha256, 200.000 iteraciones, sal de 16 bytes
-- Sesiones en base, 12 h, cookie `httponly` + `samesite=strict`
-- 8 intentos fallidos en 15 min y se bloquea
+- **En el servidor no hay claves del ERP.** Cloudflare Access pide un código por correo y el ERP reconoce a
+  la persona por ese correo (`usuarios.correo`), comprobando la firma de Cloudflare en cada pedido
+  (`plataforma/access.py`). Desde Equipo, el ERP le manda a Cloudflare la lista de correos que pueden pasar
+  (`plataforma/cf_equipo.py`; variables `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_ACCESS_GROUP_ID`).
+- En la Mac (sin Cloudflare): claves con `pbkdf2_hmac` sha256, 200.000 iteraciones, sal de 16 bytes;
+  sesiones en base, 12 h, cookie `httponly` + `samesite=strict`; 8 intentos fallidos en 15 min y se bloquea
 - CSRF por validación de `Origin`/`Referer`
 - Cabeceras de seguridad y límite de subida en el middleware
 

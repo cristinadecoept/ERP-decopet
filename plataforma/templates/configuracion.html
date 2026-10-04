@@ -4,10 +4,6 @@
 {% if err == 'tipo' %}<div class="cf-err">Ese archivo no sirve. Tiene que ser PDF, JPG, PNG o WEBP.</div>
 {% elif err == 'grande' %}<div class="cf-err">El archivo pesa más de 20 MB.</div>
 {% elif err == 'doc' %}<div class="cf-err">No elegiste ningún archivo.</div>
-{% elif err == 'repetido' %}<div class="cf-err">Ese correo o usuario ya lo tiene otra persona.</div>
-{% elif err == 'corta' %}<div class="cf-err">La clave tiene que tener al menos 8 caracteres.</div>
-{% elif err == 'yo' %}<div class="cf-err">No puedes quitarte el acceso a ti misma.</div>
-{% elif err == 'usuario' %}<div class="cf-err">Hacen falta el nombre y el correo o usuario.</div>
 {% elif err == 'enuso' %}<div class="cf-err">Esa categoría ya tiene gastos registrados. Si la borras, esos gastos se quedan sin decir de qué eran.</div>
 {% elif err == 'cat' %}<div class="cf-err">Falta el nombre de la categoría.</div>
 {% elif err %}<div class="cf-err">No se pudo hacer el respaldo. Revisa que iCloud esté conectado.</div>{% endif %}
@@ -29,43 +25,6 @@
 </div>
 
 <div class="tarjeta cf-b">
- <h3>Quién entra</h3>
- <div class="cf-cuerpo">
-  <table class="lineas"><tr><th>Nombre</th><th>Correo o usuario</th><th>Qué puede ver</th><th>Clave</th><th></th></tr>
-  {% for u in usuarios %}<tr class="{{ '' if u.activo else 'bloqueado' }}">
-   <td style="width:150px"><b>{{ u.nombre }}</b>{% if yo and yo.id == u.id %}<div class="mini">eres tú</div>{% endif %}</td>
-   <td class="mono" style="width:220px">{{ u.usuario or '—' }}</td>
-   <td style="width:150px">{{ ROL_CORTO.get(u.rol, u.rol) }}{% if u.despachador and u.despachador != u.nombre %}<div class="mini">{{ u.despachador }}</div>{% endif %}{% if not u.activo %}<div class="mini">sin acceso</div>{% endif %}</td>
-   <td style="width:90px">{% if u.clave_hash %}<span class="pago pagada">puesta</span>{% else %}<span class="pago por_confirmar">sin clave</span>{% endif %}</td>
-   <td style="text-align:right;width:90px">
-    <details class="cobro"><summary class="btn sec chico">Cambiar</summary>
-     <form method="post" action="/configuracion/usuario" class="cobro-f" style="min-width:270px">
-      <input type="hidden" name="id" value="{{ u.id }}">
-      <label style="margin-top:0">Nombre</label><input name="nombre" value="{{ u.nombre }}" required>
-      <label>Correo o usuario</label><input name="usuario" value="{{ u.usuario or '' }}" required>
-      <label>Qué puede ver</label><select name="rol">{% for k, t in ROLES.items() %}<option value="{{ k }}" {{ 'selected' if k==u.rol }}>{{ t }}</option>{% endfor %}</select>
-      <label>Si es despachador, ¿cuál?</label><select name="despachador"><option value="">—</option>{% for d in despachadores_l %}<option {{ 'selected' if d==u.despachador }}>{{ d }}</option>{% endfor %}</select>
-      <label>Clave nueva <span class="mini">déjalo vacío para no cambiarla</span></label><input type="password" name="clave" autocomplete="new-password" minlength="8">
-      <label class="cf-check" style="margin-top:12px"><input type="checkbox" name="activo" {{ 'checked' if u.activo }}><span>Puede entrar</span></label>
-      <p style="margin:10px 0 0"><button class="btn chico">Guardar</button>
-       {% if not (yo and yo.id == u.id) %}<button class="btn pel chico" name="borrar" value="1" onclick="return confirm('¿Quitarle el acceso a {{ u.nombre }}?')">Quitar acceso</button>{% endif %}</p>
-     </form></details>
-   </td></tr>{% endfor %}</table>
-
-  <details class="fal-w" style="margin-top:14px"><summary>Agregar a alguien</summary>
-   <form method="post" action="/configuracion/usuario" class="g2" style="margin-top:10px">
-    <div><label>Nombre</label><input name="nombre" required></div>
-    <div><label>Correo o usuario</label><input name="usuario" placeholder="correo@shopdecopet.com o un nombre corto" required></div>
-    <div><label>Qué puede ver</label><select name="rol">{% for k, t in ROLES.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
-    <div><label>Si es despachador, ¿cuál?</label><select name="despachador"><option value="">—</option>{% for d in despachadores_l %}<option>{{ d }}</option>{% endfor %}</select></div>
-    <div><label>Clave</label><input type="password" name="clave" minlength="8" autocomplete="new-password"></div>
-    <div style="display:flex;align-items:end"><button class="btn chico">Agregar</button></div>
-   </form></details>
-  <p class="cf-d" style="margin:14px 0 0">A nadie se le borra: se le quita el acceso y su nombre sigue en el historial. La clave no se puede recuperar, solo cambiar por otra.</p>
- </div>
-</div>
-
-<div class="tarjeta cf-b">
  <h3>Reglas del ERP</h3>
  <div class="cf-cuerpo">
  <form method="post" action="/configuracion/guardar"><input type="hidden" name="bloque" value="reglas">
@@ -77,26 +36,6 @@
     <div class="cf-in"><input name="iva" value="{{ iva }}" inputmode="decimal" style="width:80px"><span class="mini">%</span></div>
     <div class="cf-d" style="margin-top:6px">El catálogo muestra el precio con IVA al lado, para Cashea y facturas.</div></div>
   </div>
-  <p><button class="btn chico">Guardar</button></p>
- </form>
- </div>
-</div>
-
-<div class="tarjeta cf-b" id="sueldos">
- <h3>Equipo y sueldos</h3>
- <div class="cf-cuerpo">
- <form method="post" action="/configuracion/guardar"><input type="hidden" name="bloque" value="equipo">
-  <table class="lineas"><tr><th>Nombre</th><th>Cómo se le paga</th><th class="num" style="width:170px">Sueldo al mes</th></tr>
-  {% for n in equipo %}<tr>
-   <td><input name="nombre" value="{{ n }}"></td>
-   <td class="mini">{% if sueldos.get(n) %}sueldo por quincena · ${{ '%g'|format(sueldos[n] / 2) }} el 15 y ${{ '%g'|format(sueldos[n] / 2) }} el último{% endif %}{% for p in pagos_de.get(n, []) %}<div><a href="/finanzas/recurrentes">{{ p }}</a></div>{% endfor %}{% if not sueldos.get(n) and not pagos_de.get(n) %}<span style="color:#b45a1c">sin sueldo ni pago fijo</span>{% endif %}</td>
-   <td class="num"><div class="cf-in" style="justify-content:flex-end"><span class="mini">$</span>
-    <input name="sueldo" value="{{ '%g'|format(sueldos[n]) if sueldos.get(n) else '' }}" inputmode="decimal" placeholder="—" style="width:80px;text-align:right"></div></td>
-  </tr>{% endfor %}
-  <tr><td><input name="nombre" placeholder="agregar a alguien…"></td><td></td>
-   <td class="num"><div class="cf-in" style="justify-content:flex-end"><span class="mini">$</span>
-    <input name="sueldo" inputmode="decimal" placeholder="—" style="width:80px;text-align:right"></div></td></tr></table>
-  <p class="cf-d">Lo que no es sueldo se cambia en <a href="/finanzas/recurrentes">Pagos recurrentes</a>.</p>
   <p><button class="btn chico">Guardar</button></p>
  </form>
  </div>

@@ -31,7 +31,8 @@ explicarle en español simple qué cambió y qué va a notar, sin jerga.
 - **Los permisos por rol.** El taller no ve dinero ni clientes; logística no ve dinero ni proveedores; cada
   despachador ve solo lo suyo. `taller` y `despachador` entran solo a las rutas de su lista: una página nueva
   no la ven salvo que se agregue a su lista a propósito.
-- La puerta de Cloudflare (`plataforma/access.py`) y la seguridad del inicio de sesión.
+- La puerta de Cloudflare (`plataforma/access.py`, `plataforma/cf_equipo.py`) y cómo se reconoce a cada persona:
+  en el servidor se entra solo con el correo que comprobó Cloudflare, sin claves del ERP.
 - Las variables de Railway y los dominios.
 
 ## Cómo está escrito

@@ -1516,3 +1516,37 @@ html.oscuro .postit:not(.nueva){color:#3b330a}
 .franja-entorno{position:relative;z-index:50;text-align:center;font-size:12.5px;font-weight:600;padding:5px 12px;letter-spacing:.01em}
 .franja-entorno.local{background:#E1782E;color:#fff}
 .franja-entorno.pruebas{background:#3f6d56;color:#fff}
+/* Equipo: una fila por persona; al tocarla se abre su ficha debajo, igual en la computadora que en el teléfono */
+.eqp-lista h3{margin-bottom:6px}
+.eqp{border-top:1px solid var(--linea)}
+.eqp-lista h3+.eqp{border-top:0}
+.eqp>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:36px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.3fr) auto;gap:12px;align-items:center;padding:12px 0}
+.eqp>summary::-webkit-details-marker{display:none}
+.eqp-ini{width:36px;height:36px;border-radius:50%;background:var(--verde-tinte);color:var(--verde-osc);display:grid;place-items:center;font-weight:600}
+.eqp.apagado .eqp-ini{background:var(--fondo);color:var(--tinta-3)}
+.eqp.apagado .eqp-q b{color:var(--tinta-2)}
+.eqp-q,.eqp-acc,.eqp-est{display:flex;flex-direction:column;gap:2px;min-width:0}
+.eqp-q .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eqp-acc .pago{align-self:flex-start}
+.eqp-on{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--verde);margin-right:6px;vertical-align:1px}
+.eqp[open] .eqp-cambiar{visibility:hidden}
+.eqp-cuerpo{padding:0 0 18px 48px}
+.eqp-otras{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.eqp-b{margin:12px 0 0}
+.eqp-sueldo{margin-top:8px}
+.eqp-cf{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.eqp-h2{font-size:20px;margin:28px 0 12px}
+.eqp-reg>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.eqp-reg>summary::-webkit-details-marker{display:none}
+.eqp-reg[open]>summary{margin-bottom:10px}
+@media (max-width:720px){
+ .eqp>summary{grid-template-columns:36px minmax(0,1fr) auto;row-gap:6px}
+ .eqp-acc{grid-column:2;flex-direction:row;flex-wrap:wrap;gap:6px;align-items:center}
+ .eqp-est{grid-column:2}
+ .eqp-cambiar{grid-column:3;grid-row:1}
+ .eqp-cuerpo{padding-left:0}
+}
+.eqp-nom{padding-top:26px}
+.eqp-f .cf-check{display:flex;align-items:center;gap:10px;margin:0}
+.eqp-f .cf-check input{width:auto;margin:0;flex:0 0 auto}
+@media (max-width:900px){.eqp-nom{padding-top:12px}}

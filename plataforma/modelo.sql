@@ -1,7 +1,7 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS usuarios (
-  id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, rol TEXT NOT NULL,  -- admin | logistica | sistema
+  id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, rol TEXT NOT NULL,  -- admin | logistica | taller | despachador | sistema | ninguno (en el equipo, sin entrar al ERP)
   activo INTEGER DEFAULT 1);
 
 CREATE TABLE IF NOT EXISTS clientes (
@@ -295,3 +295,8 @@ CREATE TABLE IF NOT EXISTS credito_cliente (
 -- Intentos de entrar fallidos: para frenar a un robot que pruebe claves sin parar.
 CREATE TABLE IF NOT EXISTS intentos (
   id INTEGER PRIMARY KEY, usuario TEXT, ip TEXT, cuando TEXT NOT NULL DEFAULT (datetime('now','localtime')));
+
+-- Quién le dio o le quitó el acceso a quién, y cuándo. Solo se agrega, nunca se borra.
+CREATE TABLE IF NOT EXISTS accesos_registro (
+  id INTEGER PRIMARY KEY, cuando TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  quien_id INTEGER, persona_id INTEGER NOT NULL, que TEXT NOT NULL);

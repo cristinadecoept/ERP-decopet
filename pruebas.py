@@ -304,7 +304,7 @@ def _():
 @prueba("Sin nadie conectado (ERP recién instalado) se puede guardar y queda a nombre de un usuario")
 def _():
     class R:   # una petición sin sesión
-        cookies = {}; headers = {}
+        cookies = {}; headers = {}; state = type("Estado", (), {})()
     con = base_limpia()
     uid = A.uid_de(R())
     assert uid is not None
@@ -534,9 +534,9 @@ def _():
             datos = {"usuario": "cristina@x.com", "clave": "una-clave-larga", "clave2": "una-clave-larga"}
             r = c.post("/entrar/primera-vez", data={**datos, "codigo": "otro"}, follow_redirects=False)
             assert r.headers["location"] == "/entrar?mal=codigo", "aceptó un código equivocado"
-            assert not A.hay_claves()
+            assert not A.tiene_duena()
             r = c.post("/entrar/primera-vez", data={**datos, "codigo": "codigo-de-prueba"}, follow_redirects=False)
-            assert r.headers["location"] == "/inicio" and A.hay_claves()
+            assert r.headers["location"] == "/inicio" and A.tiene_duena()
             c.cookies.clear()                       # vuelve a entrar con el usuario que puso
             r = c.post("/entrar", data={"usuario": "cristina@x.com", "clave": "una-clave-larga"}, follow_redirects=False)
             assert r.headers["location"] == "/inicio", "no pudo volver a entrar con su usuario"
@@ -687,6 +687,195 @@ def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:
         r = c.get("/health", follow_redirects=False)
         assert (r.status_code, r.text) == (200, "ok"), (r.status_code, r.text)
+
+
+print("\nEQUIPO Y ACCESOS")
+
+@contextmanager
+def con_cloudflare(en_servidor=True, con_datos=True):
+    """El ERP detrás de Cloudflare Access, y una función que arma la firma de alguien con su correo.
+    La lista de correos que se le manda a Cloudflare queda en .enviado (no se llama a Cloudflare de verdad)."""
+    import jwt as JWT
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from plataforma import access as CF
+    clave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    EQUIPO, AUD = "decopet-prueba.cloudflareaccess.com", "aud-de-prueba"
+    antes = (CF._cargar_claves, A.CF_EQUIPO.poner_correos, A.CF_EQUIPO.cerrar_sesion, dict(os.environ))
+    CF._cargar_claves = lambda forzar=False: {"k1": clave.public_key()}
+    enviado = {"correos": None, "cerradas": []}
+    A.CF_EQUIPO.poner_correos = lambda correos: enviado.__setitem__("correos", sorted(correos))
+    A.CF_EQUIPO.cerrar_sesion = lambda correo: enviado["cerradas"].append(correo)
+    os.environ.update(CF_ACCESS_ENFORCE="1", CF_ACCESS_TEAM_DOMAIN=EQUIPO, CF_ACCESS_AUD=AUD, DECOPET_CODIGO_INICIAL="codigo-inicial",
+                      CF_API_TOKEN="t", CF_ACCOUNT_ID="a", CF_ACCESS_GROUP_ID="g")
+    try:
+        with erp_de_prueba(en_servidor=en_servidor, con_datos=con_datos) as c:
+            def como(correo):   # cada pedido siguiente llega firmado por Cloudflare con ese correo
+                c.headers["cf-access-jwt-assertion"] = JWT.encode(
+                    {"iss": "https://" + EQUIPO, "aud": [AUD], "exp": int(time.time()) + 600, "email": correo},
+                    clave, algorithm="RS256", headers={"kid": "k1"})
+            c.como, c.enviado = como, enviado
+            yield c
+    finally:
+        CF._cargar_claves, A.CF_EQUIPO.poner_correos, A.CF_EQUIPO.cerrar_sesion = antes[:3]
+        os.environ.clear(); os.environ.update(antes[3])
+
+
+def persona(**campos):
+    con = sqlite3.connect(A.DB)
+    cols = ", ".join(campos); marcas = ", ".join("?" * len(campos))
+    pid = con.execute(f"INSERT INTO usuarios ({cols}) VALUES ({marcas})", tuple(campos.values())).lastrowid
+    con.commit(); con.close(); return pid
+
+
+@prueba("En el servidor se entra con el correo que comprobó Cloudflare, sin clave; un correo que no es del equipo no entra")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        persona(nombre="Isaías", rol="taller", activo=1, correo="isaias@gmail.com")
+        persona(nombre="Se fue", rol="taller", activo=0, correo="sefue@gmail.com")
+        c.como("cristina@decopet.com"); assert c.get("/inicio", follow_redirects=False).status_code == 200, "la dueña no entró"
+        c.como("ISAIAS@gmail.com"); r = c.get("/inicio", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/taller", "el taller no llegó a su pantalla"
+        for correo in ("sefue@gmail.com", "extrano@gmail.com"):
+            c.como(correo)
+            assert c.get("/inicio", follow_redirects=False).headers.get("location") == "/entrar", f"{correo} entró"
+            assert "no tiene acceso" in c.get("/entrar").text
+        c.como("isaias@gmail.com")
+        assert c.post("/entrar", data={"usuario": "isaias", "clave": "x"}, follow_redirects=False).headers["location"] == "/entrar"
+        assert c.get("/salir", follow_redirects=False).headers["location"] == "/cdn-cgi/access/logout"
+
+
+@prueba("Primera vez en el servidor: con el código de instalación, el correo de Cloudflare queda como el de la administradora")
+def _():
+    with con_cloudflare(con_datos=False) as c:
+        c.como("duena@decopet.com")
+        assert "Entra como administradora" in c.get("/entrar").text
+        assert c.post("/entrar/primera-vez", data={"codigo": "otro"}, follow_redirects=False).headers["location"] == "/entrar?mal=codigo"
+        assert c.post("/entrar/primera-vez", data={"codigo": "codigo-inicial"}, follow_redirects=False).headers["location"] == "/inicio"
+        assert c.get("/inicio", follow_redirects=False).status_code == 200, "no entró después de registrarse"
+        assert c.enviado["correos"] == ["duena@decopet.com"], c.enviado
+        c.como("intruso@gmail.com")   # ya tiene dueña: el código no sirve para nadie más
+        assert c.post("/entrar/primera-vez", data={"codigo": "codigo-inicial"}, follow_redirects=False).headers["location"] == "/entrar"
+        assert c.get("/inicio", follow_redirects=False).headers["location"] == "/entrar"
+
+
+@prueba("Equipo: dar y quitar acceso le manda a Cloudflare la lista justa, la saca al momento y queda en el registro")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        c.como("cristina@decopet.com")
+        r = c.post("/equipo/persona", data={"nombre": "manawa", "correo": "Manawa@Gmail.com", "acceso": "taller"}, follow_redirects=False)
+        assert r.status_code == 303 and "err" not in r.headers["location"], r.headers["location"]
+        assert c.enviado["correos"] == ["cristina@decopet.com", "manawa@gmail.com"], c.enviado
+        pid = sqlite3.connect(A.DB).execute("SELECT id FROM usuarios WHERE correo='manawa@gmail.com'").fetchone()[0]
+        c.como("manawa@gmail.com"); assert c.get("/taller", follow_redirects=False).status_code == 200
+        c.como("cristina@decopet.com")
+        c.post("/equipo/persona", data={"id": pid, "nombre": "Manawa", "correo": "manawa@gmail.com", "acceso": "no"})
+        assert c.enviado["correos"] == ["cristina@decopet.com"] and c.enviado["cerradas"] == ["manawa@gmail.com"], c.enviado
+        c.como("manawa@gmail.com"); assert c.get("/taller", follow_redirects=False).headers["location"] == "/entrar", "sin acceso siguió entrando"
+        c.como("cristina@decopet.com")
+        que = [r[0] for r in sqlite3.connect(A.DB).execute("SELECT que FROM accesos_registro WHERE persona_id=? ORDER BY id", (pid,))]
+        assert que == ["Lo agregó al equipo con acceso de Taller", "Le quitó el acceso al ERP"], que
+        assert "Le quitó el acceso al ERP" in c.get("/equipo").text
+
+
+@prueba("Equipo: sin correo no se da acceso en el servidor, y un correo no puede ser de dos personas")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        c.como("cristina@decopet.com")
+        pide = lambda **d: c.post("/equipo/persona", data=d, follow_redirects=False).headers["location"]
+        assert "err=sin_correo" in pide(nombre="Juan", acceso="despachador")
+        assert "err=correo_repetido" in pide(nombre="Juan", correo="CRISTINA@decopet.com", acceso="despachador")
+        assert "err=correo" in pide(nombre="Juan", correo="juan-sin-arroba", acceso="despachador")
+        assert "err" not in pide(nombre="Miguel", acceso="no", nomina="1", sueldo="100")   # el contador: en la nómina, sin entrar
+
+
+@prueba("Equipo: Cristina no puede quitarse a sí misma ni dejar el ERP sin administradora")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        yo = sqlite3.connect(A.DB).execute("SELECT id FROM usuarios WHERE usuario='prueba-admin'").fetchone()[0]
+        pide = lambda **d: c.post("/equipo/persona", data=d, follow_redirects=False).headers["location"]
+        assert "err=yo" in pide(id=yo, nombre="Prueba admin", usuario="prueba-admin", acceso="taller")
+        assert "err=yo" in pide(id=yo, nombre="Prueba admin", usuario="prueba-admin", acceso="no")
+        otra = persona(nombre="Otra admin", rol="admin", activo=1, usuario="otra")
+        assert "err" not in pide(id=otra, nombre="Otra admin", usuario="otra", acceso="no"), "con otra administradora sí se puede"
+    # ERP recién instalado en la Mac (nadie tiene clave: se entra como administradora sin sesión): tampoco puede quitar a la única
+    with erp_de_prueba() as c:
+        unica = sqlite3.connect(A.DB).execute("SELECT id, nombre FROM usuarios WHERE rol='admin' AND activo=1").fetchall()
+        assert len(unica) == 1, unica
+        r = c.post("/equipo/persona", data={"id": unica[0][0], "nombre": unica[0][1], "usuario": "cristina", "acceso": "logistica"}, follow_redirects=False)
+        assert "err=ultima_admin" in r.headers["location"], r.headers["location"]
+
+
+@prueba("Equipo: un despachador sin elegir cuál queda como uno nuevo con su nombre (antes veía su pantalla vacía)")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        c.post("/equipo/persona", data={"nombre": "Víctor", "usuario": "victor", "acceso": "despachador", "clave": "clave-de-victor"})
+        con = sqlite3.connect(A.DB)
+        assert con.execute("SELECT despachador FROM usuarios WHERE usuario='victor'").fetchone()[0] == "Víctor"
+        assert con.execute("SELECT activo FROM despachadores WHERE nombre='Víctor'").fetchone() == (1,)
+
+
+@prueba("Equipo: cambiarle el nombre a alguien se lleva sus pagos, faltas y entregas (antes se perdían por ir por nombre)")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB)
+        con.execute("INSERT INTO despachadores (nombre, activo) VALUES ('Fer', 1)")
+        pid = con.execute("""INSERT INTO usuarios (nombre, usuario, rol, activo, despachador, nomina, sueldo_mes)
+                             VALUES ('Fer', 'fer', 'despachador', 1, 'Fer', 1, 200)""").lastrowid
+        oid = con.execute("SELECT id FROM ordenes LIMIT 1").fetchone()[0]
+        con.execute("UPDATE ordenes SET despachador='Fer' WHERE id=?", (oid,))
+        con.execute("INSERT INTO gastos (fecha, monto_usd, categoria, subcategoria, proveedor) VALUES ('2026-10-01', 100, 'Equipo', 'Quincena', 'Fer')")
+        con.execute("INSERT INTO faltas (nombre, fecha) VALUES ('Fer', '2026-10-02')"); con.commit()
+        c.post("/equipo/persona", data={"id": pid, "nombre": "Fercho", "usuario": "fer", "acceso": "despachador",
+                                         "despachador": "Fer", "nomina": "1", "sueldo": "200"})
+        assert con.execute("SELECT despachador FROM usuarios WHERE id=?", (pid,)).fetchone()[0] == "Fercho"
+        assert con.execute("SELECT despachador FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == "Fercho"
+        assert con.execute("SELECT COUNT(*) FROM despachadores WHERE nombre IN ('Fer','Fercho')").fetchone()[0] == 1
+        assert con.execute("SELECT proveedor FROM gastos WHERE subcategoria='Quincena' AND fecha='2026-10-01'").fetchone()[0] == "Fercho"
+        assert con.execute("SELECT nombre FROM faltas WHERE fecha='2026-10-02'").fetchone()[0] == "Fercho"
+        con.row_factory = sqlite3.Row
+        assert A.ficha_equipo(con, "Fercho", datetime.date(2026, 10, 4))["mensual"] == 200
+
+
+@prueba("La nómina vieja (dos listas de nombres en config) pasa a las fichas de las personas, sin perder sueldos")
+def _():
+    ruta = tempfile.mktemp(suffix=".db"); con = sqlite3.connect(ruta)
+    con.executescript(open(A.BASE / "modelo.sql", encoding="utf-8").read()); con.execute("ALTER TABLE usuarios ADD COLUMN usuario TEXT")
+    con.execute("INSERT INTO usuarios (id, nombre, rol, activo, usuario) VALUES (1,'Cristina','admin',1,'cristina@decopet.com'), (5,'Isaías','taller',1,'isaias')")
+    con.execute("""INSERT INTO config (clave, valor) VALUES ('equipo', '["Víctor", "Isaías"]'), ('sueldos', '{"Isaías": 300, "Miguel": 100}')""")
+    con.commit(); con.close()
+    con = A.preparar_base(ruta)
+    filas = {r[0]: r[1:] for r in con.execute("SELECT nombre, rol, activo, nomina, sueldo_mes, correo FROM usuarios")}
+    assert filas["Isaías"] == ("taller", 1, 1, 300.0, None), filas["Isaías"]
+    assert filas["Víctor"] == ("ninguno", 0, 1, None, None), filas["Víctor"]
+    assert filas["Miguel"] == ("ninguno", 0, 1, 100.0, None), filas["Miguel"]
+    assert filas["Cristina"][-1] == "cristina@decopet.com", "no tomó el correo que estaba como usuario"
+    assert not con.execute("SELECT 1 FROM config WHERE clave IN ('equipo','sueldos')").fetchone(), "quedaron las listas viejas"
+
+
+@prueba("Equipo: solo la administradora cambia accesos; Cloudflare caído no impide guardar y se puede reintentar")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        persona(nombre="Vale", rol="logistica", activo=1, correo="vale@decopet.com")
+        c.como("vale@decopet.com")
+        c.post("/equipo/persona", data={"nombre": "Colado", "correo": "colado@gmail.com", "acceso": "admin"})
+        assert not sqlite3.connect(A.DB).execute("SELECT 1 FROM usuarios WHERE correo='colado@gmail.com'").fetchone(), "logística agregó a alguien"
+        c.como("cristina@decopet.com")
+        def caido(correos): raise RuntimeError("Cloudflare no responde")
+        A.CF_EQUIPO.poner_correos = caido
+        c.post("/equipo/persona", data={"nombre": "Juan", "correo": "juan@gmail.com", "acceso": "despachador"})
+        assert sqlite3.connect(A.DB).execute("SELECT 1 FROM usuarios WHERE correo='juan@gmail.com'").fetchone(), "no guardó"
+        html = c.get("/equipo").text
+        assert "Cloudflare no recibió" in html and "/equipo/cloudflare" in html, "no avisó que Cloudflare falló"
+        A.CF_EQUIPO.poner_correos = lambda correos: c.enviado.__setitem__("correos", sorted(correos))
+        c.post("/equipo/cloudflare")
+        assert "juan@gmail.com" in c.enviado["correos"] and "Cloudflare no recibió" not in c.get("/equipo").text
 
 
 print("\nFOTOS")

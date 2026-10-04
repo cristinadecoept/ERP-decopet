@@ -13,7 +13,19 @@
   </section>
   <div class="entrar-c">
   <img class="ef-perro4" src="/static/perro-asoma-chico.svg" alt="" aria-hidden="true">
-  {% if primera_vez %}
+  {% if por_correo and primera_vez %}
+   <h1>Entra como administradora</h1>
+   <p class="mini">Con el código de instalación, <b>{{ correo }}</b> queda como el correo de la administradora.</p>
+   <form method="post" action="/entrar/primera-vez">
+    <label>Código de instalación</label><input type="password" name="codigo" required autofocus autocomplete="off">
+    {% if mal == 'codigo' %}<div class="entrar-mal">Ese código no es.</div>{% elif mal == 'frenado' %}<div class="entrar-mal">Demasiados intentos. Espera 15 minutos.</div>{% endif %}
+    <button class="btn">Entrar</button>
+   </form>
+  {% elif por_correo %}
+   <h1>Este correo no tiene acceso</h1>
+   <p class="mini"><b>{{ correo or 'Tu correo' }}</b> no está en el equipo del ERP. Pídele a la administradora que te agregue.</p>
+   <p><a class="btn sec" href="/cdn-cgi/access/logout">Entrar con otro correo</a></p>
+  {% elif primera_vez %}
    <h1>Ponle una clave a tu ERP</h1>
    <p class="mini">Hasta ahora cualquiera que abriera esta dirección entraba como administradora. Elige tu clave: no queda escrita en ningún lado y nadie más la ve, ni yo.</p>
    <form method="post" action="/entrar/primera-vez">
