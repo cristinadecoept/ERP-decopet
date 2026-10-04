@@ -525,6 +525,14 @@ DURACION_SESION = 12 * 60 * 60     # 12 horas: una jornada
 MAX_INTENTOS, VENTANA_INTENTOS = 8, 15     # 8 intentos fallidos en 15 minutos y se cierra
 
 
+def ip_de(request):
+    """La IP de quien entra, para el freno de intentos. Con Cloudflare delante, la que llega es la de Cloudflare
+    (sería la misma para todos): la real viene en CF-Connecting-IP. Solo se le cree con Access activo, porque
+    entonces nadie llega sin pasar por Cloudflare; si no, cualquiera podría inventarse esa cabecera."""
+    if CF_ACCESS.activo() and request.headers.get("cf-connecting-ip"): return request.headers["cf-connecting-ip"].strip()
+    return (request.client.host if request.client else "") or ""
+
+
 def frenado(con, usuario, ip):
     """¿Ya probó demasiadas veces? Frena al robot que prueba claves una tras otra."""
     con.execute("DELETE FROM intentos WHERE cuando < datetime('now','localtime','-1 hour')")
@@ -635,7 +643,7 @@ def entrar(request: Request, mal: str = "", con=Depends(db)):
 
 @app.post("/entrar")
 def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form(""), con=Depends(db)):
-    ip = (request.client.host if request.client else "") or ""
+    ip = ip_de(request)
     quien = usuario.strip().lower()
     if frenado(con, quien, ip): return RedirectResponse("/entrar?mal=frenado", status_code=303)
     u = con.execute("SELECT * FROM usuarios WHERE lower(TRIM(usuario))=? AND activo=1", (quien,)).fetchone()
@@ -658,7 +666,7 @@ def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form("
     if hay_claves(con): return RedirectResponse("/entrar", status_code=303)
     if EN_SERVIDOR:
         esperado = os.environ.get("DECOPET_CODIGO_INICIAL", "")
-        ip = (request.client.host if request.client else "") or ""
+        ip = ip_de(request)
         if frenado(con, "primera-vez", ip): return RedirectResponse("/entrar?mal=frenado", status_code=303)
         if not (esperado and secrets.compare_digest(codigo.strip().encode(), esperado.encode())):
             anotar_intento(con, "primera-vez", ip)

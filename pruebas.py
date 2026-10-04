@@ -618,6 +618,20 @@ def _():
         CF._cargar_claves = antes_claves; os.environ.clear(); os.environ.update(env)
 
 
+@prueba("Freno de intentos: con Cloudflare delante cuenta la IP real de cada persona; sin Cloudflare no se cree la cabecera")
+def _():
+    pedido = lambda cab: type("R", (), {"headers": cab, "client": type("C", (), {"host": "104.22.148.30"})()})()
+    env = dict(os.environ)
+    try:
+        os.environ["CF_ACCESS_ENFORCE"] = "1"
+        assert A.ip_de(pedido({"cf-connecting-ip": "190.6.1.20"})) == "190.6.1.20", "con Access no usó la IP real"
+        assert A.ip_de(pedido({})) == "104.22.148.30"
+        os.environ.pop("CF_ACCESS_ENFORCE")
+        assert A.ip_de(pedido({"cf-connecting-ip": "1.2.3.4"})) == "104.22.148.30", "sin Access le creyó a una cabecera inventada"
+    finally:
+        os.environ.clear(); os.environ.update(env)
+
+
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
 def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:
