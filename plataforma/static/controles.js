@@ -91,7 +91,7 @@
     sel.dataset.ctl = '1';
     const abrir = () => {
       if (esDe(sel)) { cerrar(); return; }
-      lista(sel, [...sel.options].filter(o => !o.hidden).map(o => ({ valor: o.value, texto: o.textContent, des: o.disabled })),
+      lista(sel, [...sel.options].filter(o => !o.hidden).map(o => ({ valor: o.value, texto: o.textContent.trim() || '—', des: o.disabled })),
         it => { if (sel.value !== it.valor) { sel.value = it.valor; avisar(sel); } sel.focus(); }, sel.value);
     };
     sel.addEventListener('mousedown', e => { if (sel.disabled) return; e.preventDefault(); sel.focus(); abrir(); });

@@ -2,7 +2,6 @@
 <div class="fila-titulo"><div><h1>Repuestos prepagados</h1></div>
 </div>
 
-<script>document.getElementById('cl-in').addEventListener('input',e=>{const op=[...document.getElementById('cl').options].find(o=>o.value===e.target.value);document.getElementById('cl-id').value=op?op.dataset.id:'';});</script>
 <div class="barra-f"><a class="bf-todas {{ 'act' if ver in ('pendientes','sin_programar') }}" href="/prepagados?ver=sin_programar">Por programar{% if n_sin %} <span class="bf-n">{{ n_sin }}</span>{% endif %}</a><a class="bf-todas {{ 'act' if ver=='programados' }}" href="/prepagados?ver=programados">Programados{% if n_prog %} <span class="bf-n">{{ n_prog }}</span>{% endif %}</a></div>
 <div class="tabla prep-t"><table data-cols="Cliente:28|Tamaño:12|Pagado:12|Delivery:12|Estado:14|:22"><tr><th>Cliente</th><th>Tamaño</th><th>Pagado</th><th>Delivery</th><th>Estado</th><th></th></tr>
 {% for r in rows %}<tr class="{{ 'cerrada' if r.entregado_en }}"><td><b><a href="/clientes/{{ r.cliente_id }}" style="color:inherit">{{ r.cliente }}</a></b>{% if r.orden %} <a class="ln-num" href="/ordenes?estado=todas&abrir={{ r.orden_id }}" title="Pedido donde lo pagó">{{ r.orden }}</a>{% endif %}<div class="mini">{{ r.ciudad or '' }}</div>{% if r.telefono %}<div><a class="wa-link" href="{{ r.telefono|wa }}" target="_blank">WhatsApp ↗</a></div>{% endif %}</td>
