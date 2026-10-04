@@ -632,6 +632,45 @@ def _():
         os.environ.clear(); os.environ.update(env)
 
 
+@prueba("Migraciones: cada una se aplica una sola vez; la que falla no deja nada a medias y detiene el arranque")
+def _():
+    carpeta = pathlib.Path(tempfile.mkdtemp()); antes = A.MIGRACIONES; A.MIGRACIONES = carpeta
+    try:
+        (carpeta / "001_tabla_y_datos.sql").write_text("CREATE TABLE IF NOT EXISTS prueba_mig (x TEXT);\nINSERT INTO prueba_mig VALUES ('uno');", encoding="utf-8")
+        ruta = tempfile.mktemp(suffix=".db")
+        A.preparar_base(ruta).close(); A.preparar_base(ruta).close()   # arranca dos veces
+        con = sqlite3.connect(ruta)
+        assert con.execute("SELECT COUNT(*) FROM prueba_mig").fetchone()[0] == 1, "se aplicó dos veces"
+        con.close()
+        (carpeta / "002_rota.sql").write_text("INSERT INTO prueba_mig VALUES ('dos');\nINSERT INTO tabla_que_no_existe VALUES (1);", encoding="utf-8")
+        try:
+            A.preparar_base(ruta).close(); assert False, "arrancó con una migración rota"
+        except RuntimeError as e:
+            assert "002_rota.sql" in str(e), e
+        con = sqlite3.connect(ruta)
+        assert con.execute("SELECT COUNT(*) FROM prueba_mig").fetchone()[0] == 1, "quedó a medias la migración rota"
+        assert [r[0] for r in con.execute("SELECT nombre FROM migraciones ORDER BY nombre")] == ["001_tabla_y_datos.sql"]
+        con.close()
+    finally:
+        A.MIGRACIONES = antes
+
+
+@prueba("La franja de arriba dice cuándo no es la operación real: copia local o versión de prueba; en producción no sale")
+def _():
+    env = dict(os.environ)
+    try:
+        os.environ.pop("DECOPET_STAGING", None)
+        with erp_de_prueba(en_servidor=False, con_datos=False) as c:
+            assert "Copia local" in c.get("/entrar").text, "la copia local no avisa"
+        os.environ["DECOPET_CODIGO_INICIAL"] = "x"
+        with erp_de_prueba(en_servidor=True, con_datos=False) as c:
+            assert 'class="franja-entorno' not in c.get("/entrar").text, "producción muestra una franja"
+            os.environ["DECOPET_STAGING"] = "1"
+            assert "Versión de prueba" in c.get("/entrar").text, "el de pruebas no avisa"
+    finally:
+        os.environ.clear(); os.environ.update(env)
+
+
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
 def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:

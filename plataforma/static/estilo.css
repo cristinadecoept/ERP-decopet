@@ -1512,3 +1512,7 @@ html.oscuro .postit:not(.nueva){color:#3b330a}
 /* Gastos y Resultados en el teléfono: categoría y monto en una línea, la barra debajo a todo el ancho
    (con 220px de nombre + barra + 110px de monto, el monto se cortaba: "$480.(") */
 @media (max-width:720px){.cf-fila{grid-template-columns:1fr auto;row-gap:4px;column-gap:12px}.cf-fila .cf-track{grid-column:1/-1;grid-row:2}}
+/* franja de arriba: dice cuándo NO estás en la operación real (copia local o versión de prueba); en producción no sale */
+.franja-entorno{position:relative;z-index:50;text-align:center;font-size:12.5px;font-weight:600;padding:5px 12px;letter-spacing:.01em}
+.franja-entorno.local{background:#E1782E;color:#fff}
+.franja-entorno.pruebas{background:#3f6d56;color:#fff}

@@ -19,6 +19,10 @@ DB = DATOS / "plataforma.db"
 # entraba cualquiera como administradora porque solo se abría desde la propia Mac. En internet,
 # la primera clave pide además el código de instalación (DECOPET_CODIGO_INICIAL).
 EN_SERVIDOR = bool(os.environ.get("DECOPET_DATOS"))
+# Dónde está corriendo este ERP, para la franja de arriba: en una copia (la Mac, la PC del programador) o en el de
+# pruebas se ve un aviso, para no anotar una venta real donde no llega a la operación. En producción no se ve nada.
+def entorno():
+    return "local" if not EN_SERVIDOR else ("pruebas" if os.environ.get("DECOPET_STAGING") == "1" else None)
 DOCS_DIR = DATOS / "documentos"
 FOTOS_DIR = DATOS / "fotos"
 FOTOS_PRODUCTOS = FOTOS_DIR / "productos"
@@ -269,7 +273,7 @@ tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<sp
 # "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
 tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
-tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
+tpl.env.globals.update(entorno=entorno, ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
 
 def db():
@@ -445,7 +449,29 @@ def preparar_base(ruta):
         if tabla not in hay: hay[tabla] = {r[1] for r in con.execute(f"PRAGMA table_info({tabla})")}
         if col not in hay[tabla]:
             con.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}"); hay[tabla].add(col)
-    con.commit(); return con
+    con.commit()
+    aplicar_migraciones(con)
+    return con
+
+
+MIGRACIONES = BASE / "migraciones"
+
+
+def aplicar_migraciones(con):
+    """Cambios de la base que no son "agregar una tabla o columna": renombrar, mover datos, cargar valores iniciales.
+    Cada uno es un archivo plataforma/migraciones/NNN_que_hace.sql y se aplica UNA sola vez, en orden, en cada base
+    (la Mac, el servidor). Así un cambio que hace Claude llega igual a producción al desplegar.
+    Si uno falla, no queda nada a medias de ese archivo y el ERP no arranca: en el servidor sigue la versión anterior."""
+    con.execute("CREATE TABLE IF NOT EXISTS migraciones (nombre TEXT PRIMARY KEY, aplicada_en TEXT DEFAULT (datetime('now','localtime')))")
+    hechas = {r[0] for r in con.execute("SELECT nombre FROM migraciones")}
+    for f in sorted(MIGRACIONES.glob("[0-9][0-9][0-9]_*.sql")):
+        if f.name in hechas: continue
+        try:
+            nombre = f.name.replace("'", "''")
+            con.executescript(f"BEGIN;\n{f.read_text(encoding='utf-8')}\n;\nINSERT INTO migraciones (nombre) VALUES ('{nombre}');\nCOMMIT;")
+        except sqlite3.Error as e:
+            if con.in_transaction: con.rollback()
+            raise RuntimeError(f"La migración {f.name} falló y no se aplicó nada de ella: {e}") from e
 
 
 @app.on_event("startup")

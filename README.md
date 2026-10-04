@@ -72,10 +72,20 @@ así — esa información no está en ningún otro lado.
 
 ## Migraciones
 
-No hay Alembic. `preparar_base()` corre `modelo.sql` (idempotente) y luego
-aplica una tabla de constantes `COLUMNAS` con ~54 tuplas
-`(tabla, columna, tipo)` vía `ALTER TABLE ADD COLUMN` si faltan. Corre en cada
-arranque.
+No hay Alembic. En cada arranque, `preparar_base()` hace tres cosas, en orden:
+
+1. Corre `modelo.sql` (idempotente): tablas nuevas.
+2. Aplica `COLUMNAS`, tuplas `(tabla, columna, tipo)` vía `ALTER TABLE ADD COLUMN` si faltan: columnas nuevas.
+3. Aplica las **migraciones** de `plataforma/migraciones/NNN_que_hace.sql` que falten, una sola vez cada una
+   y en orden (la tabla `migraciones` anota cuáles ya se hicieron). Son para lo que 1 y 2 no hacen: renombrar,
+   mover datos o cargar valores iniciales. Si una falla, no queda nada a medias y el ERP no arranca: en el
+   servidor sigue la versión anterior. Reglas en `plataforma/migraciones/LEEME.md`.
+
+Así, un cambio de estructura hecho en el código llega solo a producción al desplegar. **Un cambio hecho a mano
+en una base no llega a ninguna otra**: la prueba "Una base nueva queda igual que la que está en uso" lo detecta.
+
+**Los datos no viajan entre bases.** Lo que se anota en la copia local (la Mac, la PC) no llega a la operación.
+Por eso la copia local y la versión de prueba muestran una franja arriba; en producción no sale nada.
 
 ## Permisos
 
