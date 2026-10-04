@@ -1472,3 +1472,43 @@ html.oscuro .postit:not(.nueva){color:#3b330a}
 .datos-ver i{color:var(--tinta-3);font-style:normal}
 .dir-ver{font-size:14px;margin-bottom:4px}
 .stats-bar b *{font-size:inherit !important;font-weight:inherit !important;color:inherit}
+
+/* ── Teléfono: arreglos de raíz encontrados probando en iPhone (390px) y Android (360px), oct 2026 ── */
+@media (max-width:900px){
+ /* el panel lateral va por encima de la barra de arriba: la barra tapaba su título y la × de cerrar */
+ .panel{z-index:41}.velo{z-index:40}
+ /* letra de 16px en los campos: con menos, el iPhone hace zoom solo al tocarlos para escribir */
+ input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}
+ /* botones a la medida del dedo (~40px de alto; antes muchos medían 27px) */
+ .btn,.btn.chico{min-height:40px}
+ /* los botones de arriba bajan a otra línea en vez de cortarse ("+ Nueva orden" se salía en Android) */
+ .cab-btns{flex-wrap:wrap;flex:1 1 auto;justify-content:flex-end}
+ /* tabla que se desliza de lado: sombra en el borde donde hay más columnas (la marca el script de base.html) */
+ .desliza-der{box-shadow:inset -14px 0 12px -12px rgba(0,0,0,.28),var(--sombra)}
+ .desliza-izq{box-shadow:inset 14px 0 12px -12px rgba(0,0,0,.28),var(--sombra)}
+ .desliza-izq.desliza-der{box-shadow:inset -14px 0 12px -12px rgba(0,0,0,.28),inset 14px 0 12px -12px rgba(0,0,0,.28),var(--sombra)}
+}
+/* tabla → tarjetas en el teléfono: cada fila es una tarjeta y cada dato lleva su etiqueta (data-t).
+   Para usarla en otra tabla: class="tarjetas-movil" y data-t="Etiqueta" en sus celdas. */
+@media (max-width:720px){
+ .tarjetas-movil,.tarjetas-movil tbody,.tarjetas-movil tr,.tarjetas-movil td{display:block;width:auto!important;max-width:none!important;min-width:0!important}
+ .tarjetas-movil{table-layout:auto!important}.tarjetas-movil colgroup{display:none}
+ .tarjetas-movil tr:has(>th){display:none}
+ .tarjetas-movil tr{padding:14px 16px;border-bottom:1px solid var(--linea)}
+ .tarjetas-movil td{padding:3px 0!important;border:0!important;text-align:left!important;white-space:normal!important;overflow-wrap:normal!important}
+ .tarjetas-movil td[data-t]{display:grid;grid-template-columns:88px 1fr;column-gap:12px;align-items:baseline}
+ .tarjetas-movil td[data-t]:before{content:attr(data-t);font-size:12px;color:var(--tinta-3);font-weight:600}
+ .tarjetas-movil td[data-t]>*{grid-column:2}   /* lo que va debajo ("hace 231 días") queda bajo el valor, no bajo la etiqueta */
+ .tarjetas-movil td.acciones-movil{padding-top:10px!important;display:flex;flex-wrap:wrap;gap:8px}
+ .tarjetas-movil td.acciones-movil>details{display:inline-block}
+}
+/* Nueva orden: "Crear orden" en una sola línea */
+.no-crear{white-space:nowrap}
+/* Producción en el teléfono: la tabla se desliza de lado (en la computadora queda visible para que sus formularios
+   desplegables no se recorten; con uno abierto, .tabla:has(details.cobro[open]) la vuelve visible igual) */
+@media (max-width:900px){.tabla.prod-t{overflow-x:auto}}
+/* Configuración en el teléfono: título arriba y contenido debajo, a todo el ancho (en dos columnas quedaban ~150px) */
+@media (max-width:720px){.tarjeta.cf-b,.cf-b{flex-direction:column;gap:12px;padding:18px 16px}.cf-b>h3{margin:0}}
+/* Gastos y Resultados en el teléfono: categoría y monto en una línea, la barra debajo a todo el ancho
+   (con 220px de nombre + barra + 110px de monto, el monto se cortaba: "$480.(") */
+@media (max-width:720px){.cf-fila{grid-template-columns:1fr auto;row-gap:4px;column-gap:12px}.cf-fila .cf-track{grid-column:1/-1;grid-row:2}}

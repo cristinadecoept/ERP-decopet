@@ -129,6 +129,13 @@ function fijarTablas(){if(!matchMedia('(min-width:821px)').matches)return;
   ws.forEach(w=>{const col=document.createElement('col');col.style.width=(w/tot*100).toFixed(2)+'%';cg.appendChild(col)});
   t.insertBefore(cg,t.firstChild);if(t.dataset.min)t.style.minWidth=t.dataset.min+'px';t.classList.add('fija')})}
 fijarTablas();document.addEventListener('DOMContentLoaded',fijarTablas);
+// teléfono: una tabla que se desliza de lado lleva sombra en el borde donde quedan columnas escondidas
+// (antes no había ninguna pista y no se veían Salidas, Saldo, Status o Costo)
+function marcarDeslizables(){document.querySelectorAll('.tabla,.tarjeta,.op-card').forEach(c=>{
+ const m=c.scrollWidth-c.clientWidth;c.classList.toggle('desliza-der',m>4&&c.scrollLeft<m-4);c.classList.toggle('desliza-izq',m>4&&c.scrollLeft>4);});}
+document.addEventListener('scroll',e=>{if(e.target.classList&&e.target.matches('.tabla,.tarjeta,.op-card'))marcarDeslizables();},true);
+addEventListener('resize',marcarDeslizables);addEventListener('load',marcarDeslizables);
+new MutationObserver(()=>{clearTimeout(window._md);window._md=setTimeout(marcarDeslizables,120);}).observe(document.querySelector('main.cont')||document.body,{childList:true,subtree:true});
 // la pregunta "¿seguro?" con el diseño del ERP en vez del cuadro gris del navegador
 function preguntar(msg,{si='Sí, seguir',no='Cancelar'}={}){const d=document.getElementById('dlg-preg');d.querySelector('.dlg-txt').textContent=msg;
  d.querySelector('[value=si]').textContent=si;d.querySelector('[value=no]').textContent=no;d.returnValue='';d.showModal();
