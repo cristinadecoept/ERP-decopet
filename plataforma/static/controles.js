@@ -34,6 +34,14 @@
     const r = p._dueno.getBoundingClientRect();
     p.style.minWidth = r.width + 'px'; p.style.maxHeight = '';
     const abajo = innerHeight - r.bottom - 12, arriba = r.top - 12, h = p.offsetHeight;
+    // el calendario no debe quedar cortado: si no cabe ni abajo ni arriba, va al lado del campo, centrado en la pantalla
+    if (p.classList.contains('ctl-cal') && h > abajo && h > arriba) {
+      p.style.minWidth = '';
+      const izq = r.left - p.offsetWidth - 8;
+      p.style.left = (izq >= 8 ? izq : Math.min(r.right + 8, innerWidth - p.offsetWidth - 8)) + 'px';
+      p.style.top = Math.max(8, Math.min(r.top + r.height / 2 - h / 2, innerHeight - h - 8)) + 'px';
+      return;
+    }
     if (h > abajo && arriba > abajo) { p.style.maxHeight = arriba + 'px'; p.style.top = Math.max(8, r.top - 6 - Math.min(h, arriba)) + 'px'; }
     else { p.style.maxHeight = abajo + 'px'; p.style.top = (r.bottom + 6) + 'px'; }
     p.style.left = Math.max(8, Math.min(r.left, innerWidth - p.offsetWidth - 8)) + 'px';
@@ -92,10 +100,11 @@
       if (esDe(sel)) {
         if (k === 'ArrowDown' || k === 'ArrowUp') { e.preventDefault(); mover(k === 'ArrowDown' ? 1 : -1); }
         else if (k === 'Enter' || k === ' ') { e.preventDefault(); elegirFoco(); }
-        else if (k === 'Escape' || k === 'Tab') { cerrar(); }
+        else if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(); }   // solo cierra la lista, no el panel
+        else if (k === 'Tab') cerrar();
       } else if (k === 'Enter' || k === ' ' || k === 'ArrowDown' || (k === 'ArrowUp' && e.altKey) || k === 'F4') { e.preventDefault(); abrir(); }
     });
-    sel.addEventListener('blur', () => setTimeout(() => { if (esDe(sel) && document.activeElement !== sel) cerrar(); }, 120));
+    sel.addEventListener('blur', () => setTimeout(() => { if (esDe(sel) && document.hasFocus() && document.activeElement !== sel) cerrar(); }, 120));
   }
 
   // ── buscador (campos con lista de sugerencias): se busca por nombre sin importar tildes, o por teléfono
@@ -126,14 +135,19 @@
     inp.addEventListener('input', e => { if (e.isTrusted) setTimeout(abrir, 0); });
     inp.addEventListener('focus', () => setTimeout(abrir, 0));
     inp.addEventListener('mousedown', () => { if (!esDe(inp)) setTimeout(abrir, 0); });
+    const elegido = () => [...document.getElementById(inp.dataset.lista).options].some(o => o.value === inp.value);
     inp.addEventListener('keydown', e => {
+      // Enter en un buscador nunca envía el formulario: elige lo resaltado o, si no hay lista, la vuelve a abrir.
+      // (Antes, con la lista cerrada, enviaba la orden a medias y salía el aviso "Elige un cliente".)
+      if (e.key === 'Enter' && !esDe(inp)) { e.preventDefault(); if (!elegido()) abrir(); return; }
       if (!esDe(inp)) { if (e.key === 'ArrowDown') { e.preventDefault(); abrir(); } return; }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); mover(e.key === 'ArrowDown' ? 1 : -1); }
-      else if (e.key === 'Enter') { if (elegirFoco()) e.preventDefault(); }   // Enter elige, no envía el formulario
-      else if (e.key === 'Escape') { e.preventDefault(); cerrar(); }
+      else if (e.key === 'Enter') { e.preventDefault(); elegirFoco(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(); }   // solo la lista, no el panel
       else if (e.key === 'Tab') cerrar();
     });
-    inp.addEventListener('blur', () => setTimeout(() => { if (esDe(inp)) cerrar(); }, 120));
+    // Se cierra solo si el foco pasó a otro campo. Cambiar de ventana (ir a WhatsApp a ver el nombre) no la cierra.
+    inp.addEventListener('blur', () => setTimeout(() => { if (esDe(inp) && document.hasFocus() && document.activeElement !== inp) cerrar(); }, 120));
   }
 
   // ── calendario: el campo de fecha queda igual (se puede escribir); al tocarlo se abre el del ERP
@@ -170,7 +184,7 @@
     };
     inp.addEventListener('mousedown', e => { if (inp.disabled) return; e.preventDefault(); inp.focus(); abrir(); });
     inp.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && esDe(inp)) { e.preventDefault(); cerrar(); }
+      if (e.key === 'Escape' && esDe(inp)) { e.preventDefault(); e.stopPropagation(); cerrar(); }   // solo el calendario, no el panel
       else if ((e.key === 'ArrowDown' && e.altKey) || e.key === 'F4') { e.preventDefault(); abrir(); }
     });
   }
