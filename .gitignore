@@ -54,3 +54,6 @@ docs/AirTable/
 *.backup
 # Paquetes de imágenes o respaldos comprimidos
 *.zip
+*.tgz
+# Carpetas de imágenes que pasa Cristina (decopet-imagenes-AAAAMMDD)
+decopet-imagenes-*/
