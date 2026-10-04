@@ -571,6 +571,20 @@ def _():
     assert A.volver_tras_crear(844, pide(None)) == "/ordenes?abrir=844"
 
 
+@prueba("Exportar el registro de ventas pide la misma clave que la pantalla (antes se bajaba sin ella)")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB); con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('clave_resultados', 'clave-de-prueba')"); con.commit(); con.close()
+        r = c.get("/historial/exportar", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/historial", "bajó las ventas sin la clave"
+        c.cookies.set("res_ok", "clave-de-prueba")
+        r = c.get("/historial/exportar", follow_redirects=False)
+        assert r.status_code == 200 and "text/csv" in r.headers["content-type"], r.status_code
+        sesion_de(c, "logistica")
+        assert c.get("/historial/exportar", follow_redirects=False).status_code == 303, "logística bajó las ventas"
+
+
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
 def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:

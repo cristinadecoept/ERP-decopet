@@ -3212,7 +3212,9 @@ def historial(request: Request, anio: str = "", mes: str = "", semana: str = "",
 
 
 @app.get("/historial/exportar")
-def historial_exportar(anio: str = "", mes: str = "", semana: str = "", q: str = "", con=Depends(db)):
+def historial_exportar(request: Request, anio: str = "", mes: str = "", semana: str = "", q: str = "", con=Depends(db)):
+    # lo mismo que pide la pantalla: sin esto, cualquiera que supiera la dirección bajaba todas las ventas sin la clave
+    if not solo_admin(request) or not resultados_abierto(request, con): return RedirectResponse("/historial", status_code=303)
     import csv, io
     from fastapi.responses import StreamingResponse
     rows = _historial_rows(con, anio, mes, q)
@@ -3220,7 +3222,7 @@ def historial_exportar(anio: str = "", mes: str = "", semana: str = "", q: str =
     buf = io.StringIO(); w = csv.writer(buf, delimiter=";")
     w.writerow(["Fecha", "Semana", "Mes", "Cliente", "Producto", "Precio", "Cantidad", "Facturación", "Forma de pago"])
     for r in rows:
-        w.writerow([r["fecha"], r["semana"], r["mes"], r["cliente"], r["producto"] + (f" · plato {r['color']}" if r["color"] else "") + (" + malla" if r["malla"] else ""), r["precio"], int(r["cantidad"] or 1), r["linea"], r["forma"] or ""])
+        w.writerow([r["fecha"], r["semana"], r["mes"], r["cliente"], (r["producto"] or "—") + (f" · plato {r['color']}" if r["color"] else "") + (" + malla" if r["malla"] else ""), r["precio"], int(r["cantidad"] or 1), r["linea"], r["forma"] or ""])
     buf.seek(0)
     nombre = f"decopet-ventas-{anio or 'todo'}{('-' + mes) if mes else ''}.csv"
     return StreamingResponse(iter(["\ufeff" + buf.getvalue()]), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={nombre}"})

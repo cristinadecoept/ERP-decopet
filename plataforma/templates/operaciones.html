@@ -1,6 +1,4 @@
-{% extends "base.html" %}{% block titulo %}Operaciones · Decopet{% endblock %}{% block main_attrs %} data-sin-recarga{% endblock %}{% block cuerpo %}
-{# Piloto: al cambiar de pestaña o filtro la pantalla se funde en vez de parpadear (navegadores que lo soportan) #}
-<style>@view-transition{navigation:auto}</style>
+{% extends "base.html" %}{% block titulo %}Operaciones · Decopet{% endblock %}{% block cuerpo %}
 {% set qs = '&tipo=' ~ tipo ~ '&agencia=' ~ agencia ~ '&desp=' ~ desp ~ '&vista=' ~ vista ~ ('&q=' ~ q if q else '') %}
 <div class="fila-titulo"><div><h1>Operaciones</h1><div class="sub">{% if cola=='hoy' %}{{ fecha_larga() }} · {{ total }} entrega{{ 's' if total!=1 }}{% elif cola=='manana' %}mañana · {{ total }} entrega{{ 's' if total!=1 }}{% elif cola=='dia' %}{{ dia|dia }} · {{ total }} entrega{{ 's' if total!=1 }}{% else %}{{ colas[cola] }} · {{ total }}{% endif %}</div></div>
 <div class="cab-btns">{% if por_desp %}<button class="btn sec" onclick="document.getElementById('resumenes').scrollIntoView({behavior:'smooth'})">Resumen para despachadores</button>{% endif %}{% if 'crear' in puede %}<button class="btn" onclick="abrirPanel('/ordenes/nueva/panel')">+ Nueva orden</button>{% endif %}</div></div>
@@ -98,7 +96,7 @@ async function abrirPanel(url){const r=await fetch(url+'?volver='+encodeURICompo
 function cerrarPanel(){document.getElementById('panel').classList.remove('on');document.getElementById('velo').classList.remove('on');}
 // ?abrir=ID: la orden recién creada aparece abierta en el panel, para seguir coordinándola sin cambiar de pantalla.
 // Se quita de la dirección para que recargar no la vuelva a abrir.
-function trasGuardar(url){const id=url.searchParams.get('abrir');if(!id)return;url.searchParams.delete('abrir');history.replaceState(null,'',url.pathname+url.search);abrirPanel('/ordenes/'+id+'/panel');}
+function trasGuardar(url){const id=url.searchParams.get('abrir');if(!id)return false;url.searchParams.delete('abrir');history.replaceState(null,'',url.pathname+url.search);abrirPanel('/ordenes/'+id+'/panel');return true;}
 trasGuardar(new URL(location.href));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarPanel();});
 </script><script>

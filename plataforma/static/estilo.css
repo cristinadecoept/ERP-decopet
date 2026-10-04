@@ -1296,3 +1296,5 @@ html.oscuro .ctl-cal-g button.sel{color:#0f1512}
 @media (prefers-reduced-motion:reduce){.ctl-pop{animation:none}}
 /* modo oscuro: el selector de despachador de cada fila tenía la sombra y la flecha invisibles y parecía texto suelto */
 html.oscuro .sel-desp{box-shadow:0 0 0 1px var(--linea);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aab3ae' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+/* al pasar de una pantalla a otra se funde en vez de parpadear (navegadores que lo soportan) */
+@view-transition{navigation:auto}
