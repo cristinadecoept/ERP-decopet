@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block titulo %}Despachadores · Decopet{% endblock %}{% block cuerpo %}
-<div class="fila-titulo"><div><h1>Despachadores</h1><div class="sub">{% if 'ver_dinero' in puede %}Cada pedido que le asignas suma lo que le pagas por esa zona. El lunes entras, marcas pagado y vuelve a cero.{% else %}Quién entrega y qué lleva hoy.{% endif %}</div></div>{% if rol=='admin' %}<button class="btn" onclick="document.getElementById('nuevo').hidden=!document.getElementById('nuevo').hidden">+ Nuevo despachador</button>{% endif %}</div>
+<div class="fila-titulo"><div><h1>Despachadores</h1><div class="sub">{% if 'ver_dinero' in puede %}Se les paga los viernes, menos a Cristina: esa la pagas cuando decidas.{% else %}Quién entrega y qué lleva hoy.{% endif %}</div></div>{% if rol=='admin' %}<button class="btn" onclick="document.getElementById('nuevo').hidden=!document.getElementById('nuevo').hidden">+ Nuevo despachador</button>{% endif %}</div>
 
 {% if rol=='admin' %}<div class="tarjeta" id="nuevo" hidden style="margin-bottom:16px"><h3>Nuevo despachador</h3>
 <form method="post" action="/despachadores/guardar"><div class="g2"><div><label>Nombre</label><input name="nombre" required></div><div><label>Teléfono</label><input name="telefono" placeholder="0414-1234567"></div></div>

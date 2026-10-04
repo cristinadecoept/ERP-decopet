@@ -1,1 +1,1 @@
-{"version":"0.0.1","configurations":[{"name":"decopet-erp","runtimeExecutable":"./.venv/bin/uvicorn","runtimeArgs":["app.main:app","--host","127.0.0.1","--port","8765"],"port":8765}]}
+{"version": "0.0.1", "configurations": [{"name": "decopet-erp", "runtimeExecutable": "./.venv/bin/uvicorn", "runtimeArgs": ["app.main:app", "--host", "127.0.0.1", "--port", "8765"], "port": 8765}]}

@@ -1253,3 +1253,177 @@ body:has(.entrar-w) .barra-movil,body:has(.entrar-w) .velo-movil,body:has(.entra
 }
 @media (max-width:900px){.bm-logo img{height:42px!important}.barra-movil{padding:12px 16px}}
 @media (max-width:900px){.bm-logo img{height:34px!important}}
+.num-orden{white-space:nowrap}
+table.fija td.cl-tel{white-space:nowrap}
+/* Operaciones · columna Cliente: nombre y debajo el número; las alertas son un punto rojo con palabra corta.
+   El detalle (pedida el…, hace…) aparece al pasar el mouse. */
+.op-cli-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px;font-size:12px}
+.op-punto{display:inline-flex;align-items:center;gap:5px;color:#b3321b;font-weight:600;font-size:11.5px;cursor:help}
+.op-punto:before{content:"";width:6px;height:6px;border-radius:99px;background:#c94a2f}
+table.fija td .tipo-cli{display:inline-block;max-width:100%;white-space:normal;line-height:1.25;text-align:center}
+/* Clientes · datos pendientes: qué le falta a cada ficha */
+.sub-faltan{align-items:center;margin-top:-6px}.sub-faltan>.mini{margin-right:2px}
+.falta-cl{font-size:11.5px;color:#b45a1c;font-weight:500;margin-top:3px}
+.nota-ico{font-size:12px;cursor:help;margin-left:2px}
+table.fija td .pago{max-width:100%;white-space:normal;width:auto;line-height:1.25}
+/* Mis entregas · viaje a la agencia: una ficha por paquete, cada dato con su etiqueta */
+.ag-paqs{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:14px}
+.ag-paq{background:var(--fondo);border-radius:12px;padding:14px 16px}
+.ag-cab{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}.ag-cab b{font-size:15px}
+.ag-datos{display:grid;grid-template-columns:78px 1fr;gap:6px 12px;margin:0;font-size:13.5px}
+.ag-datos dt{color:var(--tinta-3);font-size:12px;font-weight:600;padding-top:1px}.ag-datos dd{margin:0;line-height:1.4}
+
+/* Cash flow: al pasar el mouse por una caja "por cobrar" sale quién debe */
+.cf-det{position:relative;cursor:help;outline:none}
+.cf-det u{text-decoration:underline dotted;text-underline-offset:3px}
+.cf-det-pop{display:none;position:absolute;right:-140px;top:calc(100% + 6px);z-index:40;background:var(--sup);color:var(--tinta);border-radius:12px;box-shadow:var(--sombra);padding:10px 12px;min-width:300px;white-space:nowrap}
+.cf-det:hover .cf-det-pop,.cf-det:focus .cf-det-pop,.cf-det:focus-within .cf-det-pop{display:block}
+.cf-det-pop table{width:100%;font-size:12.5px;border-collapse:collapse}
+.cf-det-pop th{text-align:left;font-weight:600;color:var(--tinta-3);padding:2px 10px 6px 0;border-bottom:1px solid var(--linea)}
+.cf-det-pop td{padding:5px 10px 5px 0;border-bottom:1px solid var(--linea)}
+.cf-det-pop th.num,.cf-det-pop td.num{text-align:right;padding-right:0}
+.cf-det-pop .cf-det-tot td{font-weight:700;border-bottom:0}
+.cf-det-aviso{display:block;margin-top:6px;font-size:11.5px;color:#b45a1c}
+@media (max-width:700px){.cf-det-pop{right:auto;left:0;min-width:260px}}
+
+/* Inicio · cumpleaños: clic en el perro muestra el hogar sin salir de la página */
+.pop-masc{position:relative;display:inline-block}
+.pop-masc>summary{list-style:none;cursor:pointer;font-weight:600;text-decoration:underline dotted;text-underline-offset:3px}
+.pop-masc>summary::-webkit-details-marker{display:none}
+.pop-masc-c{position:fixed;z-index:40;background:var(--sup);border-radius:12px;box-shadow:var(--sombra);padding:12px 14px;min-width:280px;max-width:360px;white-space:normal}
+.pop-masc-c .pm-t{font-size:11px;font-weight:600;color:var(--tinta-3);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px}
+.pop-masc-c .pm-t:first-child{margin-top:0}
+.pop-masc-c .pm-p{padding:3px 0}
+
+/* ---------- Calendario y pendientes ---------- */
+.cal-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:18px;align-items:start}
+@media (max-width:1000px){.cal-grid{grid-template-columns:1fr}}
+.cal-cab{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.cal-cab h3{margin:0 6px;min-width:150px;text-align:center}
+.cal-t{width:100%;table-layout:fixed;border-collapse:collapse}
+.cal-t th{font-size:11px;font-weight:600;color:var(--tinta-3);text-align:left;padding:4px 6px}
+.cal-t td{vertical-align:top;height:96px;padding:5px;border:1px solid var(--linea);cursor:pointer;overflow:hidden}
+.cal-t td:hover{background:var(--fondo)}
+.cal-t td.fuera{opacity:.35}
+.cal-t td.sel{outline:2px solid var(--verde-osc);outline-offset:-2px}
+.cal-n{font-size:12px;font-weight:600;margin-bottom:3px}
+.cal-t td.hoy .cal-n{display:inline-block;background:var(--verde-osc);color:#fff;border-radius:10px;padding:0 7px}
+.cal-ev{display:block;font-size:11px;line-height:1.3;padding:2px 6px;border-radius:6px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--fondo);color:var(--tinta)}
+.cal-ev.mio{background:#fde9d7;color:#8a3d0c;font-weight:600}
+.cal-ev.entrega{background:#e3eefb;color:#1e4f8a}
+.cal-ev.pago{background:#fbe4e4;color:#8a1e1e}
+.cal-ev.llega{background:#e2f2e8;color:#22603a}
+.cal-ev.cumple{background:#f3e8fb;color:#5b2a86}
+html.oscuro .cal-ev{filter:brightness(.85)}
+.cal-mas{font-size:11px;color:var(--tinta-3)}
+.cal-ley{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.cal-ley .cal-ev{display:inline-block}
+.cal-dia-ln{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--linea);color:inherit;text-decoration:none}
+.cal-dia-ln .cal-ev{white-space:normal;font-size:12.5px}
+.cal-nuevo{display:flex;gap:6px;margin-top:10px}.cal-nuevo input{flex:1}
+.cal-nuevo2{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin:8px 0}
+.cal-nuevo2 input[name=texto]{grid-column:1/-1}
+.cal-nuevo2 .btn.pel{grid-column:3}
+.pend-ln{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--linea)}
+.pend-ln.atras .mini{color:#b45a1c}
+.pend-ln.hecho span{text-decoration:line-through;color:var(--tinta-3)}
+.pend-check{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--tinta-3);background:none;color:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0;flex:none}
+.pend-check:hover{border-color:var(--verde-osc);color:var(--verde-osc)}
+.pend-check.on{background:var(--verde-osc);border-color:var(--verde-osc);color:#fff}
+.pend-ed{flex:1}.pend-ed>summary{list-style:none;cursor:pointer;display:flex;flex-direction:column}
+.pend-ed>summary::-webkit-details-marker{display:none}
+.cal-ev.pagado{background:var(--fondo);color:var(--tinta-3);text-decoration:line-through}
+
+/* ---------- Notas ---------- */
+.notas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;align-items:start}
+.nota{background:var(--sup);border-radius:14px;box-shadow:var(--sombra);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.nota.fijada{outline:2px solid #f0c58a}
+.nota input[name=titulo]{font-weight:700;border:0;background:transparent;padding:2px 0;font-size:15px}
+.nota textarea{border:0;background:transparent;resize:vertical;min-height:90px;padding:2px 0;font:inherit;line-height:1.45}
+.nota input[name=titulo]:focus,.nota textarea:focus{outline:none;background:var(--fondo);border-radius:6px}
+.nota-pie{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--tinta-3)}
+.nota-pie .esp{flex:1}
+.nota-pie button{background:none;border:0;cursor:pointer;font-size:12px;color:var(--tinta-3);padding:2px 4px}
+.nota-pie button:hover{color:var(--tinta)}
+.nota-pie .guardar{color:var(--verde-osc);font-weight:600}
+.nota.nueva{border:1.5px dashed var(--linea);box-shadow:none}
+
+/* Notas tipo post-it, debajo de Pendientes en el Calendario */
+.postits{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.postit{background:#fff4b8;color:#4a3f0a;border-radius:4px 4px 14px 4px;box-shadow:0 2px 6px rgba(0,0,0,.08);padding:8px 10px;display:flex;flex-direction:column;transform:rotate(-.6deg)}
+.postit:nth-child(even){transform:rotate(.6deg);background:#ffe9a8}
+.postit.fijada{background:#ffd9a0}
+.postit.nueva{background:transparent;border:1.5px dashed var(--linea);box-shadow:none;transform:none;color:var(--tinta)}
+.postit textarea{border:0;background:transparent;resize:vertical;font:inherit;font-size:13px;line-height:1.4;color:inherit;padding:0;min-height:56px}
+.postit textarea:focus{outline:none}
+.postit-pie{display:flex;align-items:center;gap:4px;margin-top:4px}
+.postit-pie .esp{flex:1}
+.postit-pie button{background:none;border:0;cursor:pointer;font-size:12px;color:inherit;opacity:.6;padding:2px 4px}
+.postit-pie button:hover{opacity:1}
+html.oscuro .postit:not(.nueva){color:#3b330a}
+
+/* Inicio · cumpleaños: mensaje listo para WhatsApp */
+.msj-wa{position:relative;display:inline-block;margin-right:6px}
+.msj-wa>summary{list-style:none}.msj-wa>summary::-webkit-details-marker{display:none}
+.msj-wa-c{position:fixed;z-index:40;background:var(--sup);border-radius:12px;box-shadow:var(--sombra);padding:12px;width:340px;white-space:normal;text-align:left}
+.msj-wa-c textarea{width:100%;font:inherit;font-size:13px;line-height:1.45;border:1px solid var(--linea);border-radius:8px;padding:8px;resize:vertical}
+.msj-wa-pie{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+.msj-wa-ia{margin-top:6px;color:var(--tinta-3)}.msj-wa-ia:empty{display:none}
+.msj-wa-c{width:380px}
+.cf-svg.hoy-graf{max-width:none;margin:10px 0 0}
+.dir-mapa{display:block;width:100%;height:210px;border:0;border-radius:12px;margin-top:10px;background:var(--fondo)}
+
+/* Ficha del cliente · Qué ha comprado: solo lo que compró, no el catálogo entero */
+.compras-l{display:flex;flex-direction:column}
+.compra-ln{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--linea)}
+.compra-ln:last-child{border-bottom:0}
+.compra-n{background:var(--verde-cl,#e2f2e8);color:var(--verde-osc);font-weight:700;font-size:13px;border-radius:8px;text-align:center;padding:3px 0}
+
+/* ---------- Ficha del cliente (perfil) ---------- */
+.perfil-cab{display:flex;align-items:center;gap:18px;margin-bottom:16px;padding:20px 22px}
+.perfil-av{width:64px;height:64px;border-radius:50%;background:var(--verde-osc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;flex:none}
+.perfil-info{flex:1;min-width:0}
+.perfil-info h1{margin:0 0 6px;font-size:26px}
+.perfil-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip-alerta{color:#b3321b !important;border-color:#e6b8ae !important;background:#fbe9e5 !important;text-decoration:none}
+.perfil-contacto{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13.5px;color:var(--tinta-2,var(--tinta-3))}
+.perfil-acc{flex:none}
+@media (max-width:700px){.perfil-cab{flex-wrap:wrap}.perfil-acc{width:100%}.perfil-acc .btn{width:100%}}
+.perfil-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr);gap:16px;align-items:start}
+@media (max-width:1100px){.perfil-grid{grid-template-columns:1fr}}
+.perfil-main,.perfil-side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.perfil-main>.tarjeta,.perfil-side>.tarjeta{margin:0}
+.hogar-g{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media (max-width:800px){.hogar-g{grid-template-columns:1fr}}
+.sub-t{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--tinta-3);margin:0 0 6px}
+.tabs-bar{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--linea);margin:-4px -4px 14px;padding-bottom:8px}
+.tab-b{background:none;border:0;padding:7px 12px;border-radius:8px;font:inherit;font-size:13.5px;font-weight:600;color:var(--tinta-3);cursor:pointer}
+.tab-b:hover{background:var(--fondo);color:var(--tinta)}
+.tab-b.act{background:var(--fondo);color:var(--verde-osc)}
+.tab-n{background:#fbe9e5;color:#b3321b;border-radius:10px;padding:0 6px;font-size:11px}
+.perfil-tabs .tab-p>.cf-cuerpo{padding:0}
+.hogar-g .perro-g3{grid-template-columns:1fr 1fr}.hogar-g .perro-g3>div:nth-child(3){grid-column:1/-1}
+.op-chips{display:flex;flex-wrap:wrap;gap:6px}.op-chip{background:var(--fondo);border-radius:8px;padding:6px 10px;font-weight:600;font-size:13.5px}
+/* Ficha del cliente estilo tienda: datos en texto, formularios solo al editar */
+.stats-bar{display:flex;flex-wrap:wrap;gap:0;padding:0;margin-bottom:16px;overflow:hidden}
+.stats-bar>div{flex:1 1 120px;padding:14px 18px;border-right:1px solid var(--linea);display:flex;flex-direction:column;gap:4px}
+.stats-bar>div:last-child{border-right:0}
+.stats-bar span{font-size:12px;color:var(--tinta-3)}
+.stats-bar b{font-size:20px;font-weight:700}
+.stats-bar b a{color:inherit;text-decoration:none}
+.stats-bar .acento b{color:var(--verde-osc)}
+.ult-ped{cursor:pointer}.ult-ped:hover{box-shadow:0 0 0 2px var(--linea)}
+.ult-cab{display:flex;align-items:baseline;justify-content:space-between;gap:10px}.ult-cab h3{margin:0}
+.ult-cuerpo{display:flex;justify-content:space-between;gap:12px;margin:10px 0 8px;font-size:14px}
+.ult-est{display:flex;gap:6px}
+.ver-ln{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--linea)}
+.ver-cab{display:flex;justify-content:space-between;align-items:center}.ver-cab h3{margin:0}
+.link-ed{background:none;border:0;color:var(--verde-osc);font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:2px 0}
+.link-ed:hover{text-decoration:underline}
+.datos-ver{display:flex;flex-direction:column;margin-top:10px}
+.datos-ver>div{display:grid;grid-template-columns:90px 1fr;gap:10px;padding:7px 0;border-bottom:1px solid var(--linea);font-size:14px;word-break:break-word}
+.datos-ver>div:last-child{border-bottom:0}
+.datos-ver span{color:var(--tinta-3);font-size:12.5px}
+.datos-ver i{color:var(--tinta-3);font-style:normal}
+.dir-ver{font-size:14px;margin-bottom:4px}
+.stats-bar b *{font-size:inherit !important;font-weight:inherit !important;color:inherit}

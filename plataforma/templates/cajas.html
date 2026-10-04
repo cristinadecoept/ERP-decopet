@@ -12,4 +12,15 @@
 <div><label>Nueva caja</label><input name="nueva_cuenta" placeholder="nombre"></div><div><label>Tipo</label><select name="nuevo_tipo"><option value="operativa">Operativa</option><option value="inversion">Inversión</option><option value="por_cobrar">Por cobrar</option></select></div><div><label>Moneda</label><select name="nueva_moneda"><option>USD</option><option>VES</option><option>EUR</option><option>USDT</option></select></div></div>
 <p style="margin:10px 0 4px"><button class="btn chico">Guardar</button></p></td></tr></table></div></form>
 <p class="mini" style="margin-top:8px">Marca <b>Personal</b> las cajas que no son de Decopet (inversiones, cuentas tuyas): siguen aquí, pero no suman en el saldo del negocio. El saldo inicial es lo que había en cada caja el día de la fecha de corte. Desde ahí, cada venta cobrada entra sola según la forma de pago (Pago Móvil → 006, Zelle → 003, efectivo al entregar → 002 Juan Despachos…) y tú solo registras gastos y movimientos.</p>
+{% for c in cuentas if c.con_detalle %}<div class="tarjeta" id="detalle" style="margin-top:18px;max-width:760px"><h3>{{ c.codigo }} · {{ c.nombre }} · quién debe</h3>
+<div class="mini" style="margin-bottom:8px">Es la nota que sale en Cash flow al pasar el mouse por esta caja. No mueve el saldo.</div>
+<table class="lineas"><tr><th>Responsable</th><th>Concepto</th><th class="num">Monto (USD)</th><th></th></tr>
+{% for x in detalle.get(c.id, []) %}<tr><form method="post" action="/cashflow/detalle" id="dt-{{ x.id }}"><input type="hidden" name="cuenta_id" value="{{ c.id }}"><input type="hidden" name="id" value="{{ x.id }}"></form>
+<td><input name="responsable" form="dt-{{ x.id }}" value="{{ x.responsable or '' }}"></td><td><input name="concepto" form="dt-{{ x.id }}" value="{{ x.concepto or '' }}"></td>
+<td class="num"><input name="monto" form="dt-{{ x.id }}" inputmode="decimal" value="{{ '%g'|format(x.monto) }}" style="text-align:right;width:110px"></td>
+<td style="white-space:nowrap;text-align:right"><button class="btn chico" form="dt-{{ x.id }}">Guardar</button> <button class="btn pel chico" form="dt-{{ x.id }}" name="borrar" value="1" onclick="return confirm('¿Borrar esta línea?')">Borrar</button></td></tr>{% endfor %}
+<tr style="background:var(--fondo)"><form method="post" action="/cashflow/detalle" id="dt-nueva-{{ c.id }}"><input type="hidden" name="cuenta_id" value="{{ c.id }}"></form>
+<td><input name="responsable" form="dt-nueva-{{ c.id }}" placeholder="Responsable"></td><td><input name="concepto" form="dt-nueva-{{ c.id }}" placeholder="Concepto"></td>
+<td class="num"><input name="monto" form="dt-nueva-{{ c.id }}" inputmode="decimal" placeholder="0" style="text-align:right;width:110px"></td><td style="text-align:right"><button class="btn chico" form="dt-nueva-{{ c.id }}">+ Agregar</button></td></tr>
+{% set tot = detalle.get(c.id, [])|sum(attribute='monto') %}<tr><td colspan="2"><b>Total</b>{% if (tot - c.saldo)|abs > 0.009 %} <span class="mini" style="color:#b45a1c">· no cuadra con el saldo de la caja ({{ c.saldo|usd }})</span>{% endif %}</td><td class="num"><b>{{ tot|usd }}</b></td><td></td></tr></table></div>{% endfor %}
 {% endblock %}

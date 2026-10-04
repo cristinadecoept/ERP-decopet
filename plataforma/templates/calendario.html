@@ -1,0 +1,76 @@
+{% extends "base.html" %}{% block titulo %}Calendario · Decopet{% endblock %}{% block cuerpo %}
+{% set volver = '/calendario?mes=' ~ mes_q ~ '&dia=' ~ dia_sel %}
+<div class="fila-titulo"><div><h1>Calendario</h1></div></div>
+
+<div class="cal-grid">
+<div>
+ <div class="tarjeta cal-mes">
+  <div class="cal-cab"><a class="btn sec chico" href="/calendario?mes={{ ant }}">‹</a><h3>{{ titulo_mes }}</h3><a class="btn sec chico" href="/calendario?mes={{ sig }}">›</a>{% if mes_q != hoy_d.strftime('%Y-%m') %}<a class="btn sec chico" href="/calendario">Hoy</a>{% endif %}</div>
+  <table class="cal-t"><tr>{% for d in ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'] %}<th>{{ d }}</th>{% endfor %}</tr>
+  {% for sem in semanas %}<tr>{% for d in sem %}{% set k = d.isoformat() %}{% set es = ev.get(k, []) %}
+   <td class="{{ 'fuera' if d.month != mes_n }} {{ 'hoy' if d == hoy_d }} {{ 'sel' if k == dia_sel }}" onclick="location.href='/calendario?mes={{ mes_q }}&dia={{ k }}'">
+    <div class="cal-n">{{ d.day }}</div>
+    {% if d.month == mes_n %}{% for e in es[:3] %}<div class="cal-ev {{ e.tipo }}">{{ e.txt }}</div>{% endfor %}{% if es|length > 3 %}<div class="cal-mas">+{{ es|length - 3 }} más</div>{% endif %}{% endif %}
+   </td>{% endfor %}</tr>{% endfor %}
+  </table>
+  <div class="cal-ley"><span class="cal-ev mio">Tus pendientes</span><span class="cal-ev entrega">Entregas</span><span class="cal-ev pago">Pagos</span><span class="cal-ev llega">Llega mercancía</span><span class="cal-ev cumple">Cumpleaños</span></div>
+ </div>
+</div>
+
+<div>
+ {% set es = ev.get(dia_sel, []) %}
+ <div class="tarjeta">
+  <h3>{{ dia_sel|dia }}</h3>
+  {% for e in es %}{% if e.tipo == 'mio' %}<div class="cal-dia-ln"><span class="cal-ev mio">{{ e.txt }}</span><form method="post" action="/pendientes/{{ e.id }}/hecho"><input type="hidden" name="volver" value="{{ volver }}"><button class="btn chico">✓ Hecho</button></form></div>
+  {% else %}<a class="cal-dia-ln" href="{{ e.href }}"><span class="cal-ev {{ e.tipo }}">{{ e.txt }}</span><span class="mini">ver →</span></a>{% endif %}
+  {% else %}<p class="mini">Nada para este día.</p>{% endfor %}
+  <form method="post" action="/pendientes/nuevo" class="cal-nuevo"><input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="fecha" value="{{ dia_sel }}">
+   <input name="texto" placeholder="Anotar algo para este día…" required><button class="btn chico">+ Agregar</button></form>
+ </div>
+
+ <div class="tarjeta" style="margin-top:16px">
+  <h3>Pendientes</h3>
+  <form method="post" action="/pendientes/nuevo" class="cal-nuevo2"><input type="hidden" name="volver" value="{{ volver }}">
+   <input name="texto" placeholder="¿Qué tienes pendiente?" required>
+   <input type="date" name="fecha" title="Opcional: ese día te sale en Inicio">
+   <select name="repetir" title="Solo si tiene fecha"><option value="">Una vez</option><option value="semanal">Cada semana</option><option value="mensual">Cada mes</option></select>
+   <button class="btn chico">+ Agregar</button></form>
+  {% for p in pend %}{% set atras = p.fecha and p.fecha < hoy_d.isoformat() %}
+  <div class="pend-ln {{ 'atras' if atras }}">
+   <form method="post" action="/pendientes/{{ p.id }}/hecho"><input type="hidden" name="volver" value="{{ volver }}"><button class="pend-check" title="Marcar hecho">✓</button></form>
+   <details class="pend-ed"><summary><span>{{ p.texto }}</span><span class="mini">{% if p.fecha %}{{ p.fecha|dia }}{% if atras %} · atrasado{% endif %}{% else %}sin fecha{% endif %}{% if p.repetir %} · {{ 'cada semana' if p.repetir == 'semanal' else 'cada mes' }}{% endif %}</span></summary>
+    <form method="post" action="/pendientes/{{ p.id }}/editar" class="cal-nuevo2"><input type="hidden" name="volver" value="{{ volver }}">
+     <input name="texto" value="{{ p.texto }}" required><input type="date" name="fecha" value="{{ p.fecha or '' }}">
+     <select name="repetir"><option value="" {{ 'selected' if not p.repetir }}>Una vez</option><option value="semanal" {{ 'selected' if p.repetir == 'semanal' }}>Cada semana</option><option value="mensual" {{ 'selected' if p.repetir == 'mensual' }}>Cada mes</option></select>
+     <button class="btn chico">Guardar</button><button class="btn pel chico" name="borrar" value="1" onclick="return confirm('¿Borrar este pendiente?')">Borrar</button></form>
+   </details>
+  </div>
+  {% else %}<p class="mini">No tienes pendientes. Anota lo que no quieras olvidar: con fecha te sale en Inicio ese día.</p>{% endfor %}
+  {% if hechos %}<details style="margin-top:10px"><summary class="mini" style="cursor:pointer">Hechos hace poco ({{ hechos|length }})</summary>
+   {% for p in hechos %}<div class="pend-ln hecho"><form method="post" action="/pendientes/{{ p.id }}/editar"><input type="hidden" name="volver" value="{{ volver }}"><button class="pend-check on" name="reabrir" value="1" title="Volver a abrir">✓</button></form><span>{{ p.texto }}</span></div>{% endfor %}</details>{% endif %}
+ </div>
+
+ <div class="tarjeta" id="notas" style="margin-top:16px">
+  <h3>Notas</h3>
+  <div class="postits">
+   <form method="post" action="/notas/guardar" class="postit nueva"><input type="hidden" name="volver" value="{{ volver }}">
+    <textarea name="texto" placeholder="+ Nueva nota…" rows="3" required></textarea>
+    <div class="postit-pie"><span class="esp"></span><button>Guardar</button></div></form>
+   {% for n in notas %}
+   <form method="post" action="/notas/guardar" class="postit {{ 'fijada' if n.fijada }}"><input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="id" value="{{ n.id }}">
+    <textarea name="texto" rows="{{ [3, (n.texto or '').count('\n') + 2]|max }}" oninput="this.form.classList.add('cambio')">{% if n.titulo %}{{ n.titulo }}
+{% endif %}{{ n.texto or '' }}</textarea>
+    <div class="postit-pie"><button style="order:9">Guardar</button><span class="esp"></span>
+     <button name="fijar" value="1" title="{{ 'Desfijar' if n.fijada else 'Fijar arriba' }}">📌</button>
+     <button name="borrar" value="1" onclick="return confirm('¿Borrar esta nota?')" title="Borrar">×</button></div></form>
+   {% endfor %}
+  </div>
+ </div>
+</div>
+</div>
+<script>
+let enviando = false;
+document.querySelectorAll('form.postit').forEach(f => f.addEventListener('submit', () => { enviando = true; }));
+addEventListener('beforeunload', e => { if (!enviando && document.querySelector('form.postit.cambio, form.postit.nueva textarea:not(:placeholder-shown)')) { e.preventDefault(); e.returnValue = ''; } });
+</script>
+{% endblock %}

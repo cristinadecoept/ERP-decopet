@@ -207,13 +207,24 @@ tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa
 # ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
 tpl.env.tests["lower_empieza"] = lambda caja, dijo: bool(dijo) and (caja or "").lower().startswith((dijo or "").lower())
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
-               "Mérida", "San Cristóbal", "Maturín", "Cumaná", "Porlamar", "Valera", "Punto Fijo", "Coro", "Cabimas", "Acarigua", "Guanare", "San Felipe", "Barinas", "El Tigre", "Carúpano", "Charallave", "Cúa"]
+               "Mérida", "San Cristóbal", "Maturín", "Cumaná", "Porlamar", "Valera", "Punto Fijo", "Coro", "Cabimas", "Acarigua", "Guanare", "San Felipe", "Barinas", "El Tigre", "Carúpano", "Charallave", "Cúa",
+               "Puerto Cabello", "San Antonio de los Altos", "Higuerote", "Anaco", "Ciudad Ojeda", "San Francisco", "Tucacas", "Cagua", "Turmero", "Catia La Mar", "Quíbor", "Tucupita",
+               "San Juan de los Morros", "San Carlos", "San Fernando de Apure", "Trujillo", "Puerto Ayacucho"]
 # A qué estado pertenece cada ciudad: el estado se llena solo, nadie lo escribe.
 ESTADO_DE_CIUDAD = {"Caracas": "Distrito Capital", "Los Teques": "Miranda", "Guarenas": "Miranda", "Guatire": "Miranda", "Charallave": "Miranda", "Cúa": "Miranda",
                     "La Guaira": "La Guaira", "Valencia": "Carabobo", "Maracay": "Aragua", "Maracaibo": "Zulia", "Cabimas": "Zulia", "Barquisimeto": "Lara",
                     "Puerto Ordaz": "Bolívar", "Ciudad Bolívar": "Bolívar", "Puerto La Cruz": "Anzoátegui", "Barcelona": "Anzoátegui", "Lechería": "Anzoátegui", "El Tigre": "Anzoátegui",
                     "Mérida": "Mérida", "San Cristóbal": "Táchira", "Maturín": "Monagas", "Cumaná": "Sucre", "Carúpano": "Sucre", "Porlamar": "Nueva Esparta",
-                    "Valera": "Trujillo", "Punto Fijo": "Falcón", "Coro": "Falcón", "Acarigua": "Portuguesa", "Guanare": "Portuguesa", "San Felipe": "Yaracuy", "Barinas": "Barinas"}
+                    "Valera": "Trujillo", "Punto Fijo": "Falcón", "Coro": "Falcón", "Acarigua": "Portuguesa", "Guanare": "Portuguesa", "San Felipe": "Yaracuy", "Barinas": "Barinas",
+                    "Puerto Cabello": "Carabobo", "San Antonio de los Altos": "Miranda", "Higuerote": "Miranda", "Anaco": "Anzoátegui", "Ciudad Ojeda": "Zulia",
+                    "San Francisco": "Zulia", "Tucacas": "Falcón", "Cagua": "Aragua", "Turmero": "Aragua", "Catia La Mar": "La Guaira", "Quíbor": "Lara", "Tucupita": "Delta Amacuro",
+                    "San Juan de los Morros": "Guárico", "San Carlos": "Cojedes", "San Fernando de Apure": "Apure", "Trujillo": "Trujillo", "Puerto Ayacucho": "Amazonas"}
+# Si el cliente dice solo el estado, se le pone la ciudad principal de ese estado (decisión de Cristina, 3 oct 2026: filtrar solo por ciudad)
+CIUDAD_DEL_ESTADO = {"Amazonas": "Puerto Ayacucho", "Anzoátegui": "Barcelona", "Apure": "San Fernando de Apure", "Aragua": "Maracay", "Barinas": "Barinas",
+                     "Bolívar": "Ciudad Bolívar", "Carabobo": "Valencia", "Cojedes": "San Carlos", "Delta Amacuro": "Tucupita", "Distrito Capital": "Caracas",
+                     "Falcón": "Coro", "Guárico": "San Juan de los Morros", "La Guaira": "La Guaira", "Lara": "Barquisimeto", "Mérida": "Mérida",
+                     "Miranda": "Los Teques", "Monagas": "Maturín", "Nueva Esparta": "Porlamar", "Portuguesa": "Guanare", "Sucre": "Cumaná",
+                     "Táchira": "San Cristóbal", "Trujillo": "Trujillo", "Yaracuy": "San Felipe", "Zulia": "Maracaibo"}
 ESTADOS_VE = ["Amazonas", "Anzoátegui", "Apure", "Aragua", "Barinas", "Bolívar", "Carabobo", "Cojedes", "Delta Amacuro", "Distrito Capital", "Falcón", "Guárico",
               "La Guaira", "Lara", "Mérida", "Miranda", "Monagas", "Nueva Esparta", "Portuguesa", "Sucre", "Táchira", "Trujillo", "Yaracuy", "Zulia"]
 def _llave_lugar(s):
@@ -222,7 +233,8 @@ def _llave_lugar(s):
     s = unicodedata.normalize("NFD", (s or "").strip().lower())
     return " ".join("".join(c for c in s if unicodedata.category(c) != "Mn").replace(".", " ").split())
 _CIUDAD_POR_LLAVE = {_llave_lugar(c): c for c in CIUDADES_VE} | {"ccs": "Caracas", "distrito capital": "Caracas", "dtto capital": "Caracas", "puerto la cruz": "Puerto La Cruz",
-                                                                    "pto la cruz": "Puerto La Cruz", "pto ordaz": "Puerto Ordaz"}
+                                                                    "pto la cruz": "Puerto La Cruz", "pto ordaz": "Puerto Ordaz",
+                                                                    "lecherias": "Lechería", "las adjuntas": "Caracas", "por definir": "Pendiente"}
 _ESTADO_POR_LLAVE = {_llave_lugar(e): e for e in ESTADOS_VE} | {"edo miranda": "Miranda", "estado miranda": "Miranda", "vargas": "La Guaira", "dtto capital": "Distrito Capital",
                                                               "margarita": "Nueva Esparta", "isla de margarita": "Nueva Esparta"}
 def normalizar_ciudad(texto):
@@ -235,7 +247,8 @@ def normalizar_ciudad(texto):
     k = _llave_lugar(t)
     if k in _CIUDAD_POR_LLAVE:
         c = _CIUDAD_POR_LLAVE[k]; return c, ESTADO_DE_CIUDAD.get(c)
-    if k in _ESTADO_POR_LLAVE: return "Pendiente", _ESTADO_POR_LLAVE[k]
+    if k in _ESTADO_POR_LLAVE:
+        e = _ESTADO_POR_LLAVE[k]; return CIUDAD_DEL_ESTADO.get(e, "Pendiente"), e
     if k == "pendiente": return "Pendiente", None
     return " ".join(p.lower() if i and p.lower() in ("de", "del", "la", "las", "los", "el") else p[:1].upper() + p[1:] for i, p in enumerate(t.split())), None
 def fmt_cant(v, unidad=None):
@@ -266,7 +279,7 @@ def db():
 # Cada rol restringido tiene su lista de lo que puede abrir. Todo lo demás lo devuelve a su pantalla.
 PUERTAS = {
     "taller":      (("/taller", "/inventario", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/taller"),
-    "despachador": (("/mis-entregas", "/ordenes/", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
+    "despachador": (("/mis-entregas", "/tarifas", "/ordenes/", "/viajes/", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
     # Logística coordina y entrega: ve órdenes, clientes y despachos, nunca plata ni catálogo con precios.
     # Lista cerrada: una página nueva no la ve hasta que se agregue aquí a propósito.
     "logistica":   (("/inicio", "/operaciones", "/ordenes", "/clientes", "/mascotas", "/inventario", "/despachadores",
@@ -342,6 +355,10 @@ async def puerta(request: Request, call_next):
         if rol_de(request) == "despachador" and ruta.startswith("/ordenes/") and not (
                 request.method == "POST" and re.fullmatch(r"/ordenes/\d+/(estado|no-recibio)", ruta)):
             return con_escudos(RedirectResponse(casa, status_code=303))
+        # De los viajes a la agencia, el despachador solo puede decir "ya los llevé". Crear o borrar viajes, no.
+        if rol_de(request) == "despachador" and ruta.startswith("/viajes/") and not (
+                request.method == "POST" and re.fullmatch(r"/viajes/\d+/llevado", ruta)):
+            return con_escudos(RedirectResponse(casa, status_code=303))
     return con_escudos(await call_next(request))
 
 
@@ -368,7 +385,10 @@ COLUMNAS = (
     ("orden_lineas", "perso_lista", "INTEGER NOT NULL DEFAULT 0"), ("orden_lineas", "perso_lista_en", "TEXT"),
     ("orden_lineas", "extra_en", "TEXT"),   # cobro que se agregó después de la compra: el día en que entró
     ("viajes_despachador", "tipo", "TEXT NOT NULL DEFAULT 'fallido'"), ("viajes_despachador", "pack_id", "INTEGER"),
-    ("viajes_despachador", "prepagado_id", "INTEGER"), ("packs", "en_ruta", "INTEGER NOT NULL DEFAULT 0"),
+    ("viajes_despachador", "prepagado_id", "INTEGER"), ("viajes_despachador", "por_aprobar", "INTEGER NOT NULL DEFAULT 0"),
+    ("despachadores", "cobra_viernes", "INTEGER NOT NULL DEFAULT 1"),
+    ("cuentas", "con_detalle", "INTEGER NOT NULL DEFAULT 0"),   # 1 = al pasar el mouse muestra quién debe (Cuentas Por Cobrar)   # 0 = se le paga cuando Cristina decida (la despachadora Cristina)
+    ("packs", "en_ruta", "INTEGER NOT NULL DEFAULT 0"),
     ("ordenes", "despachador_pago_id", "INTEGER"), ("ordenes", "en_registro", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_fecha", "TEXT"), ("ordenes", "factura_hecha", "INTEGER DEFAULT 0"),
     ("ordenes", "factura_numero", "TEXT"), ("ordenes", "factura_por", "INTEGER"),
@@ -386,6 +406,9 @@ COLUMNAS = (
     ("produccion", "recibido", "INTEGER DEFAULT 0"), ("produccion", "tipo_pedido", "TEXT DEFAULT 'produccion'"),
     ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
     ("pagos", "en_cashflow", "INTEGER NOT NULL DEFAULT 0"),   # ya lo pasó Cristina al libro a mano
+    ("viajes_agencia", "llevado_en", "TEXT"),
+    ("registro_ventas", "fecha_original", "TEXT"), ("registro_ventas", "inicial", "REAL"), ("registro_ventas", "cuota1", "REAL"),   # el Excel tal cual
+    ("registro_ventas", "cuota2", "REAL"), ("registro_ventas", "cuota3", "REAL"), ("registro_ventas", "orden_excel", "TEXT"),   # vacío = asignado; con fecha = ya los llevó a la agencia (recién ahí se le debe)
     ("usuarios", "usuario", "TEXT"), ("usuarios", "clave_hash", "TEXT"), ("usuarios", "creado_en", "TEXT"),
     ("usuarios", "despachador", "TEXT"),   # a qué despachador corresponde este usuario
     ("repuestos_prepagados", "agencia", "TEXT"),
@@ -456,12 +479,16 @@ def guardar_mascotas(con, cid, f, prefijo="mascota_"):
         con.execute("INSERT INTO mascotas (cliente_id,nombre,raza,fecha_nacimiento,cumple_mes_dia,peso_kg) VALUES (?,?,?,?,?,?)", (cid, n.strip(), (r or "").strip() or None, fn or None, md, float(pk) if pk else None))
 
 
-def capitalizar(nombre):
-    """Si el nombre viene todo en minúscula, lo pone con mayúscula inicial (Cristina Raffalli). Si ya trae mayúsculas, se respeta tal cual."""
-    nombre = " ".join((nombre or "").split())
-    if not nombre or nombre == nombre.upper(): return nombre       # todo en MAYÚSCULAS se respeta
-    minus = {"de", "del", "la", "las", "los", "y", "da", "di", "do", "dos", "van", "von", "e"}
-    return " ".join(w.lower() if (i and w.lower() in minus) else "-".join((p[:1].upper() + p[1:]) if p and p[0].islower() else p for p in w.split("-")) for i, w in enumerate(nombre.split()))
+def capitalizar(nombre, inicio=True):
+    """Nombres siempre con mayúscula inicial y el resto en minúscula: 'CRISTINA RAFFALLI' y 'cristina raffalli' → 'Cristina Raffalli'.
+    'de', 'del', 'la', 'los'… van en minúscula salvo al empezar el nombre ('María de los Ángeles', 'Roberto dos Santos').
+    Respeta guiones y apóstrofos: 'Pérez-Gómez', 'O’Brien'. inicio=False es para el apellido suelto (la partícula va en minúscula)."""
+    import unicodedata
+    nombre = unicodedata.normalize("NFC", " ".join((nombre or "").split()))   # "i" + tilde suelta → "í": si no, "MaríA"
+    if not nombre: return nombre
+    minus = {"de", "del", "la", "las", "los", "y"}   # Di Giacomo, Da Silva, Dos Santos van con mayúscula
+    def palabra(w): return re.sub(r"[^\W\d_]+", lambda m: m.group(0)[:1].upper() + m.group(0)[1:].lower(), w)   # cada tramo de letras: O’brien → O’Brien
+    return " ".join(w.lower() if ((i or not inicio) and w.lower() in minus) else palabra(w) for i, w in enumerate(nombre.split()))
 
 
 def nombre_completo(nombre_pila, apellido):
@@ -726,6 +753,10 @@ def inicio(request: Request, con=Depends(db)):
                             WHERE i.estado='abierta' ORDER BY i.id DESC LIMIT 10""")]
     c["reclamos_desp"] = [dict(r) for r in con.execute("""SELECT p.*, d.id did FROM pagos_despachador p LEFT JOIN despachadores d ON d.nombre=p.despachador
                               WHERE p.reclamo_en IS NOT NULL AND p.reclamo_resuelto IS NULL ORDER BY p.reclamo_en""")] if rol == "admin" else []
+    c["mis_pend"] = [dict(r) for r in con.execute("""SELECT * FROM pendientes WHERE hecho_en IS NULL AND fecha IS NOT NULL AND fecha <= ?
+                              ORDER BY fecha, id""", (h,))] if rol == "admin" else []
+    c["dil_aprobar"] = [dict(r) for r in con.execute("""SELECT v.despachador, v.monto, v.motivo, v.fecha, d.id did FROM viajes_despachador v
+                              LEFT JOIN despachadores d ON d.nombre=v.despachador WHERE v.por_aprobar=1 ORDER BY v.fecha, v.id""")] if rol == "admin" else []
     # retiros de pack y repuestos prepagados PROGRAMADOS para hoy (o atrasados): los que de verdad se entregan
     packs = sum(1 for k in cargar_packs(con) if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= h)
     packs += sum(1 for r in cargar_prepagados(con) if r["fecha_programada"] and r["fecha_programada"] <= h)
@@ -734,7 +765,7 @@ def inicio(request: Request, con=Depends(db)):
     toca = con.execute("""SELECT COUNT(*) FROM (SELECT c.id, MAX(CASE WHEN p.categoria='repuesto' OR p.sku LIKE 'PRO-%' THEN substr(o.creado_en,1,10) END) ult
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
         GROUP BY c.id HAVING SUM(CASE WHEN p.sku LIKE 'PRO-%' THEN 1 ELSE 0 END) > 0 AND julianday(?) - julianday(ult) BETWEEN 36 AND 42)""", (h,)).fetchone()[0]
-    cumples_todos = cumples_proximos(con, 2)
+    cumples_todos = cumples_proximos(con, 0)   # Cristina: solo los cumpleaños de hoy
     segs = [s for s in cumples_todos if not s["hecho"]] + [s for s in seguimientos_pendientes(con) if s.get("fase", "hoy") == "hoy"]
     c["toca"] = toca; c["seguimientos"] = len(segs)
     cumples_l = [s for s in segs if s["tipo"] == "cumple"]; rep_l = [s for s in segs if s["tipo"] in ("primer_repuesto", "repuesto", "prepagado", "basico")]; cobro_l = [s for s in segs if s["tipo"] == "cobro"]
@@ -747,7 +778,7 @@ def inicio(request: Request, con=Depends(db)):
     cumples_hechos = [s for s in cumples_todos if s["hecho"]]
     rep_h = [r for r in hechos_hoy if r["tipo"] != "cobro"]; cobro_h = [r for r in hechos_hoy if r["tipo"] == "cobro"]
     seg_resumen = {"total": len(segs), "primer": sum(1 for s in segs if s["tipo"] == "primer_repuesto"), "repuesto": len(rep_l), "cumples": len(cumples_l),
-                   "lista_cumples": (cumples_l + cumples_hechos)[:3], "lista_rep": (rep_l + rep_h)[:3], "lista_cobro": (cobro_l + cobro_h)[:3], "lista": segs[:12],
+                   "lista_cumples": (cumples_l + cumples_hechos)[:3], "lista_rep": [dict(x, mensajes=mensajes_repuesto(con, x)) if x.get("cliente_id") else x for x in (rep_l + rep_h)[:3]], "lista_cobro": (cobro_l + cobro_h)[:3], "lista": segs[:12],
                    "tot_rep": len(rep_l) + len(rep_h), "tot_cumples": len(cumples_l) + len(cumples_hechos), "tot_cobro": len(cobro_l) + len(cobro_h),
                    "hechos_rep": len(rep_h), "hechos_cumples": len(cumples_hechos), "hechos_cobro": len(cobro_h)}
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
@@ -774,13 +805,16 @@ def inicio(request: Request, con=Depends(db)):
 
     deuda_desp = con.execute("""SELECT despachador, SUM(COALESCE(delivery, 0)) m, COUNT(*) n FROM ordenes
                                 WHERE despachador IS NOT NULL AND despachador!='' AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 HAVING m>0""").fetchall() if rol == "admin" else []
-    viajes_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_agencia WHERE pagado=0 GROUP BY 1 HAVING m>0").fetchall() if rol == "admin" else []
-    fallidos_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_despachador WHERE pagado=0 GROUP BY 1 HAVING m>0").fetchall() if rol == "admin" else []
+    viajes_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_agencia WHERE pagado=0 AND llevado_en IS NOT NULL GROUP BY 1 HAVING m>0").fetchall() if rol == "admin" else []
+    fallidos_desp = con.execute("SELECT despachador, SUM(monto) m FROM viajes_despachador WHERE pagado=0 AND por_aprobar=0 GROUP BY 1 HAVING m>0").fetchall() if rol == "admin" else []
     por_desp = {}
     for r_ in list(deuda_desp) + list(viajes_desp) + list(fallidos_desp): por_desp[r_["despachador"]] = por_desp.get(r_["despachador"], 0) + r_["m"]
     # entregas + viajes a la agencia, menos lo que ya se le adelantó a cada uno
     por_desp = {n: m - adelanto_despachador(con, n)[1] for n, m in por_desp.items()}
     por_desp = {n: m for n, m in por_desp.items() if m > 0.009}
+    # a quien no cobra los viernes (Cristina como despachadora) no se le avisa: ella decide cuándo se paga
+    sin_viernes = {r[0] for r in con.execute("SELECT nombre FROM despachadores WHERE cobra_viernes=0")}
+    por_desp = {n: m for n, m in por_desp.items() if n not in sin_viernes}
     c["desp_debe"] = round(sum(por_desp.values()), 2)
     # pedidos cuyo día de pago llegó (la grama se paga los viernes aunque llegue el lunes)
     # El resto se paga el día de pago si se puso uno; si no, el día de entrega; y si no tiene
@@ -796,15 +830,16 @@ def inicio(request: Request, con=Depends(db)):
                                    OR (COALESCE(pr.fecha_pago, pr.fecha_esperada) IS NULL AND (pr.recibido > 0 OR pr.estado!='en_proceso')))
                             ORDER BY 4""", (h,))] if rol == "admin" else []
     c["prov_deben"] = proveedores_que_deben(con) if rol == "admin" else []   # no entregó todo y ya se le había pagado
-    # a los despachadores se les paga los LUNES: el resto de la semana el aviso solo estorba mientras se acumulan entregas
+    # a los despachadores se les paga los VIERNES: el resto de la semana el aviso solo estorba mientras se acumulan entregas
     viejo = con.execute("""SELECT MIN(COALESCE(fecha_entrega, substr(creado_en,1,10))) FROM ordenes
-                           WHERE despachador IS NOT NULL AND despachador!='' AND estado!='cancelada'
-                             AND origen_excel=0 AND despachador_pagado=0""").fetchone()[0]
-    lunes = hoy - datetime.timedelta(days=hoy.weekday())           # el lunes de esta semana
-    atrasado = bool(viejo and datetime.date.fromisoformat(viejo[:10]) < lunes and hoy.weekday() != 0)
-    c["toca_pagar_desp"] = hoy.weekday() == 0 or atrasado          # el lunes, o si ya se pasó el lunes sin pagar
+                           WHERE despachador IS NOT NULL AND despachador!='' AND estado='entregada'
+                             AND origen_excel=0 AND despachador_pagado=0
+                             AND despachador NOT IN (SELECT nombre FROM despachadores WHERE cobra_viernes=0)""").fetchone()[0]
+    viernes = hoy - datetime.timedelta(days=(hoy.weekday() - 4) % 7)   # el último viernes (hoy, si es viernes)
+    atrasado = bool(viejo and datetime.date.fromisoformat(viejo[:10]) < viernes and hoy.weekday() != 4)
+    c["toca_pagar_desp"] = hoy.weekday() == 4 or atrasado          # el viernes, o si ya se pasó el viernes sin pagar
     c["desp_atrasado"] = atrasado
-    c["desp_n"] = len(por_desp); c["es_lunes"] = hoy.weekday() == 0
+    c["desp_n"] = len(por_desp); c["es_viernes"] = hoy.weekday() == 4
     # porches que el taller ya dejó armados, esperando venta
     armados = con.execute("""SELECT p.nombre, (SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario m WHERE m.producto_id=p.id) listos
                              FROM productos p WHERE p.activo=1 AND p.categoria='porche'
@@ -832,7 +867,8 @@ def inicio(request: Request, con=Depends(db)):
         COALESCE(pr.tipo_pedido,'produccion') tipo FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
         WHERE pr.estado='en_proceso' AND pr.fecha_esperada IS NOT NULL AND pr.fecha_esperada <= ? ORDER BY pr.fecha_esperada""", (h,))]
     proximos = [dict(r) for r in con.execute("""SELECT pr.cantidad - pr.recibido faltan, pr.fecha_esperada, COALESCE(pr.pieza, p.nombre) nombre, pr.responsable, (pr.fecha_esperada < ?) atrasado FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
-        WHERE pr.estado='en_proceso' AND (pr.fecha_esperada IS NULL OR pr.fecha_esperada != ?) ORDER BY pr.fecha_esperada IS NULL, pr.fecha_esperada LIMIT 8""", (h, h))]
+        WHERE pr.estado='en_proceso' AND pr.fecha_esperada != ? AND pr.fecha_esperada <= ?
+        ORDER BY pr.fecha_esperada LIMIT 8""", (h, h, (hoy + datetime.timedelta(days=7)).isoformat()))]   # "esta semana": lo que llega en los próximos 7 días (y lo atrasado)
     # lo que llega hoy y lo que le debes a proveedores suben a la franja de avisos
     c["llegan_hoy"] = sum(l["faltan"] for l in llega); c["llegan_hoy_n"] = len(llega)
     # para Pedidos es solo un recordatorio: no tiene acceso a Taller, así que se le dice qué llega y ya
@@ -1082,8 +1118,19 @@ def con_global_prepagados(oid):
     finally: c.close()
 
 
+def tel_wa(t):
+    """Teléfono como WhatsApp lo vuelve tocable: solo y con código de país. '0424-2431884' → '+58 424 2431884'."""
+    d = re.sub(r"\D", "", t or "")
+    if not d or (t or "").strip().lower() == "pendiente": return None
+    if (t or "").strip().startswith("+"): return t.strip()
+    if d.startswith("58") and len(d) == 12: d = d[2:]
+    if d.startswith("0") and len(d) == 11: d = d[1:]
+    return f"+58 {d[:3]} {d[3:]}" if len(d) == 10 else (t or "").strip()
+
+
 def resumen_despacho(o, con_plata=True):
-    L = [f"📦 {o['numero']} — {o['cliente']}" + (f" · {o['telefono']}" if o["telefono"] else "")]
+    L = [f"📦 {o['numero']} — {o['cliente']}"]
+    if tel_wa(o["telefono"]): L.append(f"📞 {tel_wa(o['telefono'])}")   # en su propia línea: así WhatsApp deja tocarlo
     prep = {r[0] for r in con_global_prepagados(o["id"])} if o.get("id") else set()
     for l in o["lineas"]:
         ks = l.keys() if hasattr(l, "keys") else []
@@ -1535,7 +1582,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         if not _sirve(f.get("cliente_telefono")): return _falta("El teléfono del cliente es obligatorio.")
         if not _sirve(f.get("cliente_correo")): return _falta("El correo del cliente es obligatorio.")
         cliente_recien_creado = True
-        np_, ap = f["cliente_nombre_pila"].strip(), (f.get("cliente_apellido") or "").strip() or None
+        np_, ap = capitalizar(f["cliente_nombre_pila"]), capitalizar(f.get("cliente_apellido"), inicio=False) or None
         ciu, edo = normalizar_ciudad(f.get("cliente_ciudad") or f.get("ciudad"))
         cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                           (np_, ap, nombre_completo(np_, ap), normalizar_telefono(f.get("cliente_telefono")) or "Pendiente", (f.get("cliente_cedula") or "").strip().upper() or None,
@@ -1850,7 +1897,10 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     for o in por_llevar: por_agencia.setdefault(o["agencia"] or "", []).append(o)
     por_agencia = dict(sorted(por_agencia.items(), key=lambda kv: (kv[0] == "", kv[0])))
     viajes = con.execute("""SELECT v.*, (SELECT COUNT(*) FROM ordenes o WHERE o.viaje_id=v.id) n_ordenes
-                            FROM viajes_agencia v WHERE v.pagado=0 ORDER BY v.fecha DESC, v.id DESC""").fetchall()
+                            FROM viajes_agencia v WHERE v.pagado=0 AND v.llevado_en IS NULL
+                            ORDER BY v.fecha DESC, v.id DESC""").fetchall()
+    # en Operaciones solo lo que falta llevar. Lo ya llevado pasa a la ficha del despachador (ahí se deshace si hizo falta).
+    # Pagarlo no es de aquí: se le paga el viernes con lo demás, desde su ficha de despachador.
     tarifas_ag = {a: tarifa_agencia(con, a) for a in AGENCIAS}
     return render(request, "operaciones.html", seccion="operaciones", grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, total=len(lista), hoy_iso=hoy, manana_iso=manana,
                   por_llevar=por_llevar, por_agencia=por_agencia, viajes=viajes, tarifas_ag=tarifas_ag,
@@ -1889,11 +1939,40 @@ def es_bolivares(forma):
     return MONEDA_CAJA.get(FORMA_CUENTA.get(forma or "", forma or ""), "USD") == "VES"
 
 
+def mapa_embed(maps, direccion="", ciudad=""):
+    """Mapa incrustado de Google (sin clave) a partir del link GPS: usa las coordenadas si el link las trae,
+    el nombre del sitio si es un /place/, y si no (links cortos maps.app.goo.gl) la dirección escrita."""
+    import urllib.parse
+    u = urllib.parse.unquote(maps or "")
+    m = re.search(r"[?&]q=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)", u) or re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", u)
+    if m: q = f"{m.group(1)},{m.group(2)}"
+    else:
+        p = re.search(r"/maps/place/([^/?]+)", u)
+        q = p.group(1).replace("+", " ") if p else ", ".join(x for x in ((direccion or "").strip(), (ciudad or "").strip(), "Venezuela") if x)
+    return "https://maps.google.com/maps?q=" + urllib.parse.quote(q) + "&z=16&output=embed"
+
+
+tpl.env.globals["mapa_embed"] = mapa_embed
+
+
+CODIGO_CAJA = {}   # nombre de la caja → su número (001, 002…), para mostrarlo en las listas
+
+
+def caja_con_numero(nombre):
+    """En las listas cada caja va con su número delante: '003 · Zelle Decopet'. Así se busca más rápido."""
+    c = CODIGO_CAJA.get(nombre or "")
+    return f"{c} · {nombre}" if c else (nombre or "")
+
+
+tpl.env.filters["caja"] = caja_con_numero
+
+
 def cargar_formas_pago():
     """Las formas de pago son las cajas: así nunca falta una ni sobra una que ya no usas."""
     con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
-    filas = con.execute("SELECT nombre, COALESCE(cobra,1) cobra FROM cuentas WHERE activa=1 ORDER BY orden").fetchall()
+    filas = con.execute("SELECT nombre, codigo, COALESCE(cobra,1) cobra FROM cuentas WHERE activa=1 ORDER BY orden, codigo").fetchall()
     cajas = [r["nombre"] for r in filas]
+    CODIGO_CAJA.clear(); CODIGO_CAJA.update({r["nombre"]: r["codigo"] for r in filas if r["codigo"]})
     con.close()
     if cajas:
         FORMAS_PAGO[:] = cajas                                        # para pagar: todas
@@ -2022,11 +2101,14 @@ def saldos(con):
 
 
 @app.get("/cashflow", response_class=HTMLResponse)
-def cashflow(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
+def cashflow(request: Request, caja: str = "", mes: str = "", q: str = "", con=Depends(db)):
     """La caja del negocio arriba, las inversiones y lo personal aparte, y registrar una entrada o salida en dos clics."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     cs = saldos(con)
     lineas = libro_caja(con, int(caja) if caja else None, mes or None)
+    if q.strip():   # el buscador de arriba busca dentro del libro (concepto, detalle o caja)
+        qq = q.strip().lower()
+        lineas = [l for l in lineas if qq in " ".join(str(x or "") for x in (l.get("concepto"), l.get("detalle"), l["caja"]["nombre"] if l.get("caja") else "")).lower()]
     meses = sorted({l["fecha"][:7] for l in libro_caja(con)}, reverse=True)
 
     activas = [c for c in cs if c["activa"]]
@@ -2102,7 +2184,8 @@ def cashflow(request: Request, caja: str = "", mes: str = "", con=Depends(db)):
                 "Alquiler Ingrid": "Ingrid", "Alquiler Víctor": "Víctor", "Luz": "Corpoelec", "Agua": "Hidrocapital",
                 "Teléfono Decopet": "Movistar", "Teléfono Cristina": "Movistar"}
     provs = [dict(r) for r in con.execute("SELECT id, nombre FROM proveedores ORDER BY nombre")]
-    return render(request, "cashflow.html", seccion="cashflow", cuentas=cs, activas=activas,
+    detalle = detalle_cajas(con)
+    return render(request, "cashflow.html", seccion="cashflow", q=q, cuentas=cs, activas=activas, detalle=detalle,
                   efectivo_pend=efectivo_por_registrar(con),
                   lineas=lineas[:300], caja=caja, mes=mes, meses=meses, total=total, arcos=arcos, TIPOS_MOV=TIPOS_MOV,
                   cats=cats, cats_ent=cats_ent, provs=provs, a_quien=A_QUIEN, a_quien_ent=A_QUIEN_ENT, de_quien=DE_QUIEN, orden_ent=[k for k in ORDEN_ENT if k in cats_ent])
@@ -2135,6 +2218,10 @@ async def cashflow_linea(request: Request, con=Depends(db)):
         con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_destino_id, monto_usd, monto_real, moneda, concepto, categoria, subcategoria, comprobante, notas, usuario_id)
                        VALUES (?,'entrada',?,?,?,'USD',?,?,?,?,?,?)""",
                     (fecha, caja, monto, monto, concepto, categoria, subcategoria, g("comprobante"), g("notas"), uid))
+    elif categoria.lower().startswith("ajuste"):   # un ajuste que baja la caja NO es un gasto: no va a Gastos ni a Resultados
+        con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_origen_id, monto_usd, monto_real, moneda, concepto, categoria, subcategoria, comprobante, notas, usuario_id)
+                       VALUES (?,'ajuste',?,?,?,'USD',?,?,?,?,?,?)""",
+                    (fecha, caja, monto, monto, " · ".join(x for x in ("Ajuste", subcategoria, g("descripcion")) if x), categoria, subcategoria, g("comprobante"), g("notas"), uid))
     else:
         grande = 1 if f.get("compra_grande") else 0
         con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
@@ -2145,10 +2232,31 @@ async def cashflow_linea(request: Request, con=Depends(db)):
     con.commit(); return RedirectResponse("/cashflow", status_code=303)
 
 
+def detalle_cajas(con):
+    """Por cada caja con detalle: quién debe, por qué y cuánto. Es solo una nota: el saldo de la caja no cambia."""
+    out = {}
+    for r in con.execute("""SELECT d.* FROM caja_detalle d JOIN cuentas c ON c.id=d.cuenta_id WHERE c.con_detalle=1
+                            ORDER BY d.cuenta_id, d.orden, d.id"""):
+        out.setdefault(r["cuenta_id"], []).append(r)
+    return out
+
+
+@app.post("/cashflow/detalle")
+def cashflow_detalle(request: Request, cuenta_id: int = Form(...), id: str = Form(""), responsable: str = Form(""),
+                     concepto: str = Form(""), monto: str = Form(""), borrar: str = Form(""), con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/cashflow", status_code=303)
+    if id.isdigit() and borrar: con.execute("DELETE FROM caja_detalle WHERE id=?", (int(id),))
+    elif responsable.strip() or concepto.strip():
+        m = cifra(monto) or 0
+        if id.isdigit(): con.execute("UPDATE caja_detalle SET responsable=?, concepto=?, monto=? WHERE id=?", (responsable.strip(), concepto.strip(), m, int(id)))
+        else: con.execute("INSERT INTO caja_detalle (cuenta_id, responsable, concepto, monto) VALUES (?,?,?,?)", (cuenta_id, responsable.strip(), concepto.strip(), m))
+    con.commit(); return RedirectResponse("/cashflow/cajas#detalle", status_code=303)
+
+
 @app.get("/cashflow/cajas", response_class=HTMLResponse)
 def cajas_config(request: Request, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    return render(request, "cajas.html", seccion="cashflow", cuentas=saldos(con))
+    return render(request, "cajas.html", seccion="cashflow", cuentas=saldos(con), detalle=detalle_cajas(con))
 
 
 def graficos_cashflow(con, cs, dias=60):
@@ -2172,7 +2280,7 @@ def graficos_cashflow(con, cs, dias=60):
     for d, _, e, s in serie:
         w = datetime.date.fromisoformat(d); lun = (w - datetime.timedelta(days=w.weekday())).isoformat()
         x = semanas.setdefault(lun, [0.0, 0.0]); x[0] += e; x[1] += s
-    cajas = sorted([c for c in cs if c["tipo"] == "operativa" and (c["saldo"] or c["activa"])], key=lambda c: -c["saldo"])
+    cajas = sorted([c for c in cs if c["tipo"] == "operativa" and (c["saldo"] or c["activa"])], key=lambda c: (c["codigo"] or "999"))
     return {"serie": serie, "semanas": sorted(semanas.items()), "cajas": cajas, "max_caja": max([abs(c["saldo"]) for c in cajas] + [1])}
 
 
@@ -2654,8 +2762,36 @@ def cashea_cuota(request: Request, oid: int, monto: float = Form(...), fecha: st
     return RedirectResponse("/finanzas/cashea", status_code=303)
 
 
+def agrupar_pagos_produccion(con, rows):
+    """Un pedido a un proveedor se paga en partes (adelanto y pago final) y cada parte es un gasto, porque la plata salió
+    en días y cajas distintas (Cash flow las necesita así). En Gastos, Cristina quiere ver el pedido una sola vez:
+    "20 × Caja de madera grande · $250". Se juntan las partes de un mismo pedido que caen en el mes que se está viendo."""
+    ids = [r["id"] for r in rows]
+    if not ids: return rows
+    de = {r["gasto_id"]: dict(r) for r in con.execute(f"""SELECT a.gasto_id, p.id pid, p.pieza, p.cantidad, p.recibido, p.costo
+                 FROM abonos_produccion a JOIN produccion p ON p.id=a.produccion_id WHERE a.gasto_id IN ({','.join('?' * len(ids))})""", ids)}
+    juntos, out = {}, []
+    for r in rows:
+        p = de.get(r["id"])
+        if not p: out.append(r); continue
+        if p["pid"] not in juntos:
+            cant = int(p["recibido"] or 0) or int(p["cantidad"] or 0)
+            g = dict(r, agrupado=True, partes=[], descripcion=f"{cant} unidades", cantidad=cant, unidad=None, notas=None, monto_usd=0.0, monto_real=0.0, moneda="USD", _cajas=[], _costo=p["costo"])
+            juntos[p["pid"]] = g; out.append(g)
+        g = juntos[p["pid"]]
+        g["partes"].append(f"{fmt_fecha(r['fecha'])}: {fmt_usd(r['monto_usd'])}" + (f" ({r['cuenta']})" if r.get("cuenta") else ""))
+        g["monto_usd"] = round(g["monto_usd"] + r["monto_usd"], 2); g["monto_real"] = g["monto_usd"]
+        g["fecha"] = max(g["fecha"], r["fecha"])
+        if r.get("cuenta") and r["cuenta"] not in g["_cajas"]: g["_cajas"].append(r["cuenta"])
+    for g in juntos.values():
+        g["cuenta"] = " · ".join(g["_cajas"]) or None
+        if g["_costo"] and g["monto_usd"] < g["_costo"] - 0.009: g["notas"] = f"falta pagar {fmt_usd(g['_costo'] - g['monto_usd'])}"
+    out.sort(key=lambda r: (r["fecha"], r["id"]), reverse=True)
+    return out
+
+
 @app.get("/finanzas/gastos", response_class=HTMLResponse)
-def gastos(request: Request, mes: str = "", categoria: str = "", vista: str = "semana", semana: str = "", anio: str = "", con=Depends(db)):
+def gastos(request: Request, mes: str = "", categoria: str = "", vista: str = "semana", semana: str = "", anio: str = "", q: str = "", con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     hoy_d = datetime.date.today()
     if anio and not mes: mes = f"{anio}-{hoy_d.month:02d}" if anio == str(hoy_d.year) else f"{anio}-01"
@@ -2664,7 +2800,7 @@ def gastos(request: Request, mes: str = "", categoria: str = "", vista: str = "s
     anios = sorted({r[0] for r in con.execute("SELECT DISTINCT substr(fecha,1,4) FROM gastos")} | {str(hoy_d.year)}, reverse=True)
     sql = "SELECT g.*, cu.nombre cuenta, u.nombre usuario FROM gastos g LEFT JOIN cuentas cu ON cu.id=g.cuenta_id LEFT JOIN usuarios u ON u.id=g.usuario_id WHERE substr(g.fecha,1,7)=?"; args = [mes]
     if categoria: sql += " AND g.categoria=?"; args.append(categoria)
-    rows = [dict(r) for r in con.execute(sql + " ORDER BY g.fecha DESC, g.id DESC", args)]
+    rows = agrupar_pagos_produccion(con, [dict(r) for r in con.execute(sql + " ORDER BY g.fecha DESC, g.id DESC", args)])
     # semana del mes (1..5) para agrupar como en el Excel de Cristina
     semanas = {}
     for r in rows:
@@ -2674,12 +2810,18 @@ def gastos(request: Request, mes: str = "", categoria: str = "", vista: str = "s
     tot_semanas = {k: v["total"] for k, v in semanas.items()}
     if semana: semanas = {k: v for k, v in semanas.items() if str(k) == semana}; rows = [r for r in rows if str((datetime.date.fromisoformat(r["fecha"]).day - 1) // 7 + 1) == semana]
     semanas = [semanas[k] for k in sorted(semanas, reverse=True)]
+    if q.strip():   # el buscador de arriba: busca en todos los meses por concepto, proveedor, categoría o nota
+        like = f"%{q.strip()}%"
+        rows = agrupar_pagos_produccion(con, [dict(r) for r in con.execute("""SELECT g.*, cu.nombre cuenta, u.nombre usuario FROM gastos g LEFT JOIN cuentas cu ON cu.id=g.cuenta_id
+                    LEFT JOIN usuarios u ON u.id=g.usuario_id WHERE g.descripcion LIKE ? OR g.proveedor LIKE ? OR g.categoria LIKE ? OR g.subcategoria LIKE ? OR g.notas LIKE ?
+                    ORDER BY g.fecha DESC, g.id DESC""", (like,) * 5)])
+        semanas = [{"n": 0, "desde": None, "gastos": rows, "total": sum(r["monto_usd"] for r in rows)}] if rows else []
     por_cat = con.execute("SELECT categoria, SUM(monto_usd) monto, COUNT(*) n FROM gastos WHERE substr(fecha,1,7)=? GROUP BY 1 ORDER BY 2 DESC", (mes,)).fetchall()
     cats = json.loads(con.execute("SELECT valor FROM config WHERE clave='categorias_gasto'").fetchone()[0])
     cuentas = con.execute("SELECT * FROM cuentas WHERE activa=1 ORDER BY orden").fetchall()
     meses = [r[0] for r in con.execute("SELECT DISTINCT substr(fecha,1,7) FROM gastos ORDER BY 1 DESC")]
     if mes not in meses: meses.insert(0, mes)
-    return render(request, "gastos.html", seccion="gastos", gastos=rows, semanas=semanas, por_cat=por_cat, total=sum(r["monto"] for r in por_cat), cats=cats, cuentas=cuentas, mes=mes, meses=meses, tasa=tasa_hoy(con), categoria=categoria, vista=vista,
+    return render(request, "gastos.html", seccion="gastos", q=q, busqueda=q, gastos=rows, semanas=semanas, por_cat=por_cat, total=sum(r["monto"] for r in por_cat), cats=cats, cuentas=cuentas, mes=mes, meses=meses, tasa=tasa_hoy(con), categoria=categoria, vista=vista,
                   semana=semana, anio=anio, anios=anios, tot_mes=tot_mes, tot_semanas=tot_semanas, MESES_N=MESES_N)
 
 
@@ -3126,8 +3268,146 @@ async def movimiento_crear(request: Request, con=Depends(db)):
     con.commit(); return RedirectResponse("/cashflow", status_code=303)
 
 
+# ------------------------------------------------------------------ CALENDARIO Y PENDIENTES
+def _sumar_mes(d):
+    m = d.month % 12 + 1; a = d.year + (d.month == 12)
+    return datetime.date(a, m, min(d.day, calendar.monthrange(a, m)[1]))
+
+
+def eventos_mes(con, anio, mes):
+    """Lo que el ERP ya sabe que pasa cada día del mes. Solo para verlo: se maneja desde su sección."""
+    ini = datetime.date(anio, mes, 1); fin = datetime.date(anio, mes, calendar.monthrange(anio, mes)[1])
+    a, b = ini.isoformat(), fin.isoformat(); ev = {}
+    def pon(f, tipo, txt, href):
+        ev.setdefault(f[:10], []).append({"tipo": tipo, "txt": txt, "href": href})
+    hoy = datetime.date.today().isoformat()
+    # lo pendiente de días pasados no se queda en ese día: se corre a hoy (igual que en Operaciones), hasta que se entregue
+    for r in con.execute("""SELECT CASE WHEN substr(fecha_prometida,1,10) < ? THEN ? ELSE substr(fecha_prometida,1,10) END f,
+                            SUM(substr(fecha_prometida,1,10) < ?) atras, COUNT(*) n FROM ordenes
+                            WHERE estado IN ('pendiente','en_ruta') AND origen_excel=0 AND fecha_prometida IS NOT NULL GROUP BY 1""", (hoy, hoy, hoy)):
+        if not (a <= r["f"] <= b): continue
+        al_dia = r["n"] - r["atras"]
+        if al_dia: pon(r["f"], "entrega", f"{al_dia} entrega{'s' if al_dia != 1 else ''} programada{'s' if al_dia != 1 else ''}", f"/operaciones?dia={r['f']}")
+        if r["atras"]: pon(r["f"], "entrega", f"{r['atras']} entrega{'s' if r['atras'] != 1 else ''} que quedó atrás", "/operaciones")
+    # lo ya entregado queda en el día en que de verdad se entregó (tachado), para que el calendario cuente lo que pasó
+    for r in con.execute("""SELECT substr(fecha_entrega,1,10) f, COUNT(*) n FROM ordenes WHERE estado='entregada' AND origen_excel=0
+                            AND substr(fecha_entrega,1,10) BETWEEN ? AND ? GROUP BY 1""", (a, b)):
+        pon(r["f"], "pagado", f"✓ {r['n']} entregada{'s' if r['n'] != 1 else ''}", f"/ordenes?estado=todas")
+    for tb, que in (("packs", "retiro de pack"), ("repuestos_prepagados", "repuesto prepagado")):
+        try:
+            for r in con.execute(f"SELECT fecha_programada f, COUNT(*) n FROM {tb} WHERE fecha_programada BETWEEN ? AND ? GROUP BY 1", (a, b)):
+                pon(r["f"], "entrega", f"{r['n']} {que}{'s' if r['n'] != 1 else ''}", f"/operaciones?dia={r['f'][:10]}")
+        except sqlite3.OperationalError: pass
+    pagados = {(r[0], r[1]) for r in con.execute("SELECT compromiso_id, vence FROM compromisos_pagos")}
+    for c in con.execute("SELECT * FROM compromisos WHERE activo=1"):
+        for v in vencimientos(c, ini, fin):
+            ya = (c["id"], v.isoformat()) in pagados
+            txt = ("✓ " if ya else "Pagar: ") + c["nombre"] + (f" · hasta el {min(v.day + (c['dia'] or 5) - 1, fin.day)}" if c["frecuencia"] == "inicio_mes" and not ya else "")
+            pon(v.isoformat(), "pagado" if ya else "pago", txt, "/finanzas/recurrentes")
+    for d in dias_de_pago(anio, mes): pon(d.isoformat(), "pago", "Quincena del equipo", "/equipo")
+    d = ini
+    while d <= fin:
+        if d.weekday() == 4: pon(d.isoformat(), "pago", "Pagar a despachadores", "/despachadores")
+        d += datetime.timedelta(days=1)
+    for r in con.execute("""SELECT pr.fecha_esperada f, COALESCE(pr.pieza, p.nombre) nombre, pr.cantidad - pr.recibido faltan, pr.responsable
+                            FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
+                            WHERE pr.estado='en_proceso' AND pr.fecha_esperada BETWEEN ? AND ?""", (a, b)):
+        pon(r["f"], "llega", f"Llega {r['faltan']:g} {r['nombre']}" + (f" · {r['responsable']}" if r["responsable"] else ""), "/produccion")
+    cumples = {}   # un solo renglón por día con todos los perros, si no tapan el calendario
+    for m in con.execute("""SELECT m.nombre, m.fecha_nacimiento, m.cumple_mes_dia FROM mascotas m JOIN clientes c ON c.id=m.cliente_id
+                            WHERE COALESCE(m.cumple_mes_dia,'')!='' OR COALESCE(m.fecha_nacimiento,'')!=''"""):
+        md = m["cumple_mes_dia"] or (m["fecha_nacimiento"] or "")[5:10]
+        if len(md) == 5 and md[:2] == f"{mes:02d}":
+            try: cumples.setdefault(datetime.date(anio, mes, int(md[3:])).isoformat(), []).append(m["nombre"])
+            except ValueError: pass
+    for f, ns in cumples.items():
+        pon(f, "cumple", f"🎂 {len(ns)} cumpleaños: " + ", ".join(ns) if len(ns) > 1 else f"🎂 {ns[0]}", "/mascotas?ver=cumples")
+    return ev
+
+
+@app.get("/calendario", response_class=HTMLResponse)
+def calendario(request: Request, mes: str = "", dia: str = "", con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/inicio", status_code=303)
+    hoy = datetime.date.today()
+    try: a, m = (int(x) for x in mes.split("-")) if mes else (hoy.year, hoy.month)
+    except ValueError: a, m = hoy.year, hoy.month
+    ini = datetime.date(a, m, 1); fin = datetime.date(a, m, calendar.monthrange(a, m)[1])
+    ev = eventos_mes(con, a, m)
+    for p in con.execute("SELECT * FROM pendientes WHERE hecho_en IS NULL AND fecha BETWEEN ? AND ?", (ini.isoformat(), fin.isoformat())):
+        ev.setdefault(p["fecha"], []).insert(0, {"tipo": "mio", "txt": p["texto"], "href": None, "id": p["id"]})
+    semanas = calendar.Calendar(firstweekday=0).monthdatescalendar(a, m)
+    pend = [dict(r) for r in con.execute("SELECT * FROM pendientes WHERE hecho_en IS NULL ORDER BY fecha IS NULL, fecha, id")]
+    hechos = con.execute("SELECT * FROM pendientes WHERE hecho_en IS NOT NULL ORDER BY hecho_en DESC LIMIT 10").fetchall()
+    ant = (ini - datetime.timedelta(days=1)).strftime("%Y-%m"); sig = (fin + datetime.timedelta(days=1)).strftime("%Y-%m")
+    dia_sel = dia if dia[:7] == f"{a}-{m:02d}" else (hoy.isoformat() if (a, m) == (hoy.year, hoy.month) else ini.isoformat())
+    notas = con.execute("SELECT * FROM notas ORDER BY fijada DESC, editado_en DESC").fetchall()
+    return render(request, "calendario.html", seccion="calendario", notas=notas, semanas=semanas, ev=ev, mes_n=m, anio=a, titulo_mes=f"{MESES[m - 1].capitalize()} {a}",
+                  ant=ant, sig=sig, pend=pend, hechos=hechos, hoy_d=hoy, dia_sel=dia_sel, mes_q=f"{a}-{m:02d}")
+
+
+@app.post("/pendientes/nuevo")
+def pendiente_nuevo(request: Request, texto: str = Form(""), fecha: str = Form(""), repetir: str = Form(""), volver: str = Form("/calendario"), con=Depends(db)):
+    if solo_admin(request) and texto.strip():
+        con.execute("INSERT INTO pendientes (texto, fecha, repetir, usuario_id) VALUES (?,?,?,?)",
+                    (texto.strip(), fecha.strip() or None, repetir if (repetir in ("semanal", "mensual") and fecha.strip()) else None, uid_de(request)))
+        con.commit()
+    return RedirectResponse(volver or "/calendario", status_code=303)
+
+
+@app.post("/pendientes/{pid}/hecho")
+def pendiente_hecho(request: Request, pid: int, volver: str = Form("/calendario"), con=Depends(db)):
+    """Listo. Si se repite, en vez de cerrarse pasa a la próxima fecha."""
+    p = con.execute("SELECT * FROM pendientes WHERE id=?", (pid,)).fetchone()
+    if solo_admin(request) and p:
+        if p["repetir"] and p["fecha"]:
+            f = datetime.date.fromisoformat(p["fecha"]); hoy = datetime.date.today()
+            while f <= hoy: f = f + datetime.timedelta(days=7) if p["repetir"] == "semanal" else _sumar_mes(f)
+            con.execute("UPDATE pendientes SET fecha=? WHERE id=?", (f.isoformat(), pid))
+        else:
+            con.execute("UPDATE pendientes SET hecho_en=datetime('now','localtime') WHERE id=?", (pid,))
+        con.commit()
+    return RedirectResponse(volver or "/calendario", status_code=303)
+
+
+@app.post("/pendientes/{pid}/editar")
+def pendiente_editar(request: Request, pid: int, texto: str = Form(""), fecha: str = Form(""), repetir: str = Form(""), borrar: str = Form(""),
+                     reabrir: str = Form(""), volver: str = Form("/calendario"), con=Depends(db)):
+    if solo_admin(request):
+        if borrar: con.execute("DELETE FROM pendientes WHERE id=?", (pid,))
+        elif reabrir: con.execute("UPDATE pendientes SET hecho_en=NULL WHERE id=?", (pid,))
+        elif texto.strip():
+            con.execute("UPDATE pendientes SET texto=?, fecha=?, repetir=? WHERE id=?",
+                        (texto.strip(), fecha.strip() or None, repetir if (repetir in ("semanal", "mensual") and fecha.strip()) else None, pid))
+        con.commit()
+    return RedirectResponse(volver or "/calendario", status_code=303)
+
+
+@app.get("/notas", response_class=HTMLResponse)
+def notas_lista(request: Request, q: str = "", con=Depends(db)):
+    return RedirectResponse("/calendario#notas", status_code=303)   # las notas viven en el Calendario, debajo de Pendientes
+
+
+@app.post("/notas/guardar")
+def notas_guardar(request: Request, id: str = Form(""), titulo: str = Form(""), texto: str = Form(""), borrar: str = Form(""),
+                  fijar: str = Form(""), volver: str = Form("/calendario"), con=Depends(db)):
+    if solo_admin(request):
+        if id.isdigit() and borrar: con.execute("DELETE FROM notas WHERE id=?", (int(id),))
+        elif id.isdigit() and fijar: con.execute("UPDATE notas SET fijada=1-fijada WHERE id=?", (int(id),))
+        elif titulo.strip() or texto.strip():
+            if id.isdigit(): con.execute("UPDATE notas SET titulo=?, texto=?, editado_en=datetime('now','localtime') WHERE id=?", (titulo.strip(), texto.strip(), int(id)))
+            else: con.execute("INSERT INTO notas (titulo, texto) VALUES (?,?)", (titulo.strip(), texto.strip()))
+        con.commit()
+    return RedirectResponse((volver or "/calendario") + "#notas", status_code=303)
+
+
 # ------------------------------------------------------------------ HISTORIAL DE VENTAS
 MESES_N = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+# Cristina (3 oct 2026): el registro es el Excel tal cual (llega hasta el 2 oct) + toda orden que se CREA en el ERP desde el 3 de octubre (entregada o no; las canceladas no).
+# Lo de antes ya está en el Excel; por eso los pedidos migrados o creados antes no entran (no se duplica).
+EN_REGISTRO = """((o.origen_excel=0 AND o.estado!='cancelada'   -- entra al crearse la orden, se haya entregado o no (Cristina, 3 oct)
+                   AND substr(o.creado_en,1,10) >= COALESCE((SELECT valor FROM config WHERE clave='registro_desde'), '2026-10-03'))
+                  OR COALESCE(o.en_registro,0)=1)"""
 
 def _historial_rows(con, anio, mes, q):
     """Registro de ventas = histórico del Excel + órdenes de la plataforma (y las de Airtable que Cristina cruce).
@@ -3138,14 +3418,15 @@ def _historial_rows(con, anio, mes, q):
     if mes: cond += " AND substr(fecha,6,2)=?"; args.append(f"{int(mes):02d}")
     if q: cond += " AND (cliente LIKE ? OR producto LIKE ? OR numero LIKE ?)"; args += [f"%{q}%"] * 3
     sql = f"""SELECT * FROM (
-        SELECT NULL oid, '' numero, fecha, cliente, producto, precio, cantidad, facturacion linea, forma_pago forma, NULL color, 0 malla, NULL personalizacion, 'excel' origen, fila_excel llegada, 0 lid
+        SELECT NULL oid, '' numero, fecha, cliente, producto, precio, cantidad, facturacion linea, forma_pago forma, NULL color, 0 malla, NULL personalizacion, 'excel' origen, fila_excel llegada, 0 lid, fecha_original
           FROM registro_ventas
         UNION ALL
-        SELECT o.id oid, o.numero, COALESCE(l.extra_en, substr(o.creado_en,1,10)) fecha, c.nombre cliente, l.nombre producto, l.precio, l.cantidad, l.total linea,
+        SELECT o.id oid, o.numero, COALESCE(l.extra_en, substr(o.creado_en,1,10)) fecha, c.nombre cliente, l.nombre producto, l.precio, l.cantidad,
+               ROUND(l.total * (CASE WHEN COALESCE(o.iva,0) > 0 AND o.subtotal > 0 AND l.extra_en IS NULL THEN 1 + o.iva / o.subtotal ELSE 1 END), 2) linea,   -- con IVA, como en el Excel (Cashea)
                COALESCE(CASE WHEN l.extra_en IS NOT NULL THEN l.forma_pago END, o.forma_pago_prevista) forma, l.color, l.malla, l.personalizacion, 'orden' origen,
-               1000000 + CAST(substr(o.numero,2) AS INTEGER) llegada, l.id lid
-          FROM ordenes o JOIN clientes c ON c.id=o.cliente_id JOIN orden_lineas l ON l.orden_id=o.id WHERE o.estado!='cancelada' AND (o.origen_excel=0 OR COALESCE(o.en_registro,0)=1)
-      ) WHERE 1=1 {cond} ORDER BY fecha DESC, llegada DESC, lid DESC"""   # lo último registrado, primero (el Excel al revés)
+               1000000 + CAST(substr(o.numero,2) AS INTEGER) llegada, l.id lid, NULL fecha_original
+          FROM ordenes o JOIN clientes c ON c.id=o.cliente_id JOIN orden_lineas l ON l.orden_id=o.id WHERE {EN_REGISTRO}
+      ) WHERE 1=1 {cond} ORDER BY llegada DESC, lid DESC"""   # el orden del Excel fila por fila, al revés: lo último registrado primero (las órdenes del ERP van después de la última fila)
     out = []
     for r in con.execute(sql, args):
         d = dict(r)
@@ -3158,7 +3439,7 @@ def _historial_rows(con, anio, mes, q):
     # lo que se cobró de delivery después de la compra ya sale en su propia línea, el día que entró
     deliv = {r["id"]: dict(r) for r in con.execute("""SELECT o.id, o.delivery - COALESCE((SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en IS NOT NULL AND l.nombre='Delivery'),0) delivery, o.forma_pago_prevista forma,
                  (SELECT GROUP_CONCAT(DISTINCT p.forma) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') formas
-                 FROM ordenes o WHERE COALESCE(o.delivery,0)>0 AND o.estado!='cancelada' AND (o.origen_excel=0 OR COALESCE(o.en_registro,0)=1)""")}
+                 FROM ordenes o WHERE COALESCE(o.delivery,0)>0 AND """ + EN_REGISTRO + """""")}
     res = []; ya = set()
     for d in out:
         res.append(d)
@@ -3177,11 +3458,12 @@ def historial(request: Request, anio: str = "", mes: str = "", semana: str = "",
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)   # el registro de ventas es dinero
     if not resultados_abierto(request, con):   # lleva la misma clave que Resultados
         return render(request, "clave.html", seccion="historial", titulo="Registro de ventas",
-                      texto="Todas las ventas registradas desde 2023.", volver="/historial",
+                      texto="", volver="/historial",
                       mal=request.query_params.get("mal"))
     con_datos = {r[0] for r in con.execute("SELECT DISTINCT substr(creado_en,1,4) FROM ordenes")} | {r[0] for r in con.execute("SELECT DISTINCT substr(fecha,1,4) FROM registro_ventas")}
     anios = [str(a) for a in range(datetime.date.today().year, 2022, -1)]
-    for a in sorted(con_datos - set(anios), reverse=True): anios.append(a)
+    for a in sorted(con_datos - set(anios), reverse=True):
+        if a and a.isdigit() and len(a) == 4: anios.append(a)   # sin el vacío de las filas del Excel sin fecha legible
     todos = anio == "todos"
     if todos: anio = ""
     elif not anio and not q: anio = str(datetime.date.today().year)
@@ -3244,7 +3526,13 @@ def miembros(request: Request, q: str = "", ver: str = "todos", con=Depends(db))
         lista.append(dict(id=r["id"], nombre=r["nombre"], telefono=r["telefono"], ciudad=r["ciudad"], perros=r["perros"], desde=None, tamanos=r["porche_tamano"], repuestos=0, ultimo_repuesto=None, dias=None, situacion="sin historial", proximo=None))
     conteos = {k: sum(1 for d in lista if d["situacion"] == v) for k, v in (("toca", "toca repuesto"), ("aldia", "al día"), ("inactivos", "inactivo"), ("sin_historial", "sin historial"))}
     conteos["todos"] = len(lista)
-    if ver != "todos" and not q: lista = [d for d in lista if d["situacion"] == {"toca": "toca repuesto", "aldia": "al día", "inactivos": "inactivo", "sin_historial": "sin historial"}[ver]]
+    # el último resultado de su seguimiento de repuesto: "el perro no se adaptó" / "ya no lo usa"
+    no_usa = {r[0]: r[1] for r in con.execute("""SELECT cliente_id, resultado FROM seguimientos s WHERE resultado IN ('no_se_adapto','ya_no_usa')
+                 AND hecho_en = (SELECT MAX(hecho_en) FROM seguimientos s2 WHERE s2.cliente_id=s.cliente_id AND s2.tipo IN ('primer_repuesto','repuesto'))""")}
+    for d in lista: d["no_usa"] = no_usa.get(d["id"])
+    conteos["no_adapto"] = sum(1 for d in lista if d["no_usa"] == "no_se_adapto"); conteos["no_usa"] = sum(1 for d in lista if d["no_usa"] == "ya_no_usa")
+    if ver in ("no_adapto", "no_usa") and not q: lista = [d for d in lista if d["no_usa"] == {"no_adapto": "no_se_adapto", "no_usa": "ya_no_usa"}[ver]]
+    elif ver != "todos" and not q: lista = [d for d in lista if d["situacion"] == {"toca": "toca repuesto", "aldia": "al día", "inactivos": "inactivo", "sin_historial": "sin historial"}[ver]]
     return render(request, "miembros.html", hoy_d=hoy, seccion="miembros", miembros=lista[:300], q=q, ver=ver, conteos=conteos, truncado=len(lista) > 300)
 
 
@@ -3293,7 +3581,7 @@ async def producto_foto(request: Request, pid: int, con=Depends(db)):
 
 
 @app.get("/inventario", response_class=HTMLResponse)
-def inventario(request: Request, con=Depends(db)):
+def inventario(request: Request, q: str = "", con=Depends(db)):
     prods = con.execute("""SELECT p.*, NULL color, (SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario m WHERE m.producto_id=p.id) stock_calc,
         (SELECT COALESCE(SUM(l.cantidad),0) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id WHERE l.producto_id=p.id AND o.estado!='cancelada' AND o.creado_en>=date('now','-30 days')) vendidos_30
         FROM productos p WHERE p.tipo IN ('producto','insumo') AND p.activo=1
@@ -3312,8 +3600,9 @@ def inventario(request: Request, con=Depends(db)):
             filas.append(dict(p) | {"color": col, "stock_calc": st, "vendidos_30": v30,
                                     "minimo": (p["minimo"] or 0) // 2})
     prods = filas
+    if q.strip(): prods = [p for p in prods if q.strip().lower() in (p["nombre"] or "").lower()]
     movs = con.execute("SELECT m.*, p.nombre producto, u.nombre usuario FROM mov_inventario m JOIN productos p ON p.id=m.producto_id LEFT JOIN usuarios u ON u.id=m.usuario_id ORDER BY m.id DESC LIMIT 40").fetchall()
-    return render(request, "inventario.html", seccion="inventario", productos=prods, movs=movs)
+    return render(request, "inventario.html", seccion="inventario", q=q, productos=prods, movs=movs)
 
 
 @app.post("/inventario/mov")
@@ -3419,8 +3708,10 @@ def pagos_pendientes(con, dias_adelante=7):
     hoy = datetime.date.today(); out = []
     pagados = {(r[0], r[1]) for r in con.execute("SELECT compromiso_id, vence FROM compromisos_pagos")}
     # Un pago sin hacer no caduca: sigue apareciendo hasta que lo pagues o digas que ese mes no tocaba.
-    # El único piso es desde cuándo está en uso el ERP, para no arrastrar cosas de antes.
-    desde = finanzas_desde(con)
+    # El único piso es desde cuándo se cuentan los pagos fijos, para no arrastrar cosas de antes.
+    # Va aparte del Cash flow (pagos_desde): Cristina quiso los avisos antes de que arranque el libro.
+    r = con.execute("SELECT valor FROM config WHERE clave='pagos_desde'").fetchone()
+    desde = (r[0] if r and r[0] else None) or finanzas_desde(con)
     piso = datetime.date.fromisoformat(desde) if desde else hoy - datetime.timedelta(days=365)
     for c in con.execute("SELECT * FROM compromisos WHERE activo=1"):
         for v in vencimientos(c, piso, hoy + datetime.timedelta(days=dias_adelante)):
@@ -3432,7 +3723,7 @@ def pagos_pendientes(con, dias_adelante=7):
             out.append({"id": c["id"], "nombre": c["nombre"], "monto": c["monto"], "moneda": c["moneda"], "vence": v.isoformat(), "dias": (v - hoy).days,
                         "estado": estado, "limite": limite.isoformat(), "gracia": gracia, "proveedor": c["proveedor"],
                         "cuenta_id": c["cuenta_id"], "categoria": c["categoria"], "subcategoria": c["subcategoria"],
-                        "unidad": c["unidad"], "precio_unitario": c["precio_unitario"]})
+                        "unidad": c["unidad"], "precio_unitario": c["precio_unitario"], "frecuencia": c["frecuencia"]})
     out.sort(key=lambda x: x["vence"]); return out
 
 
@@ -4018,11 +4309,11 @@ def produccion_cancelar(request: Request, pid: int, con=Depends(db)):
 
 
 # ------------------------------------------------------------------ SEGUIMIENTOS (El Porche)
-RESULTADOS = {"compro": "Compró", "mensaje": "Mensaje enviado", "fecha": "Lo quiere otro día", "ya_no_usa": "Ya no lo usa", "felicitado": "Felicitado", "pago": "Pagó",
+RESULTADOS = {"compro": "Compró", "mensaje": "Mensaje enviado", "fecha": "Lo quiere otro día", "ya_no_usa": "Ya no lo usa", "no_se_adapto": "El perro no se adaptó", "felicitado": "Felicitado", "pago": "Pagó",
               "paso_pro": "Se pasó a la Versión PRO", "otro_basico": "Compró otro Básico", "no_le_interesa": "No le interesa por ahora",
               "lo_pensara": "Lo pensará", "no_responde": "No responde", "otro": "Otro"}   # los 3 últimos: solo para leer registros viejos
 # qué opciones se ofrecen según el tipo de seguimiento
-RESULTADOS_POR_TIPO = {"cumple": ["felicitado"], "cobro": ["pago", "mensaje"], "basico": ["paso_pro", "otro_basico", "mensaje", "fecha", "no_le_interesa"], "*": ["compro", "mensaje", "fecha", "ya_no_usa"]}
+RESULTADOS_POR_TIPO = {"primer_repuesto": ["compro", "mensaje", "fecha", "no_se_adapto", "ya_no_usa"], "cumple": ["felicitado"], "cobro": ["pago", "mensaje"], "basico": ["paso_pro", "otro_basico", "mensaje", "fecha", "no_le_interesa"], "*": ["compro", "mensaje", "fecha", "ya_no_usa"]}
 REINTENTO_DIAS = 3   # "Mensaje enviado" sin respuesta → vuelve a aparecer a los 3 días
 
 def estado_resultado(r):
@@ -4037,10 +4328,10 @@ def estado_seg(r, hoy):
         return "Lo quiere hoy" if r["posponer_hasta"] == hoy.isoformat() else f"Lo quería el {fmt_dia(r['posponer_hasta'])}"
     return f"{r['intentos'] + 1}º intento"
 
-def seguimientos_pendientes(con, umbral=None, ventana=7):
+def seguimientos_pendientes(con, umbral=None, ventana=1):
     """Seguimientos personalizados: cada miembro PRO se activa según SU fecha de entrega (del porche o del último repuesto)
-    más su intervalo propio (cada cuánto compra repuesto; si no hay historial, 30 días). Queda 'hoy' durante 7 días;
-    si no se contactó, pasa a 'atrasado' (se ve en Seguimientos, no en Inicio)."""
+    más su intervalo propio (cada cuánto compra repuesto; si no hay historial, 21 días). Es 'hoy' solo el día exacto
+    (Cristina, 3 oct 2026); desde el día siguiente, si no se contactó, pasa a 'atrasado' (se ve en Seguimientos, no en Inicio)."""
     if umbral is None: umbral = CICLO_REPUESTO
     hoy = datetime.date.today(); h = hoy.isoformat(); out = []
     hechos = {r["clave"]: r for r in con.execute("SELECT * FROM seguimientos")}
@@ -4138,8 +4429,11 @@ def cumples_proximos(con, ventana=30):
         r = hechos.get(clave)
         out.append(dict(cliente_id=m["id"], cliente=m["nombre"], telefono=m["telefono"], perro=m["perro"], raza=m["raza"], edad=edad, fecha=cumple.isoformat(), dias=faltan,
                         tamano="", que=(f"🎂 {m['perro']} cumple {edad} año{'s' if edad != 1 else ''}" if edad else f"🎂 Cumpleaños de {m['perro']}"), clave=clave, tipo="cumple", activo=faltan <= 2,
-                        tipo_txt=("Hoy es el cumple · felicitar" if faltan == 0 else (f"Faltan {faltan} día{'s' if faltan != 1 else ''} · ofrécele un regalo" if faltan <= 2 else f"en {faltan} días")),
-                        hecho=bool(r), estado=(estado_resultado(r) if r else ("Pendiente" if faltan <= 2 else "Próximo"))))
+                        tipo_txt=("Felicitar" if faltan == 0 else ("Ofrecer regalo" if faltan <= 2 else f"en {faltan} días")),
+                        hecho=bool(r), estado=(estado_resultado(r) if r else ("Pendiente" if faltan <= 2 else "Próximo")),
+                        ofrecer=[t for t, _ in oportunidades_de(con, m["id"])] if faltan <= 2 else [],
+                        hogar=hogar_de(con, m["id"], hoy) if faltan <= 2 else None))
+        if faltan <= 2: out[-1]["mensajes"] = mensajes_cumple(m["perro"], edad, out[-1]["ofrecer"])
     out.sort(key=lambda s: s["dias"])
     return out
 
@@ -4304,10 +4598,16 @@ def cargar_packs(con):
         ref = d["ultima_entrega"] or d["creado_en"][:10]
         d["dias_ultima"] = (hoy - datetime.date.fromisoformat(ref)).days
         d["entregas"] = con.execute("SELECT e.*, u.nombre usuario FROM entregas_repuesto e LEFT JOIN usuarios u ON u.id=e.usuario_id WHERE pack_id=? ORDER BY fecha", (d["id"],)).fetchall()
-        fechas = [d["creado_en"][:10]] + [e["fecha"] for e in d["entregas"]]
-        d["duraciones"] = [(datetime.date.fromisoformat(b) - datetime.date.fromisoformat(a)).days for a, b in zip(fechas, fechas[1:])]
+        # las entregas migradas de Airtable no traían su fecha real (se puso la de la compra): no sirven para medir cuánto le dura
+        aprox = lambda e: "fecha aproximada" in (e["notas"] or "")
+        if any(aprox(e) for e in d["entregas"]): d["duraciones"] = []
+        else:
+            fechas = [d["creado_en"][:10]] + [e["fecha"] for e in d["entregas"]]
+            d["duraciones"] = [(datetime.date.fromisoformat(b) - datetime.date.fromisoformat(a)).days for a, b in zip(fechas, fechas[1:])]
+        d["vencido"] = False
         d["promedio"] = round(sum(d["duraciones"]) / len(d["duraciones"])) if d["duraciones"] else None
         d["proximo"] = (datetime.date.fromisoformat(ref) + datetime.timedelta(days=ciclo_de(d["promedio"]))).isoformat()   # 21 días, o su ritmo si retira más seguido
+        d["vencido"] = d["proximo"] < hoy.isoformat()   # ya debería haber pedido el siguiente: hay que escribirle
         lista.append(d)
     return lista
 
@@ -4449,8 +4749,8 @@ def prepagado_no_recibio(request: Request, rid: int, fue: str = Form(""), motivo
 
 # ------------------------------------------------------------------ CLIENTES (mínimo; ficha completa en la Parte 3)
 @app.get("/clientes", response_class=HTMLResponse)
-def clientes(request: Request, q: str = "", ver: str = "todos", ciudad: str = "", origen: str = "", con=Depends(db)):
-    return _clientes(request, q, ver, ciudad, con, origen=origen)
+def clientes(request: Request, q: str = "", ver: str = "todos", ciudad: str = "", origen: str = "", falta: str = "", con=Depends(db)):
+    return _clientes(request, q, ver, ciudad, con, origen=origen, falta=falta)
 
 
 @app.get("/mascotas", response_class=HTMLResponse)
@@ -4458,7 +4758,10 @@ def mascotas_lista(request: Request, q: str = "", ver: str = "mascotas", raza: s
     return _clientes(request, q, "cumples" if ver == "cumples" else "mascotas", "", con, raza=raza)
 
 
-def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
+# lo que le puede faltar a la ficha de un cliente, en el orden en que se muestra
+FALTA_CLIENTE = {"telefono": "teléfono", "correo": "correo", "ciudad": "ciudad", "direccion": "dirección", "mascota": "mascota", "raza": "raza del perro"}
+
+def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
     base = """SELECT c.*, (SELECT direccion FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
              (SELECT COUNT(*) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') n_ordenes,
              (SELECT COALESCE(SUM(total),0) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') gastado,
@@ -4467,6 +4770,9 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
              (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
              (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id AND (m.raza='Pendiente' OR m.revisar=1)) perro_pend,
              (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id) n_perros,
+             (SELECT COUNT(*) FROM direcciones d WHERE d.cliente_id=c.id) n_dir,
+             (SELECT COUNT(*) FROM notas_cliente nc WHERE nc.cliente_id=c.id) n_notas,
+             (SELECT GROUP_CONCAT(nc.texto, ' · ') FROM notas_cliente nc WHERE nc.cliente_id=c.id) notas_txt,
              (SELECT canal FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada' GROUP BY canal ORDER BY COUNT(*) DESC LIMIT 1) canal_top,
              EXISTS(SELECT 1 FROM ordenes o JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=c.id AND o.estado!='cancelada' AND p.sku LIKE 'PRO-%') pro,
              COALESCE((SELECT GROUP_CONCAT(DISTINCT CASE p.sku WHEN 'PRO-M' THEN 'PRO Mediano' WHEN 'PRO-G' THEN 'PRO Grande' WHEN 'BAS-M' THEN 'Básico Mediano' WHEN 'BAS-G' THEN 'Básico Grande' END)
@@ -4481,16 +4787,25 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
     for r in rows:
         r["pro"] = r["pro"] or (r["porche_version"] == "PRO")
         r["basico"] = (r["porches"] or "").startswith("Básico") or r["porche_version"] == "Básico"
-        r["pendientes"] = [k for k in ("telefono", "correo", "ciudad") if r[k] == "Pendiente"] + (["perro"] if r["perro_pend"] else [])
+        r["pendientes"] = ([k for k in ("telefono", "correo", "ciudad") if (r[k] or "Pendiente") == "Pendiente"]
+                           + (["direccion"] if not r["n_dir"] else []) + (["mascota"] if not r["n_perros"] else [])
+                           + (["raza"] if r["perro_pend"] else []))
     creditos = {r[0]: round(r[1], 2) for r in con.execute("SELECT cliente_id, SUM(monto) FROM credito_cliente GROUP BY cliente_id HAVING SUM(monto) > 0.009")}
     for r in rows: r["credito"] = creditos.get(r["id"], 0)
+    # el último resultado de su seguimiento de repuesto: "el perro no se adaptó" / "ya no lo usa" (para filtrarlos después)
+    no_usa = {r[0]: r[1] for r in con.execute("""SELECT cliente_id, resultado FROM seguimientos s WHERE resultado IN ('no_se_adapto','ya_no_usa')
+                 AND hecho_en = (SELECT MAX(hecho_en) FROM seguimientos s2 WHERE s2.cliente_id=s.cliente_id AND s2.tipo IN ('primer_repuesto','repuesto'))""")}
+    for r in rows: r["no_usa"] = no_usa.get(r["id"])
     conteos = {"todos": len(rows), "pro": sum(1 for r in rows if r["pro"]), "basico": sum(1 for r in rows if r["basico"]),
-               "pendientes": sum(1 for r in rows if r["pendientes"]), "credito": sum(1 for r in rows if r["credito"])}
+               "pendientes": sum(1 for r in rows if r["pendientes"]), "credito": sum(1 for r in rows if r["credito"]),
+               "notas": sum(1 for r in rows if r["n_notas"]), "no_adapto": sum(1 for r in rows if r["no_usa"] == "no_se_adapto"),
+               "no_usa": sum(1 for r in rows if r["no_usa"] == "ya_no_usa")}
+    falta_n = {k: sum(1 for r in rows if k in r["pendientes"]) for k in FALTA_CLIENTE}
     for k in TIPOS_CLIENTE: conteos[k] = sum(1 for r in rows if r["tipo"] == k)
     ciudades = {}
     for r in rows:
         if r["ciudad"]: ciudades[r["ciudad"].strip()] = ciudades.get(r["ciudad"].strip(), 0) + 1
-    for cdd in CIUDADES_VE: ciudades.setdefault(cdd, 0)
+    # el filtro muestra solo ciudades con clientes: una ciudad en 0 parecía un error ("no hay nada en Trujillo")
     ciudades = sorted(ciudades.items(), key=lambda x: (-x[1], x[0]))
     estados_cl = {}
     for r in rows:
@@ -4500,13 +4815,16 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
         ql = q.lower(); rows = [r for r in rows if any(ql in (r[k] or "").lower() for k in ("nombre", "telefono", "correo", "cedula", "perros", "ciudad", "estado"))]
     elif ver == "pro": rows = [r for r in rows if r["pro"]]
     elif ver == "basico": rows = [r for r in rows if r["basico"]]
-    elif ver == "pendientes": rows = [r for r in rows if r["pendientes"]]
+    elif ver == "pendientes": rows = [r for r in rows if ((falta in r["pendientes"]) if falta else r["pendientes"])]
+    elif ver == "notas": rows = [r for r in rows if r["n_notas"]]
+    elif ver == "no_adapto": rows = [r for r in rows if r["no_usa"] == "no_se_adapto"]
+    elif ver == "no_usa": rows = [r for r in rows if r["no_usa"] == "ya_no_usa"]
     elif ver == "credito": rows = sorted([r for r in rows if r["credito"]], key=lambda r: -r["credito"])
     elif ver in TIPOS_CLIENTE: rows = [r for r in rows if r["tipo"] == ver]
     if ciudad.startswith("edo:"): rows = [r for r in rows if (r["estado"] or "") == ciudad[4:]]   # filtro por estado completo
     elif ciudad: rows = [r for r in rows if ciudad.strip().lower() in (r["ciudad"] or "").lower()]
     if origen: rows = [r for r in rows if (r["origen"] or "Sin registrar") == origen]
-    cumples = cumples_proximos(con, 2)
+    cumples = cumples_proximos(con, 0)   # solo los de hoy
     conteos["cumples"] = sum(1 for s in cumples if s["activo"] and not s["hecho"])
     mascotas = []
     if ver == "mascotas":
@@ -4520,7 +4838,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen=""):
         rows = []
     conteos["mascotas"] = con.execute("SELECT COUNT(*) FROM mascotas").fetchone()[0]
     razas_top = con.execute("SELECT raza, COUNT(*) n FROM mascotas WHERE raza IS NOT NULL AND raza!='' AND raza!='Pendiente' GROUP BY raza ORDER BY raza COLLATE NOCASE").fetchall() if ver == "mascotas" else []
-    return render(request, "clientes.html", seccion=("mascotas" if ver in ("mascotas", "cumples") else "clientes"), clientes=rows[:200], q=q, ver=ver, total=conteos["todos"], conteos=conteos, truncado=len(rows) > 200, cumples=cumples, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, TIPOS_CLIENTE=TIPOS_CLIENTE, ciudad=ciudad, ciudades=ciudades, estados_cl=estados_cl, origen=origen,
+    return render(request, "clientes.html", falta=falta, falta_n=falta_n, FALTA_CLIENTE=FALTA_CLIENTE, seccion=("mascotas" if ver in ("mascotas", "cumples") else "clientes"), clientes=rows[:200], q=q, ver=ver, total=conteos["todos"], conteos=conteos, truncado=len(rows) > 200, cumples=cumples, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, TIPOS_CLIENTE=TIPOS_CLIENTE, ciudad=ciudad, ciudades=ciudades, estados_cl=estados_cl, origen=origen,
                   origenes=sorted({(r["origen"] or "Sin registrar") for r in con.execute("SELECT origen FROM clientes")}), mascotas=mascotas, razas_top=razas_top, raza=raza)
 
 
@@ -4533,7 +4851,7 @@ def cliente_nuevo_panel(request: Request, con=Depends(db)):
 @app.post("/clientes/nuevo")
 async def cliente_crear(request: Request, con=Depends(db)):
     f = await request.form()
-    nombre_pila, apellido = f["nombre_pila"].strip(), (f.get("apellido") or "").strip() or None
+    nombre_pila, apellido = capitalizar(f["nombre_pila"]), capitalizar(f.get("apellido"), inicio=False) or None
     ciu, edo = normalizar_ciudad(f.get("ciudad")); edo = edo or f.get("estado_geo") or None
     cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                       (nombre_pila, apellido, nombre_completo(nombre_pila, apellido), normalizar_telefono(f.get("telefono")), (f.get("cedula") or "").strip().upper() or None,
@@ -4585,17 +4903,20 @@ def ritmo_cliente(fechas):
     return med, len(ds)
 
 
-def oportunidades_cliente(lineas, perros):
+def oportunidades_cliente(lineas, perros, ya_tiene_porche=False, tiene_basico=False):
     """Qué le falta a este hogar, con el criterio de Cristina:
     el porche y la rampa se comparten (uno por casa); el comedor es uno por perro.
-    Nunca sugiere la cinta (va pegada a la rampa, no es un producto)."""
+    Nunca sugiere la cinta (va pegada a la rampa, no es un producto) ni la malla (solo para perros que escarban)."""
     n = lambda pref: sum(int(r["n"] or 0) for r in lineas if r["sku"] and r["sku"].startswith(pref))
     por_cat = lambda cat: sum(int(r["n"] or 0) for r in lineas if r["categoria"] == cat and not (r["sku"] or "").startswith("MALLA"))
     nombres = ", ".join(p["nombre"] for p in perros) or "su perro"
     np = max(len(perros), 1)
-    porches = n("PRO-"); comedores = por_cat("comedor"); rampas = por_cat("rampa")
+    # el porche puede venir de antes del ERP (Airtable dice "Miembro PRO / Básico" aunque aquí no haya pedido)
+    porches = n("PRO-") or n("BAS-") or (1 if ya_tiene_porche else 0); comedores = por_cat("comedor"); rampas = por_cat("rampa")
     out = []
     if not porches: out.append(("El Porche Versión PRO", "Todavía no tiene porche."))
+    # con el Básico puede querer otro Básico o pasarse al PRO (Cristina, 3 oct 2026)
+    elif (n("BAS-") or tiene_basico) and not n("PRO-"): out.append(("Otro Básico o pasarse al PRO", "Tiene el Porche Básico."))
     if comedores < np:
         faltan = np - comedores
         titulo = "Comedor" if faltan == 1 else f"{faltan} comedores"
@@ -4603,9 +4924,106 @@ def oportunidades_cliente(lineas, perros):
         out.append((titulo, f"{np} perro{'s' if np != 1 else ''} y {comedores} comedor{'es' if comedores != 1 else ''}."
                             if comedores else f"{nombres}: sin comedor."))
     if not rampas: out.append(("Rampa", "No tiene rampa."))
-    if porches and not n("MALLA") and not n("OPC-MALLA"): out.append(("Malla", "Tiene porche y nunca ha llevado malla."))
+    # la malla NO se sugiere: es solo para perros que escarban, y eso no se sabe por lo que compró (Cristina, 3 oct 2026)
     if n("REP-") >= 2 and not n("PACK3"): out.append(("Pack 3 repuestos", f"{n('REP-')} repuestos sueltos y ningún pack."))
     return out
+
+
+def hogar_de(con, cid, hoy):
+    """Todo lo del hogar para decidir qué ofrecer sin salir de la página: sus perros, su porche y lo que ya compró."""
+    c = con.execute("SELECT porche_version, porche_tamano FROM clientes WHERE id=?", (cid,)).fetchone()
+    perros = []
+    for m in con.execute("SELECT * FROM mascotas WHERE cliente_id=? ORDER BY id", (cid,)):
+        _, edad, _ = cumple_de(m, hoy)
+        nac = m["fecha_nacimiento"] or ""
+        anios = None
+        if len(nac) >= 10:
+            try:
+                f = datetime.date.fromisoformat(nac[:10]); anios = hoy.year - f.year - ((hoy.month, hoy.day) < (f.month, f.day))
+            except ValueError: pass
+        perros.append({"nombre": m["nombre"], "raza": m["raza"], "anios": anios, "peso": m["peso_kg"], "notas": m["notas"]})
+    compras = con.execute("""SELECT l.nombre, CAST(SUM(l.cantidad) AS INTEGER) n FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
+                             JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=? AND o.estado!='cancelada' AND p.tipo='producto'
+                             GROUP BY l.nombre ORDER BY MAX(o.creado_en) DESC""", (cid,)).fetchall()
+    porche = " ".join(x for x in ((c["porche_version"] if c else None), (c["porche_tamano"] if c else None)) if x)
+    return {"perros": perros, "porche": porche, "compras": [dict(r) for r in compras]}
+
+
+# Mensajes de cumpleaños para WhatsApp. Tono de la marca (ejemplo de Cristina, 3 oct 2026): cercano, con humor, corto,
+# 💚 como firma; la oferta va al final y suave ("nos avisan"), nunca insistente. Sin adjetivos con género: no sabemos si es macho o hembra.
+SALUDOS_CUMPLE = [
+    "¡Feliz cumple a {p}! 🥳 Hoy se acepta repetir plato. Bueno, {p} acepta todos los días 😂💚",
+    "¡Hoy cumple {p}! 🎂 Que hoy haya premios dobles y siestas largas 💚",
+    "¡Feliz cumpleaños, {p}! 🐾{e} Que lo celebren con muchos cariños y algún premio extra 😄💚",
+    "¡Hoy es el día de {p}! 🎉 Feliz cumple de parte de todo el equipo Decopet 💚",
+]
+OFERTA_CUMPLE = {   # varias formas de ofrecer cada cosa: cada saludo va con una distinta, así no terminan todos igual
+    "Comedor": ["Si quieren estrenarlo con un comedor nuevo, nos avisan.",
+                "Y si el regalo es un comedor nuevo, aquí estamos 🍽️",
+                "¿Un comedor nuevo para celebrar? Nos escriben y se lo preparamos.",
+                "Por cierto, un comedor a su altura es el regalo perfecto para comer cómodo 😉"],
+    "Rampa": ["Si quieren regalarle una rampa para que suba y baje con más comodidad, nos avisan.",
+              "¿Y si este año el regalo es una rampa? Nos avisan 🐾",
+              "Una rampa es un regalo que se agradece todos los días. Si la quieren, nos escriben.",
+              "Si quieren cuidarle las patitas, la rampa es buena idea. Aquí estamos."],
+    "El Porche Versión PRO": ["Si quieren regalarle su propio porche, nos avisan 🌿",
+                              "¿Y si el regalo es su propio porche de grama natural? 🌿",
+                              "Un porche propio sería el mejor regalo. Nos escriben si les provoca.",
+                              "Si quieren darle su rincón de grama en casa, el porche es para eso 🌱"],
+    "Otro Básico o pasarse al PRO": ["Y si quieren celebrarlo con otro porche o pasándose al PRO, nos avisan 🌿",
+                                     "¿Y si el regalo es subir al porche PRO? Nos avisan 🌿",
+                                     "Si les hace falta un segundo porche o quieren pasarse al PRO, aquí estamos.",
+                                     "Buen día para pensar en el PRO… o en un segundo porche 😉"],
+    "Pack 3 repuestos": ["Y si toca reponer, el pack de 3 repuestos sale mejor 😉",
+                         "Si ya toca grama nueva, el pack de 3 les rinde más 🌱",
+                         "Y para celebrar con grama fresca, el pack de 3 repuestos es buena idea.",
+                         "Por cierto, el pack de 3 repuestos les ahorra viajes 😉"],
+}
+
+
+def mensajes_cumple(perro, edad, ofrecer):
+    """Varias versiones del mensaje de felicitación; Cristina elige o cambia antes de enviarlo."""
+    ofertas = next((OFERTA_CUMPLE[t] for t in ofrecer if t in OFERTA_CUMPLE),
+                   OFERTA_CUMPLE["Comedor"] if any(t.endswith("comedores") for t in ofrecer) else [])
+    e = f" {edad} año{'s' if edad != 1 else ''}." if edad else ""
+    partes = (perro or "").split()
+    perro = partes[0] if len(partes) > 2 else perro   # "Nicolás martini González" → "Nicolás" (a veces trae el apellido de la familia)
+    return [(s.format(p=perro, e=e) + (" " + ofertas[i % len(ofertas)] if ofertas else "")).strip() for i, s in enumerate(SALUDOS_CUMPLE)]
+
+
+def mensajes_repuesto(con, s):
+    """Mensajes para ofrecer el repuesto, con el nombre de la persona y de sus perros. Mismo tono que los de cumpleaños."""
+    c = con.execute("SELECT nombre, nombre_pila FROM clientes WHERE id=?", (s["cliente_id"],)).fetchone()
+    quien = (c["nombre_pila"] or (c["nombre"] or "").split(" ")[0]).strip() if c else ""
+    perros = [((r[0] or "").split() or [""])[0] for r in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? ORDER BY id", (s["cliente_id"],))]
+    perros = [p for p in perros if p]
+    de = (" y ".join([", ".join(perros[:-1]), perros[-1]]) if len(perros) > 1 else perros[0]) if perros else ""
+    tam = (s.get("tamano") if s.get("tamano") not in (None, "—") else s.get("porche_tamano")) or ""   # los ya contactados traen el del cliente
+    tam = tam.lower(); tam = f" {tam}" if tam in ("mediano", "grande") else ""
+    sem = round((s.get("dias") or 0) / 7)
+    hola = f"¡Hola {quien}! 👋" if quien else "¡Hola! 👋"
+    if s.get("tipo") == "prepagado":
+        return [f"{hola} Ya te toca el repuesto{tam} que tienes pagado 🌱 ¿Qué día te lo llevamos? 💚"]
+    porche = f"el porche de {de}" if de else "el porche"
+    al_porche = "al" + porche[2:]
+    va = "van" if len(perros) > 1 else "va"
+    v = [f"{hola} ¿Cómo {va} {de or 'todo'} con el porche? Ya van {sem} semanas, así que la grama seguro está pidiendo cambio 🌱 ¿Te preparamos el repuesto{tam}? 💚" if sem >= 2 else
+         f"{hola} ¿Cómo {va} {de or 'todo'} con el porche? 🌱 ¿Te preparamos el repuesto{tam}? 💚",
+         f"{hola} Ya le toca grama nueva {al_porche} 🌱 ¿Te enviamos el repuesto{tam}? 💚",
+         f"{hola} Pasamos a recordarte que ya es buen momento para cambiar la grama de {porche} 🌿 Si quieres, te lo coordinamos esta semana 💚"]
+    if s.get("tipo") != "primer_repuesto":
+        v.append(f"{hola} Ya va tocando repuesto para {porche} 🌱 Si te sirve, el pack de 3 sale mejor y te olvidas por un tiempo 😉💚")
+    return v
+
+
+def oportunidades_de(con, cid):
+    """Lo que se le puede ofrecer a este cliente (lo mismo que sale en su ficha). Para el cumpleaños de su perro."""
+    c = con.execute("SELECT porche_version FROM clientes WHERE id=?", (cid,)).fetchone()
+    perros = [dict(m) for m in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? ORDER BY id", (cid,))]
+    lineas = con.execute("""SELECT p.sku, p.categoria, SUM(l.cantidad) n FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
+                            JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=? AND o.estado!='cancelada' GROUP BY p.id""", (cid,)).fetchall()
+    return oportunidades_cliente(lineas, perros, ya_tiene_porche=bool(c and c["porche_version"] in ("PRO", "Básico")),
+                                 tiene_basico=bool(c and c["porche_version"] == "Básico"))
 
 
 @app.get("/clientes/{cid}", response_class=HTMLResponse)
@@ -4714,7 +5132,7 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
                   refirio=refirio, lo_trajo=lo_trajo,
                   packs=packs, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
                   etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack, n_prepagados=prepagados,
-                  oportunidades=oportunidades_cliente(lineas, perros), formas=formas, canales=canales, entregas_tipo=entregas_tipo,
+                  oportunidades=oportunidades_cliente(lineas, perros, ya_tiene_porche=(c["porche_version"] in ("PRO", "Básico")), tiene_basico=(c["porche_version"] == "Básico")), formas=formas, canales=canales, entregas_tipo=entregas_tipo,
                   ENTREGA=ENTREGA, E_LABEL=E_LABEL, P_LABEL=P_LABEL, RESULTADOS=RESULTADOS)
 
 
@@ -4727,8 +5145,8 @@ async def cliente_editar(request: Request, cid: int, con=Depends(db)):
     actual = con.execute("SELECT * FROM clientes WHERE id=?", (cid,)).fetchone()
     if not actual: return RedirectResponse("/clientes", status_code=303)
     limpiar = {
-        "nombre_pila":    lambda v: (v or "").strip() or actual["nombre_pila"],   # sin nombre no se queda
-        "apellido":       lambda v: (v or "").strip() or None,
+        "nombre_pila":    lambda v: capitalizar(v) or actual["nombre_pila"],   # sin nombre no se queda
+        "apellido":       lambda v: capitalizar(v, inicio=False) or None,
         "telefono":       lambda v: normalizar_telefono(v),
         "cedula":         lambda v: (v or "").strip().upper() or None,
         "correo":         lambda v: (v or "").strip() or None,
@@ -4844,15 +5262,18 @@ def resumen_despachador(con, nombre, hoy):
     ult = con.execute("SELECT fecha, monto FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC, id DESC LIMIT 1", (nombre,)).fetchone()
     zonas = con.execute("""SELECT COALESCE(NULLIF(zona,''), 'Sin zona') z, COUNT(*) n FROM ordenes
                            WHERE despachador=? AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 ORDER BY 2 DESC LIMIT 6""", (nombre,)).fetchall()
-    v = con.execute("SELECT COALESCE(SUM(monto),0) m, COUNT(*) n FROM viajes_agencia WHERE despachador=? AND pagado=0", (nombre,)).fetchone()
+    v = con.execute("SELECT COALESCE(SUM(monto),0) m, COUNT(*) n FROM viajes_agencia WHERE despachador=? AND pagado=0 AND llevado_en IS NOT NULL", (nombre,)).fetchone()
     r = dict(s)
     r["debe"] = (r["debe"] or 0) + v["m"]          # los viajes a la agencia se le pagan igual que las entregas
     r["n_viajes"] = v["n"]; r["debe_viajes"] = v["m"]   # se cuentan aparte: son viajes, no entregas
-    vf = con.execute("""SELECT COALESCE(SUM(monto),0) m, COALESCE(SUM(tipo='fallido'),0) nf, COALESCE(SUM(tipo='retiro'),0) nr
-                        FROM viajes_despachador WHERE despachador=? AND pagado=0""", (nombre,)).fetchone()
+    vf = con.execute("""SELECT COALESCE(SUM(monto),0) m, COALESCE(SUM(tipo='fallido'),0) nf, COALESCE(SUM(tipo='retiro'),0) nr,
+                        COALESCE(SUM(tipo='diligencia'),0) nd FROM viajes_despachador WHERE despachador=? AND pagado=0 AND por_aprobar=0""", (nombre,)).fetchone()
     # retiros de pack / prepagados que llevó, y viajes en que fue y no le recibieron: también se le pagan
     # un retiro de repuesto que llevó es una entrega más: se cuenta junto con las demás
     r["debe"] += vf["m"]; r["n_fallidos"] = vf["nf"]; r["n_debe"] = (r["n_debe"] or 0) + vf["nr"]; r["n_retiros"] = 0
+    r["n_diligencias"] = vf["nd"]   # encargos sueltos que no van con un pedido (buscar tela, llevar algo al taller…)
+    # las que anotó él mismo no cuentan hasta que Cristina las apruebe
+    r["n_dil_aprobar"] = con.execute("SELECT COUNT(*) FROM viajes_despachador WHERE despachador=? AND por_aprobar=1", (nombre,)).fetchone()[0]
     # lo que se le adelantó se descuenta de lo que se le debe; si adelantaste más de lo que ha hecho, queda a favor tuyo
     r["adelantos"], r["adelanto"] = adelanto_despachador(con, nombre)
     r["debe_bruto"] = r["debe"]
@@ -4896,14 +5317,27 @@ def mis_entregas(request: Request, con=Depends(db)):
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
     hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre, vigentes=True), key=lambda h: h["fecha"] or "", reverse=True)
+    viajes_pend = con.execute("""SELECT v.*, (SELECT group_concat(COALESCE(NULLIF(c.nombre_pila,''), c.nombre) || ' ' || o.numero, ' · ') FROM ordenes o
+                                 LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=v.id) cuales
+                                 FROM viajes_agencia v WHERE v.despachador=? AND v.llevado_en IS NULL ORDER BY v.fecha""", (nombre,)).fetchall()
+    # lo que la agencia le va a pedir por cada paquete: a quién va, cédula, teléfono, a qué oficina y qué lleva
+    viajes_pend = [dict(v) for v in viajes_pend]
+    for v in viajes_pend:
+        v["paquetes"] = []
+        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
+                                c.nombre, c.cedula, c.telefono FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
+            o = dict(o)
+            if (o["recibe"] or "").startswith("otra persona"): o["recibe"] = None   # texto genérico de la migración, no es un nombre
+            o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
+            v["paquetes"].append(o)
     # "Lo que has entregado" es solo lo que ya hizo: lo pendiente o en ruta está en "Lo que te toca hoy"
     hist_todo = [h for h in hist_todo if h["estado"] not in ("pendiente", "en_ruta")]
     return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
-                  hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(),
+                  hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(), viajes_pend=viajes_pend, tarifas_dil=tarifas_diligencia(con),
                   ganado_mes=round(sum(h["pago"] for h in hist if h["estado"] == "entregada" and (h["fecha"] or "")[:7] == mes), 2),
                   ganado_todo=round(sum(h["pago"] for h in hist if h["estado"] == "entregada"), 2),
-                  n_entregadas=sum(1 for h in hist_todo if h["estado"] == "entregada"))
+                  n_entregadas=sum(1 for h in hist_todo if h["estado"] == "entregada" and not (h["quien"] or "").startswith("Viaje a ")))   # un viaje a la agencia no es una entrega
 
 
 @app.post("/ordenes/{oid}/pack/{kid}/hoy")
@@ -5088,10 +5522,22 @@ def viajes_hist(con, nombre, vigentes=False):
                             o.ciudad FROM viajes_despachador v LEFT JOIN ordenes o ON o.id=v.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
                             WHERE v.despachador=? """ + ("AND NOT (v.pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=v.pago_id) IS NOT NULL) " if vigentes else "") +
                             """ORDER BY v.fecha DESC, v.id DESC LIMIT 60""", (nombre,)):
+        if v["tipo"] == "diligencia":
+            out.append({"id": None, "numero": None, "fecha": v["fecha"], "pago": v["monto"], "quien": "Diligencia", "cliente": None, "zona": None,
+                        "direccion": v["motivo"], "ciudad": None, "despachador_pagado": v["pagado"], "estado": "diligencia", "nota": None, "que": None,
+                        "por_aprobar": v["por_aprobar"]})
+            continue
         out.append({"id": v["orden_id"], "numero": v["numero"], "fecha": v["fecha"], "pago": v["monto"], "quien": v["quien"], "cliente": v["cliente"],
                     "zona": v["zona"], "direccion": v["direccion"], "ciudad": v["ciudad"], "despachador_pagado": v["pagado"],
                     "estado": "no_entregado" if v["tipo"] == "fallido" else "entregada", "nota": v["motivo"],
                     "que": None})
+    # los viajes a la agencia (MRW, Tealca…) también son trabajo suyo y se le pagan: que se vean en su lista
+    for v in con.execute("""SELECT * FROM viajes_agencia WHERE despachador=? AND llevado_en IS NOT NULL """ + ("AND NOT (pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=pago_id) IS NOT NULL) " if vigentes else "") +
+                         """ORDER BY fecha DESC, id DESC LIMIT 60""", (nombre,)):
+        n = v["pedidos"] or 0
+        out.append({"id": None, "numero": None, "fecha": v["fecha"], "pago": v["monto"], "quien": f"Viaje a {v['agencia'] or 'la agencia'}", "cliente": None,
+                    "zona": None, "direccion": f"llevó {n} pedido{'s' if n != 1 else ''}" if n else None, "ciudad": None,
+                    "despachador_pagado": v["pagado"], "estado": "entregada", "nota": v["nota"], "que": None})
     return out
 
 
@@ -5151,8 +5597,11 @@ def texto_ruta(filas, hoy):
     """El mensaje tal cual se le manda por WhatsApp."""
     out = [f"Decopet · {fecha_larga(hoy)}", ""]
     for i, f in enumerate(filas, 1):
-        out.append(f"{i}. {f['quien']}" + (f" · {f['telefono']}" if f["telefono"] else ""))
-        if f.get("recibe"): out.append(f"   Recibe: {f['recibe']}" + (f" · {f['recibe_tel']}" if f.get("recibe_tel") else ""))
+        out.append(f"{i}. {f['quien']}")
+        if tel_wa(f["telefono"]): out.append(f"   📞 {tel_wa(f['telefono'])}")   # solo en su línea y con +58: en WhatsApp se toca para llamar o escribir
+        if f.get("recibe"):
+            out.append(f"   Recibe: {f['recibe']}")
+            if tel_wa(f.get("recibe_tel")): out.append(f"   📞 {tel_wa(f['recibe_tel'])}")
         if f["direccion"]: out.append(f"   {f['direccion']}")
         if f["maps"]: out.append(f"   {f['maps']}")
         out.append(f"   {f['que_lleva']}")
@@ -5179,10 +5628,11 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     zonas_todas = con.execute("""SELECT COALESCE(NULLIF(zona,''), 'Sin zona') z, COUNT(*) n, SUM(COALESCE(delivery, 0)) monto FROM ordenes
                                  WHERE despachador=? AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 ORDER BY 2 DESC""", (d["nombre"],)).fetchall()
     viajes = con.execute("""SELECT v.*, (SELECT COUNT(*) FROM ordenes o WHERE o.viaje_id=v.id) n_ordenes
-                            FROM viajes_agencia v WHERE v.despachador=? AND v.pagado=0 ORDER BY v.fecha DESC, v.id DESC""", (d["nombre"],)).fetchall()
+                            FROM viajes_agencia v WHERE v.despachador=? AND v.pagado=0 AND v.llevado_en IS NOT NULL ORDER BY v.fecha DESC, v.id DESC""", (d["nombre"],)).fetchall()
     fallidos = con.execute("""SELECT f.*, o.numero, c.nombre cliente, o.zona, o.ciudad FROM viajes_despachador f
                               LEFT JOIN ordenes o ON o.id=f.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
-                              WHERE f.despachador=? AND f.pagado=0 ORDER BY f.fecha DESC, f.id DESC""", (d["nombre"],)).fetchall()
+                              WHERE f.despachador=? AND f.pagado=0 AND f.por_aprobar=0 ORDER BY f.fecha DESC, f.id DESC""", (d["nombre"],)).fetchall()
+    dil_aprobar = con.execute("SELECT * FROM viajes_despachador WHERE despachador=? AND por_aprobar=1 ORDER BY fecha, id", (d["nombre"],)).fetchall()
     ruta = ruta_despachador(con, d["nombre"], hoy.isoformat())
     # su récord: todo lo que ha entregado, pagado o no. Sin esto, al marcar pagado se perdía el rastro.
     hist = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
@@ -5197,7 +5647,7 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
               "mes": round(sum(h["pago"] for h in hist if (h["fecha"] or "")[:7] == mes), 2),
               "primera": hist[-1]["fecha"] if hist else None}
     viajes_hechos = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(monto),0) m FROM viajes_agencia
-                                   WHERE despachador=?""", (d["nombre"],)).fetchone()
+                                   WHERE despachador=? AND llevado_en IS NOT NULL""", (d["nombre"],)).fetchone()
     record["viajes"] = viajes_hechos["n"]; record["viajes_monto"] = round(viajes_hechos["m"], 2)
     hist = sorted([dict(h) for h in hist] + viajes_hist(con, d["nombre"]), key=lambda h: h["fecha"] or "", reverse=True)
     # los retiros de repuesto que llevó también son entregas suyas; los viajes en que no le recibieron, no
@@ -5208,8 +5658,8 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                   mes=round(sum(h["pago"] or 0 for h in ent if (h["fecha"] or "")[:7] == mes), 2),
                   primera=hist[-1]["fecha"] if hist else None)
     return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO,
-                  CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos,
-                  ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),
+                  CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,
+                  tarifas_dil=tarifas_diligencia(con), ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist, record=record)
 
 
@@ -5230,6 +5680,53 @@ def despachador_adelanto(request: Request, did: int, monto: str = Form(""), form
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
 
 
+@app.post("/despachadores/{did}/diligencia")
+def despachador_diligencia(request: Request, did: int, que: str = Form(""), monto: str = Form(""), fecha: str = Form(""), con=Depends(db)):
+    """Hizo un encargo que no va con ningún pedido. Queda en lo que se le debe y se le paga con lo de la semana."""
+    if not solo_admin(request): return RedirectResponse(f"/despachadores/{did}", status_code=303)
+    d = con.execute("SELECT nombre FROM despachadores WHERE id=?", (did,)).fetchone()
+    usd = cifra(monto) if monto else 0
+    if d and que.strip() and usd and usd > 0:
+        pago_retiro_despachador(con, d["nombre"], usd, (fecha or "").strip() or datetime.date.today().isoformat(), uid_de(request),
+                                motivo=que.strip()[:1].upper() + que.strip()[1:], tipo="diligencia")
+        con.commit()
+    return RedirectResponse(f"/despachadores/{did}", status_code=303)
+
+
+@app.post("/despachadores/{did}/diligencia/{vid}/aprobar")
+def despachador_diligencia_aprobar(request: Request, did: int, vid: int, monto: str = Form(""), con=Depends(db)):
+    """La anotó el despachador: Cristina la revisa (puede ajustar el monto) y desde ahí cuenta para pagarle."""
+    usd = cifra(monto) if monto else 0
+    if solo_admin(request) and usd and usd > 0:
+        con.execute("UPDATE viajes_despachador SET por_aprobar=0, monto=? WHERE id=? AND tipo='diligencia' AND pagado=0", (round(usd, 2), vid)); con.commit()
+    return RedirectResponse(f"/despachadores/{did}", status_code=303)
+
+
+@app.post("/mis-entregas/diligencia")
+def mis_entregas_diligencia(request: Request, tid: str = Form(""), detalle: str = Form(""), fecha: str = Form(""), con=Depends(db)):
+    """El despachador anota él mismo una diligencia. Solo elige de la lista: el precio lo pone Cristina, nunca él.
+    Queda por aprobar: no cuenta hasta que Cristina la revise."""
+    u = quien_es(request)
+    nombre = (u or {}).get("despachador")
+    if not u or u["rol"] == "admin": nombre = (request.cookies.get("ver_desp") or "").strip() or (DESPACHADORES[0] if DESPACHADORES else "")
+    t = con.execute("SELECT nombre, precio FROM tarifas_diligencia WHERE id=?", (int(tid),)).fetchone() if tid.isdigit() else None
+    if nombre and t and t["precio"] > 0:
+        hoy = datetime.date.today().isoformat()
+        f = (fecha or "").strip(); det = detalle.strip()
+        con.execute("""INSERT INTO viajes_despachador (tipo, fecha, despachador, monto, motivo, usuario_id, por_aprobar)
+                       VALUES ('diligencia',?,?,?,?,?,1)""", (f if f and f <= hoy else hoy, nombre, t["precio"], t["nombre"] + (f" · {det}" if det else ""), uid_de(request)))
+        con.commit()
+    return RedirectResponse("/mis-entregas", status_code=303)
+
+
+@app.post("/despachadores/{did}/diligencia/{vid}/borrar")
+def despachador_diligencia_borrar(request: Request, did: int, vid: int, con=Depends(db)):
+    """Se anotó por error. Solo si todavía no se le ha pagado."""
+    if solo_admin(request):
+        con.execute("DELETE FROM viajes_despachador WHERE id=? AND tipo='diligencia' AND pagado=0", (vid,)); con.commit()
+    return RedirectResponse(f"/despachadores/{did}", status_code=303)
+
+
 @app.post("/despachadores/{did}/pagar")
 async def despachador_pagar(request: Request, did: int, con=Depends(db)):
     """Le pagaste al despachador: las entregas marcadas quedan saldadas y se guarda el pago."""
@@ -5245,17 +5742,17 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
             monto += con.execute(f"SELECT COALESCE(SUM(COALESCE(delivery, 0)),0) FROM ordenes WHERE id IN ({q}) AND despachador=? AND despachador_pagado=0 AND estado='entregada'", (*ids, d["nombre"])).fetchone()[0]
         if vids:
             qv = ",".join("?" * len(vids))
-            monto += con.execute(f"SELECT COALESCE(SUM(monto),0) FROM viajes_agencia WHERE id IN ({qv}) AND despachador=? AND pagado=0", (*vids, d["nombre"])).fetchone()[0]
+            monto += con.execute(f"SELECT COALESCE(SUM(monto),0) FROM viajes_agencia WHERE id IN ({qv}) AND despachador=? AND pagado=0 AND llevado_en IS NOT NULL", (*vids, d["nombre"])).fetchone()[0]
         if fids:
             qf = ",".join("?" * len(fids))
-            monto += con.execute(f"SELECT COALESCE(SUM(monto),0) FROM viajes_despachador WHERE id IN ({qf}) AND despachador=? AND pagado=0", (*fids, d["nombre"])).fetchone()[0]
+            monto += con.execute(f"SELECT COALESCE(SUM(monto),0) FROM viajes_despachador WHERE id IN ({qf}) AND despachador=? AND pagado=0 AND por_aprobar=0", (*fids, d["nombre"])).fetchone()[0]
         uid = uid_de(request); fecha = f.get("fecha") or datetime.date.today().isoformat()
         nota = (f.get("nota") or "").strip() or None
         # primero se descuenta lo que se le adelantó: eso ya salió de caja cuando se lo diste
         usado = round(min(adelanto_despachador(con, d["nombre"])[1], monto), 2)
         forma = f.get("forma") or ""
         cuenta = con.execute("SELECT id FROM cuentas WHERE nombre=? AND activa=1", (FORMA_CUENTA.get(forma, forma),)).fetchone()
-        if monto - usado > 0.009 and not cuenta: return RedirectResponse(f"/despachadores/{did}", status_code=303)   # falta decir de qué caja
+        if monto - usado > 0.009 and not cuenta: return RedirectResponse(f"/despachadores/{did}?err=caja#pagar", status_code=303)   # falta decir de qué caja
         parcial = round(float(cifra(f.get("monto_pago")) or 0), 2) if (f.get("monto_pago") or "").strip() else 0
         if 0 < parcial < monto - usado - 0.009:
             # le paga solo una parte: queda como adelanto y se descuenta cuando se le pague el resto. Las entregas siguen por pagar.
@@ -5266,8 +5763,8 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
         cur = con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, usuario_id, adelanto_usado) VALUES (?,?,?,?,?,?,?)",
                           (d["nombre"], fecha, monto, len(ids) + len(vids) + len(fids), nota, uid, usado))
         if ids: con.execute(f"UPDATE ordenes SET despachador_pagado=1, despachador_pago_id=? WHERE id IN ({','.join('?' * len(ids))}) AND despachador=? AND estado='entregada'", (cur.lastrowid, *ids, d["nombre"]))
-        if vids: con.execute(f"UPDATE viajes_agencia SET pagado=1, pago_id=? WHERE id IN ({','.join('?' * len(vids))}) AND despachador=?", (cur.lastrowid, *vids, d["nombre"]))
-        if fids: con.execute(f"UPDATE viajes_despachador SET pagado=1, pago_id=? WHERE id IN ({','.join('?' * len(fids))}) AND despachador=?", (cur.lastrowid, *fids, d["nombre"]))
+        if vids: con.execute(f"UPDATE viajes_agencia SET pagado=1, pago_id=? WHERE id IN ({','.join('?' * len(vids))}) AND despachador=? AND llevado_en IS NOT NULL", (cur.lastrowid, *vids, d["nombre"]))
+        if fids: con.execute(f"UPDATE viajes_despachador SET pagado=1, pago_id=? WHERE id IN ({','.join('?' * len(fids))}) AND despachador=? AND por_aprobar=0", (cur.lastrowid, *fids, d["nombre"]))
         if monto - usado > 0.009:   # pagarle a un despachador es un gasto: tiene que llegar a Gastos y al libro de caja
             det = []
             nr = 0
@@ -5279,6 +5776,8 @@ async def despachador_pagar(request: Request, did: int, con=Depends(db)):
                 qf = ",".join("?" * len(fids))
                 nf = con.execute(f"SELECT COALESCE(SUM(tipo='fallido'),0) FROM viajes_despachador WHERE id IN ({qf})", fids).fetchone()[0]
                 if nf: det.append(f"{nf} viaje{'s' if nf != 1 else ''} sin entregar")
+                nd = con.execute(f"SELECT COALESCE(SUM(tipo='diligencia'),0) FROM viajes_despachador WHERE id IN ({qf})", fids).fetchone()[0]
+                if nd: det.append(f"{nd} diligencia{'s' if nd != 1 else ''}")
             g = con.execute("""INSERT INTO gastos (fecha, monto_usd, monto_real, moneda, categoria, subcategoria, descripcion, proveedor,
                            cantidad, cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Pago semanal',?,?,?,?,?,?)""",
                         (fecha, round(monto - usado, 2), round(monto - usado, 2),
@@ -5311,9 +5810,24 @@ async def viaje_crear(request: Request, con=Depends(db)):
     vid = cur.lastrowid
     con.execute(f"UPDATE ordenes SET viaje_id=?, agencia=COALESCE(NULLIF(agencia,''),?) WHERE id IN ({','.join('?' * len(filas))})",
                 (vid, agencia or None, *[r["id"] for r in filas]))
-    for r in filas: registrar(con, r["id"], uid, "despachador", f"{desp} lo llevó a {agencia or 'la agencia'}")
+    for r in filas: registrar(con, r["id"], uid, "despachador", f"{desp} lo va a llevar a {agencia or 'la agencia'}")
     con.commit()
     return RedirectResponse(volver, status_code=303)
+
+
+@app.post("/viajes/{vid}/llevado")
+def viaje_llevado(request: Request, vid: int, volver: str = Form(""), con=Depends(db)):
+    """Ya los llevó a la agencia: recién aquí el viaje cuenta como hecho y se le debe."""
+    u = quien_es(request); yo = (u or {}).get("despachador")
+    v = con.execute("SELECT * FROM viajes_agencia WHERE id=?", (vid,)).fetchone()
+    es_admin = rol_de(request) == "admin" or (u and u["rol"] == "admin")   # Cristina probando "ver como"
+    puede = es_admin or "coordinar" in PERMISOS[rol_de(request)] or (yo and v and v["despachador"] == yo)
+    if v and puede and not v["llevado_en"]:
+        con.execute("UPDATE viajes_agencia SET llevado_en=datetime('now','localtime') WHERE id=?", (vid,))
+        for o in con.execute("SELECT id FROM ordenes WHERE viaje_id=?", (vid,)).fetchall():
+            registrar(con, o["id"], uid_de(request), "despachador", f"{v['despachador']} lo llevó a {v['agencia'] or 'la agencia'}")
+        con.commit()
+    return RedirectResponse(volver or ("/mis-entregas" if yo else "/operaciones?cola=todo&tipo=nacional"), status_code=303)
 
 
 @app.post("/viajes/{vid}/borrar")
@@ -5347,7 +5861,7 @@ def despachadores_guardar(request: Request, id: int = Form(0), nombre: str = For
 def tarifas(request: Request, q: str = "", con=Depends(db)):
     rows = con.execute("SELECT * FROM tarifas WHERE zona LIKE ? ORDER BY orden, tarifa, zona", (f"%{q}%",)).fetchall()
     ta = cfg_json(con, "tarifa_agencia", {}) or {}
-    return render(request, "tarifas.html", seccion="tarifas", tarifas=rows, tarifas_ag={a: float(ta.get(a, ta.get("*", 5))) for a in AGENCIAS})
+    return render(request, "tarifas.html", seccion="tarifas", tarifas=rows, tarifas_dil=tarifas_diligencia(con), tarifas_ag={a: float(ta.get(a, ta.get("*", 5))) for a in AGENCIAS})
 
 
 @app.post("/tarifas/guardar")
@@ -5357,6 +5871,23 @@ def tarifas_guardar(request: Request, id: int = Form(0), zona: str = Form(...), 
     if borrar and id: con.execute("DELETE FROM tarifas WHERE id=?", (id,))
     elif id: con.execute("UPDATE tarifas SET zona=?, tarifa=?, pago_despachador=?, notas=? WHERE id=?", (zona.strip(), monto, pago_d, notas.strip() or None, id))
     elif zona.strip(): con.execute("INSERT OR IGNORE INTO tarifas (zona, tarifa, pago_despachador, notas) VALUES (?,?,?,?)", (zona.strip(), monto, pago_d, notas.strip() or None))
+    con.commit(); return RedirectResponse("/tarifas", status_code=303)
+
+
+def tarifas_diligencia(con):
+    return con.execute("SELECT * FROM tarifas_diligencia ORDER BY orden, nombre").fetchall()
+
+
+@app.post("/tarifas/diligencias")
+async def tarifas_diligencias(request: Request, con=Depends(db)):
+    """Precio de referencia de cada diligencia. Solo Cristina lo cambia."""
+    if not solo_admin(request): return RedirectResponse("/tarifas", status_code=303)
+    f = await request.form(); nombre = (f.get("nombre") or "").strip(); tid = f.get("id")
+    if tid and f.get("borrar"): con.execute("DELETE FROM tarifas_diligencia WHERE id=?", (int(tid),))
+    elif nombre:
+        precio = cifra(f.get("precio") or "0") or 0
+        if tid: con.execute("UPDATE tarifas_diligencia SET nombre=?, precio=? WHERE id=?", (nombre, precio, int(tid)))
+        else: con.execute("INSERT OR IGNORE INTO tarifas_diligencia (nombre, precio) VALUES (?,?)", (nombre, precio))
     con.commit(); return RedirectResponse("/tarifas", status_code=303)
 
 
@@ -5467,33 +5998,35 @@ def taller_hoy(request: Request, con=Depends(db)):
     # Lo que se lleva cada despachador hoy: para que en el taller sepan qué entregarle cuando pasa por la casa.
     # Sin nombres de clientes y sin fechas: es una lista de bultos, todo lo de hoy.
     salidas = {}
-    def sale(quien_lleva, producto, n, agencia=False):
-        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}})
+    def sale(quien_lleva, producto, n, agencia=False, falta=False):
+        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}, "falta": falta})
         d = g["agencia"] if agencia else g["cosas"]   # lo de la agencia va aparte: eso hay que embalarlo
         d[producto] = d.get(producto, 0) + n
 
-    for o in con.execute("""SELECT o.id, o.despachador, o.tipo_entrega FROM ordenes o
+    for o in con.execute("""SELECT o.id, o.despachador, o.tipo_entrega, o.agencia FROM ordenes o
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
                               AND o.estado='pendiente' AND o.origen_excel=0   -- en ruta = ya salió del taller
                               AND """ + HAY_QUE_ENTREGAR() + """
                               AND COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) <= ?""", (hoy,)):
         # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
-        lleva = (o["despachador"] or "").strip() or "Sin despachador"
         a_agencia = o["tipo_entrega"] == "nacional"
+        # un envío nacional sin despachador no es "sin despachador": va a una agencia (MRW, Tealca…) y falta quién lo lleve hasta allá
+        falta = not (o["despachador"] or "").strip()
+        lleva = (o["despachador"] or "").strip() or ((f"Para {o['agencia']}" if o["agencia"] else "Para la agencia") if a_agencia else "Sin despachador")
         for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo,
                                 TRIM(COALESCE(l.personalizacion,'')) perso
                                 FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? AND l.extra_en IS NULL
                                   AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id AND r.entregado_en IS NULL)""", (o["id"],)):
             if l["tipo"] == "opcion":   # una opción no es un bulto; si es la placa con nombre, que se vea el nombre
-                if l["perso"]: sale(lleva, f"Placa con el nombre “{l['perso']}”", int(l["cantidad"] or 1), a_agencia)
+                if l["perso"]: sale(lleva, f"Placa con el nombre “{l['perso']}”", int(l["cantidad"] or 1), a_agencia, falta)
                 continue
             if (l["sku"] or "").startswith("PACK"):   # de un pack no sale "el pack": salen los repuestos que le tocan
                 k = con.execute("SELECT tamano, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
                                 (o["id"], l["sku"])).fetchone()
-                sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip(), (k["entregadas_inicio"] if k else 1) or 1, a_agencia)
+                sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip(), (k["entregadas_inicio"] if k else 1) or 1, a_agencia, falta)
             else:
                 sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else "")
-                     + (f" ✎ personalizado “{l['perso']}”" if l["perso"] else ""), int(l["cantidad"]), a_agencia)
+                     + (f" ✎ personalizado “{l['perso']}”" if l["perso"] else ""), int(l["cantidad"]), a_agencia, falta)
     for k in cargar_packs(con):
         if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= hoy and (k["tipo_programado"] or k["tipo_entrega"]) != "pickup" and not k.get("en_ruta"):
             sale((k["despachador_programado"] or "").strip() or "Sin despachador",
@@ -5505,7 +6038,7 @@ def taller_hoy(request: Request, con=Depends(db)):
     for g in salidas.values():
         for k_ in ("cosas", "agencia"):
             g[k_] = " · ".join(f"{n}× {nom}" for nom, n in sorted(g[k_].items()))
-    salidas = sorted(salidas.values(), key=lambda g: (g["quien_lleva"] == "Sin despachador", g["quien_lleva"]))
+    salidas = sorted(salidas.values(), key=lambda g: (g["falta"] or g["quien_lleva"] == "Sin despachador", g["quien_lleva"]))
     llegadas = con.execute("""SELECT pr.id, pr.cantidad, pr.recibido, pr.fecha_esperada, pr.responsable, pr.pieza, pr.descripcion,
                               COALESCE(NULLIF(pr.pieza,''), p.nombre) producto, p.requiere_color FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
                               WHERE pr.estado NOT IN ('recibido','cancelado','cancelada')

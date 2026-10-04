@@ -2,7 +2,7 @@
 <form method="post" action="/clientes/nuevo">
 <div class="bloque"><h3>Datos</h3>
 <div class="g2"><div><label>Nombre</label><input name="nombre_pila" required autofocus placeholder="María"></div><div><label>Apellido</label><input name="apellido" required placeholder="Pérez"></div></div>
-<div class="g2"><div><label>Teléfono <span class="obl">*</span></label><input name="telefono" placeholder="0414-1234567" inputmode="tel" required></div><div><label>Cédula / RIF <span class="mini">(obligatoria para envíos nacionales)</span></label><input name="cedula" placeholder="V-12345678"></div></div>
+<div class="g2"><div><label>Teléfono <span class="obl">*</span></label><input name="telefono" placeholder="0414-1234567" inputmode="tel" required></div><div><label>Cédula / RIF</label><input name="cedula" placeholder="V-12345678"></div></div>
 <label>Correo <span class="obl">*</span></label><input name="correo" inputmode="email" placeholder="nombre@gmail.com" required>
 <div class="g2"><div><label>¿Cómo nos conoció?</label><select name="origen" onchange="this.form.querySelector('.ref-w').hidden=(this.value!='Recomendación de otro cliente')"><option value="">—</option>{% for o in ORIGENES %}<option>{{ o }}</option>{% endfor %}</select></div>
 <div class="ref-w" hidden><label>¿Quién lo recomendó?</label><input list="ref-cl" name="referido_nombre" placeholder="escribe el nombre" oninput="const o=[...document.getElementById('ref-cl').options].find(x=>x.value===this.value);this.form.querySelector('[name=referido_id]').value=o?o.dataset.id:''"><input type="hidden" name="referido_id"></div></div></div>

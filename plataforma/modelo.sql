@@ -180,6 +180,16 @@ CREATE TABLE IF NOT EXISTS tarifas (
   id INTEGER PRIMARY KEY, zona TEXT NOT NULL UNIQUE, tarifa REAL NOT NULL DEFAULT 0,   -- lo que paga el cliente
   pago_despachador REAL,   -- lo que se le paga al despachador por ir a esa zona (si es distinto)
   notas TEXT, orden INTEGER DEFAULT 0);
+-- ---------- QUIÉN DEBE en una caja "por cobrar": solo es una nota para verlo al pasar el mouse (no mueve saldos)
+CREATE TABLE IF NOT EXISTS caja_detalle (id INTEGER PRIMARY KEY, cuenta_id INTEGER NOT NULL REFERENCES cuentas(id), responsable TEXT, concepto TEXT, monto REAL NOT NULL DEFAULT 0, orden INTEGER DEFAULT 0);
+-- ---------- PENDIENTES de Cristina: notas con o sin fecha. Con fecha salen en Inicio ese día y en el Calendario.
+CREATE TABLE IF NOT EXISTS pendientes (id INTEGER PRIMARY KEY, texto TEXT NOT NULL, fecha TEXT, repetir TEXT,   -- repetir: semanal / mensual
+  hecho_en TEXT, usuario_id INTEGER, creado_en TEXT DEFAULT (datetime('now','localtime')));
+-- ---------- NOTAS de Cristina: texto libre (ideas, listas, datos), sin fecha. Para lo que tiene fecha están los pendientes.
+CREATE TABLE IF NOT EXISTS notas (id INTEGER PRIMARY KEY, titulo TEXT, texto TEXT, fijada INTEGER NOT NULL DEFAULT 0,
+  creado_en TEXT DEFAULT (datetime('now','localtime')), editado_en TEXT DEFAULT (datetime('now','localtime')));
+-- ---------- DILIGENCIAS: precio de referencia de los encargos sueltos de un despachador (buscar tela, llevar algo…)
+CREATE TABLE IF NOT EXISTS tarifas_diligencia (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL UNIQUE, precio REAL NOT NULL DEFAULT 0, orden INTEGER DEFAULT 0);
 -- ordenes.pago_despachador: lo que se le debe al despachador por esa orden (se fija al asignar zona/despachador)
 
 -- ---------- PAGOS A DESPACHADORES: cada entrega genera lo que se le debe (el monto del delivery); al pagarle se marcan las órdenes

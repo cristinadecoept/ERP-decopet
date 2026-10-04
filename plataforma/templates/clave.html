@@ -2,13 +2,13 @@
 <div class="clave-caja">
  <div class="clave-ico">🔒</div>
  <h1>{{ titulo or 'Resultados' }}</h1>
- <p class="mini">{{ texto or 'Esta sección muestra cuánto gana Decopet mes a mes. Escribe la clave para entrar.' }}</p>
+ {% if texto != '' %}<p class="mini">{{ texto or 'Esta sección muestra cuánto gana Decopet mes a mes. Escribe la clave para entrar.' }}</p>{% endif %}
  <form method="post" action="/finanzas/entrar">
   <input type="hidden" name="volver" value="{{ volver or '/finanzas' }}">
   <input type="password" name="clave" inputmode="numeric" autocomplete="off" autofocus placeholder="••••" class="clave-in">
   {% if mal %}<div class="mini clave-mal">Clave incorrecta.</div>{% endif %}
   <p style="margin:12px 0 0"><button class="btn bloque">Entrar</button></p>
  </form>
- <p class="mini" style="margin-top:12px">Se cierra al salir de esta sección. <a href="/inicio">Volver a Inicio</a></p>
+{% if seccion!='historial' %} <p class="mini" style="margin-top:12px">Se cierra al salir de esta sección. <a href="/inicio">Volver a Inicio</a></p>{% endif %}
 </div>
 {% endblock %}
