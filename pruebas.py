@@ -283,6 +283,8 @@ def _():
 @prueba("Lo que se compra para vender tal cual (bowls, platos) tiene a qué producto entrar")
 def _():
     con = sqlite3.connect(str(A.DB))
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE name='productos'").fetchone():
+        print("      (sin base en uso, como en GitHub: no hay catálogo real que revisar)"); return
     for item, sku in A.ITEMS_A_INVENTARIO.items():
         assert con.execute("SELECT 1 FROM productos WHERE sku=?", (sku,)).fetchone(), f"{item} apunta a {sku}, que no existe"
 
@@ -446,7 +448,8 @@ def erp_de_prueba(en_servidor=False, con_datos=True):
         yield TestClient(A.app)
     finally:
         A.DB, S.DB, A.EN_SERVIDOR, A.bcv.programar, A.bcv.actualizar = antes
-        A.cargar_despachadores(); A.cargar_formas_pago(); A.cargar_ajustes()
+        try: A.cargar_despachadores(); A.cargar_formas_pago(); A.cargar_ajustes()
+        except sqlite3.OperationalError: pass   # en GitHub no hay base en uso: no hay nada que volver a cargar
 
 
 def sesion_de(cliente, rol):
