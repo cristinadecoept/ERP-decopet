@@ -118,7 +118,7 @@ proveedores; el despachador sí ve dinero, pero solo el suyo.
 - **En el servidor no hay claves del ERP.** Cloudflare Access pide un código por correo y el ERP reconoce a
   la persona por ese correo (`usuarios.correo`), comprobando la firma de Cloudflare en cada pedido
   (`plataforma/access.py`). Desde Equipo, el ERP le manda a Cloudflare la lista de correos que pueden pasar
-  (`plataforma/cf_equipo.py`; variables `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_ACCESS_GROUP_ID`).
+  (`plataforma/cf_equipo.py`; variables `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_ACCESS_POLICY_ID`).
 - En la Mac (sin Cloudflare): claves con `pbkdf2_hmac` sha256, 200.000 iteraciones, sal de 16 bytes;
   sesiones en base, 12 h, cookie `httponly` + `samesite=strict`; 8 intentos fallidos en 15 min y se bloquea
 - CSRF por validación de `Origin`/`Referer`

@@ -706,7 +706,7 @@ def con_cloudflare(en_servidor=True, con_datos=True):
     A.CF_EQUIPO.poner_correos = lambda correos: enviado.__setitem__("correos", sorted(correos))
     A.CF_EQUIPO.cerrar_sesion = lambda correo: enviado["cerradas"].append(correo)
     os.environ.update(CF_ACCESS_ENFORCE="1", CF_ACCESS_TEAM_DOMAIN=EQUIPO, CF_ACCESS_AUD=AUD, DECOPET_CODIGO_INICIAL="codigo-inicial",
-                      CF_API_TOKEN="t", CF_ACCOUNT_ID="a", CF_ACCESS_GROUP_ID="g")
+                      CF_API_TOKEN="t", CF_ACCOUNT_ID="a", CF_ACCESS_POLICY_ID="p")
     try:
         with erp_de_prueba(en_servidor=en_servidor, con_datos=con_datos) as c:
             def como(correo):   # cada pedido siguiente llega firmado por Cloudflare con ese correo
@@ -876,6 +876,28 @@ def _():
         A.CF_EQUIPO.poner_correos = lambda correos: c.enviado.__setitem__("correos", sorted(correos))
         c.post("/equipo/cloudflare")
         assert "juan@gmail.com" in c.enviado["correos"] and "Cloudflare no recibió" not in c.get("/equipo").text
+
+
+@prueba("A Cloudflare se le cambian solo los correos de la regla; su nombre, duración y lo que exija quedan igual")
+def _():
+    from plataforma import cf_equipo as CFE
+    llamadas, antes, env = [], CFE._pedir, dict(os.environ)
+    def falso(metodo, ruta, cuerpo=None):
+        llamadas.append((metodo, ruta, cuerpo))
+        return {"id": "p1", "name": "Equipo Decopet", "decision": "allow", "session_duration": "720h", "reusable": True,
+                "created_at": "x", "include": [{"email": {"email": "viejo@x.com"}}], "require": [{"login_method": {"id": "otp"}}]}
+    CFE._pedir = falso; os.environ.update(CF_ACCESS_POLICY_ID="p1")
+    try:
+        CFE.poner_correos(["b@x.com", "a@x.com"])
+        metodo, ruta, cuerpo = llamadas[-1]
+        assert (metodo, ruta) == ("PUT", "/access/policies/p1"), (metodo, ruta)
+        assert cuerpo["include"] == [{"email": {"email": "a@x.com"}}, {"email": {"email": "b@x.com"}}], cuerpo["include"]
+        assert cuerpo["name"] == "Equipo Decopet" and cuerpo["session_duration"] == "720h" and cuerpo["require"], cuerpo
+        assert not {"id", "created_at", "reusable"} & set(cuerpo), "mandó campos que pone Cloudflare"
+        try: CFE.poner_correos([]); assert False, "dejó la regla vacía"
+        except ValueError: pass
+    finally:
+        CFE._pedir = antes; os.environ.clear(); os.environ.update(env)
 
 
 print("\nFOTOS")

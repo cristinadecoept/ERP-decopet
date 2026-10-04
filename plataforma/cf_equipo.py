@@ -1,14 +1,14 @@
 """La lista de correos que Cloudflare deja pasar, manejada desde la pantalla Equipo del ERP.
 
-En Cloudflare hay un grupo de Access ("Equipo Decopet") y la regla de la aplicación deja entrar a ese grupo.
-El ERP reescribe el grupo entero con los correos de quienes tienen acceso: siempre la lista completa, así
-si un cambio no llegó (Cloudflare caído), el siguiente lo arregla solo.
+En Cloudflare, la aplicación del ERP tiene una regla (policy) que deja pasar a una lista de correos. El ERP
+reescribe esa lista entera con los correos de quienes tienen acceso: siempre la lista completa, así si un cambio
+no llegó (Cloudflare caído), el siguiente lo arregla solo.
 
 Necesita, en las variables del servidor:
-  CF_API_TOKEN          una llave de Cloudflare con permisos "Access: Organizations, Identity Providers, and Groups"
-                        Edit (cambiar el grupo) y Revoke (cerrarle la sesión a alguien)
+  CF_API_TOKEN          una llave de Cloudflare con permisos "Access: Apps and Policies" Edit (cambiar la regla)
+                        y "Access: Organizations, Identity Providers, and Groups" Revoke (cerrarle la sesión a alguien)
   CF_ACCOUNT_ID         el número de cuenta de Cloudflare
-  CF_ACCESS_GROUP_ID    el grupo "Equipo Decopet"
+  CF_ACCESS_POLICY_ID   la regla de la aplicación (Access controls → Policies → la del ERP; está en su dirección)
 Sin ellas (la Mac, las pruebas) no hace nada.
 """
 import os, json
@@ -16,10 +16,11 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 API = "https://api.cloudflare.com/client/v4"
+SOLO_LECTURA = ("id", "created_at", "updated_at", "app_count", "reusable", "precedence")   # Cloudflare los pone, no se mandan
 
 
 def configurado():
-    return all(os.environ.get(k) for k in ("CF_API_TOKEN", "CF_ACCOUNT_ID", "CF_ACCESS_GROUP_ID"))
+    return all(os.environ.get(k) for k in ("CF_API_TOKEN", "CF_ACCOUNT_ID", "CF_ACCESS_POLICY_ID"))
 
 
 def _pedir(metodo, ruta, cuerpo=None):
@@ -37,12 +38,13 @@ def _pedir(metodo, ruta, cuerpo=None):
 
 
 def poner_correos(correos):
-    """El grupo queda exactamente con estos correos. Se conserva su nombre y lo que excluya o exija."""
-    if not correos: raise ValueError("el grupo no puede quedar vacío: nadie podría entrar")
-    ruta = f"/access/groups/{os.environ['CF_ACCESS_GROUP_ID']}"
-    g = _pedir("GET", ruta)
-    _pedir("PUT", ruta, {"name": g["name"], "include": [{"email": {"email": c}} for c in sorted(correos)],
-                         "exclude": g.get("exclude") or [], "require": g.get("require") or []})
+    """La regla deja pasar exactamente a estos correos. Lo demás de la regla (nombre, duración de la sesión,
+    lo que excluya o exija) queda como esté en Cloudflare."""
+    if not correos: raise ValueError("la regla no puede quedar vacía: nadie podría entrar")
+    ruta = f"/access/policies/{os.environ['CF_ACCESS_POLICY_ID']}"
+    regla = {k: v for k, v in _pedir("GET", ruta).items() if k not in SOLO_LECTURA}
+    regla["include"] = [{"email": {"email": c}} for c in sorted(correos)]
+    _pedir("PUT", ruta, regla)
 
 
 def cerrar_sesion(correo):
