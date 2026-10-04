@@ -6,7 +6,7 @@ de datos de mentira. Correrlas antes y después de cualquier cambio:
 
     ./.venv/bin/python pruebas.py
 """
-import os, re, sqlite3, datetime, tempfile, pathlib, traceback
+import os, re, time, sqlite3, datetime, tempfile, pathlib, traceback
 os.environ["DECOPET_PRUEBAS"] = "1"
 
 import plataforma.app as A
@@ -586,6 +586,36 @@ def _():
         assert r.status_code == 200 and "text/csv" in r.headers["content-type"], r.status_code
         sesion_de(c, "logistica")
         assert c.get("/historial/exportar", follow_redirects=False).status_code == 303, "logística bajó las ventas"
+
+
+@prueba("Cloudflare Access: sin su firma no se llega a nada; con firma buena sí; firmas falsas, vencidas o ajenas no")
+def _():
+    import jwt as JWT
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from plataforma import access as CF
+    clave, otra = (rsa.generate_private_key(public_exponent=65537, key_size=2048) for _ in range(2))
+    EQUIPO, AUD = "decopet-prueba.cloudflareaccess.com", "aud-de-prueba"
+    def firma(k=clave, aud=AUD, iss="https://" + EQUIPO, vence=600, kid="k1"):
+        return JWT.encode({"iss": iss, "aud": [aud], "exp": int(time.time()) + vence, "email": "cristina@x.com", "sub": "u1"}, k, algorithm="RS256", headers={"kid": kid})
+    antes_claves, env = CF._cargar_claves, dict(os.environ)
+    CF._cargar_claves = lambda forzar=False: {"k1": clave.public_key()}   # en vez de ir a buscarlas a Cloudflare
+    os.environ.update(CF_ACCESS_ENFORCE="1", CF_ACCESS_TEAM_DOMAIN=EQUIPO, CF_ACCESS_AUD=AUD)
+    try:
+        with erp_de_prueba() as c:
+            pide = lambda ruta, t=None: c.get(ruta, headers={"cf-access-jwt-assertion": t} if t else {}, follow_redirects=False).status_code
+            assert pide("/entrar") == 403, "sin firma llegó a la entrada"
+            assert pide("/static/estilo.css") == 403, "sin firma llegó a los archivos"
+            assert pide("/health") == 200, "Railway no puede revisar si está vivo"
+            assert pide("/entrar", firma()) == 200, "con firma buena no entró"
+            assert pide("/entrar", firma(k=otra)) == 403, "aceptó una firma falsa"
+            assert pide("/entrar", firma(aud="otra-app")) == 403, "aceptó la firma de otra aplicación"
+            assert pide("/entrar", firma(iss="https://otro-equipo.cloudflareaccess.com")) == 403, "aceptó la firma de otro equipo"
+            assert pide("/entrar", firma(vence=-120)) == 403, "aceptó una firma vencida"
+            assert pide("/entrar", firma(kid="k-desconocida")) == 403, "aceptó una clave desconocida"
+            os.environ.pop("CF_ACCESS_ENFORCE")
+            assert pide("/entrar") == 200, "apagado, igual pidió la firma"
+    finally:
+        CF._cargar_claves = antes_claves; os.environ.clear(); os.environ.update(env)
 
 
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")

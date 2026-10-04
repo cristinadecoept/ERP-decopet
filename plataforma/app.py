@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plataforma import bcv
+from plataforma import access as CF_ACCESS
 
 BASE = Path(__file__).resolve().parent
 # Dónde viven los datos. En la Mac es la carpeta de siempre; en un servidor se le dice
@@ -338,6 +339,14 @@ async def puerta(request: Request, call_next):
     if ruta == "/health":   # para Railway: ¿está vivo y puede leer la base? Sin entrar y sin contar nada más.
         vivo = base_responde()
         return con_escudos(PlainTextResponse("ok" if vivo else "mal", status_code=200 if vivo else 503))
+    # Cloudflare Access (solo en el servidor, con CF_ACCESS_ENFORCE=1): sin su firma no se llega a nada, ni a la
+    # pantalla de entrada ni a las fotos. A quien entra se le dice solo "Forbidden"; el motivo queda en el registro.
+    if CF_ACCESS.activo():
+        try:
+            request.state.cf_access = CF_ACCESS.validar(request.headers.get("cf-access-jwt-assertion", ""))
+        except Exception as e:
+            print(f"ACCESS rechazó {request.method} {ruta}: {e}", flush=True)
+            return con_escudos(PlainTextResponse("Forbidden", status_code=403))
     if viene_de_fuera(request):
         return con_escudos(JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403))
     try:
