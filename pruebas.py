@@ -671,6 +671,17 @@ def _():
         os.environ.clear(); os.environ.update(env)
 
 
+@prueba("El buscador de arriba solo sale a quien puede usarlo (no al taller ni a los despachadores) y no queda el texto 'Prototipo'")
+def _():
+    casas = {"admin": "/inicio", "logistica": "/operaciones", "taller": "/taller", "despachador": "/mis-entregas"}
+    with erp_de_prueba() as c:
+        for rol, casa in casas.items():
+            sesion_de(c, rol); html = c.get(casa).text
+            tiene = 'class="buscar"' in html
+            assert tiene == (rol in ("admin", "logistica")), f"{rol}: buscador {'sale' if tiene else 'no sale'}"
+            assert "Prototipo" not in html, f"{rol}: todavía dice Prototipo"
+
+
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
 def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:
