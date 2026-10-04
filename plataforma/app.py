@@ -32,6 +32,58 @@ app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 app.mount("/fotos", StaticFiles(directory=FOTOS_DIR), name="fotos")
 tpl = Jinja2Templates(directory=BASE / "templates")
 
+# Miniaturas. Las fotos de producto pesan hasta 5 MB y en pantalla se ven en cuadritos: la galería entera eran 37 MB.
+# Cada foto se achica una sola vez (WebP, conserva la transparencia) y queda guardada con los datos. La original no se
+# toca: es la que se descarga. La ?v= cambia cuando se reemplaza la foto, así el navegador puede guardar la miniatura.
+MINIATURAS = DATOS / "miniaturas"
+ANCHOS_MINI = (160, 480, 1600)   # la línea de una orden · las tarjetas · la foto abierta en grande
+
+def mini(ruta, ancho=480):
+    if not ruta: return None
+    try: v = int((FOTOS_DIR / ruta).stat().st_mtime)
+    except OSError: return f"/fotos/{ruta}"
+    return f"/fotos-mini/{ancho}/{ruta}?v={v}"
+
+tpl.env.globals["mini"] = mini
+tpl.env.filters["mini"] = mini
+
+
+def hacer_mini(ruta, ancho):
+    """La miniatura de una foto, hecha si falta o si la foto cambió. None si no existe o no se puede achicar."""
+    from PIL import Image, ImageOps
+    orig = (FOTOS_DIR / ruta).resolve()
+    if ancho not in ANCHOS_MINI or not orig.is_relative_to(FOTOS_DIR.resolve()) or not orig.is_file(): return None
+    dest = MINIATURAS / str(ancho) / f"{ruta}.webp"
+    if dest.exists() and dest.stat().st_mtime >= orig.stat().st_mtime: return dest
+    try:
+        with Image.open(orig) as im:
+            im = ImageOps.exif_transpose(im)   # las fotos del teléfono vienen acostadas y con la vuelta anotada aparte
+            im.thumbnail((ancho, ancho))
+            im = im.convert("RGBA" if im.mode in ("RGBA", "LA", "P", "PA") else "RGB")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_name(f"{dest.name}.{threading.get_ident()}.tmp")   # dos pedidos a la vez no se pisan
+            im.save(tmp, "WEBP", quality=80, method=4)
+            os.replace(tmp, dest)
+        return dest
+    except Exception as e:   # HEIC, una foto dañada
+        print(f"MINIATURA no se pudo hacer de {ruta}: {e}", flush=True)
+        return None
+
+
+def preparar_miniaturas():
+    """Al arrancar, en segundo plano: deja hechas las miniaturas de tarjeta, para que la primera visita no espere."""
+    for f in sorted(FOTOS_DIR.rglob("*")):
+        if f.is_file(): hacer_mini(f.relative_to(FOTOS_DIR).as_posix(), 480)
+
+
+@app.get("/fotos-mini/{ancho}/{ruta:path}")
+def foto_mini(ancho: int, ruta: str):
+    dest = hacer_mini(ruta, ancho)
+    if dest: return FileResponse(dest, media_type="image/webp")
+    if ancho in ANCHOS_MINI and (FOTOS_DIR / ruta).resolve().is_relative_to(FOTOS_DIR.resolve()) and (FOTOS_DIR / ruta).is_file():
+        return RedirectResponse(f"/fotos/{ruta}", status_code=307)   # existe pero no se puede achicar: se muestra entera
+    return PlainTextResponse("No existe", status_code=404)
+
 ESTADOS = ["pendiente", "en_ruta", "entregada", "cancelada"]
 E_LABEL = {"pendiente": "Pendiente", "en_ruta": "En ruta", "entregada": "Entregado", "cancelada": "Cancelada"}
 CERRADOS = ("entregada", "cancelada")
@@ -372,7 +424,13 @@ async def puerta(request: Request, call_next):
         if rol_de(request) == "despachador" and ruta.startswith("/viajes/") and not (
                 request.method == "POST" and re.fullmatch(r"/viajes/\d+/llevado", ruta)):
             return con_escudos(RedirectResponse(casa, status_code=303))
-    return con_escudos(await call_next(request))
+    resp = con_escudos(await call_next(request))
+    # Fotos, logos y estilos sí se guardan en el navegador (solo en él: "private"). Las miniaturas con su ?v= no cambian
+    # nunca; lo demás se vuelve a pedir solo si cambió (el servidor contesta "igual que antes" sin mandarlo otra vez).
+    if ruta.startswith(("/static/", "/fotos")) and resp.status_code in (200, 304):
+        fija = ruta.startswith("/fotos-mini/") and "v" in request.query_params
+        resp.headers["Cache-Control"] = "private, max-age=31536000, immutable" if fija else "private, no-cache"
+    return resp
 
 
 # Columnas que se fueron agregando con el tiempo y no están en modelo.sql.
@@ -483,7 +541,9 @@ def _arranque():
             con.execute("INSERT OR IGNORE INTO despachadores (nombre, activo) VALUES (?,0)", (n,))
         con.commit()
     con.close(); cargar_despachadores(); cargar_formas_pago(); cargar_ajustes()
-    if os.environ.get("DECOPET_PRUEBAS") != "1": arrancar_respaldo()   # las pruebas no respaldan
+    if os.environ.get("DECOPET_PRUEBAS") != "1":   # las pruebas no respaldan ni preparan fotos
+        arrancar_respaldo()
+        threading.Thread(target=preparar_miniaturas, daemon=True, name="miniaturas").start()
     bcv.programar(DB)
 
 
@@ -3715,7 +3775,7 @@ def galeria(request: Request, producto: int = 0, tipo: str = "", con=Depends(db)
     conteos = {r[0]: r[1] for r in con.execute("SELECT tipo, COUNT(*) FROM producto_fotos" + (" WHERE producto_id=?" if producto else "") + " GROUP BY 1", (producto,) if producto else ())}
     prods = con.execute("""SELECT p.id, p.nombre, (SELECT COUNT(*) FROM producto_fotos f WHERE f.producto_id=p.id) n FROM productos p
                            WHERE p.tipo='producto' AND p.activo=1 ORDER BY p.orden""").fetchall()
-    lista_js = [dict(archivo=r["archivo"], producto=r["producto"], tipo=r["tipo"], etiqueta=r["etiqueta"]) for r in rows]
+    lista_js = [dict(archivo=r["archivo"], grande=mini(f"productos/{r['archivo']}", 1600), producto=r["producto"], tipo=r["tipo"], etiqueta=r["etiqueta"]) for r in rows]
     return render(request, "galeria.html", seccion="galeria", fotos=rows, producto=producto, tipo=tipo, conteos=conteos, prods=prods, total=sum(conteos.values()), lista_js=lista_js, grupos=grupos)
 
 
@@ -3739,8 +3799,8 @@ def galeria_borrar(request: Request, fid: int, con=Depends(db)):
     if r:
         con.execute("DELETE FROM producto_fotos WHERE id=?", (fid,))
         if not con.execute("SELECT 1 FROM producto_fotos WHERE archivo=?", (r["archivo"],)).fetchone():   # el mismo archivo puede servir a varios productos
-            try: (FOTOS_PRODUCTOS / r["archivo"]).unlink()
-            except FileNotFoundError: pass
+            for f in [FOTOS_PRODUCTOS / r["archivo"]] + [MINIATURAS / str(a) / "productos" / f"{r['archivo']}.webp" for a in ANCHOS_MINI]:
+                f.unlink(missing_ok=True)
         con.commit()
     return RedirectResponse(f"/galeria?producto={r['producto_id']}" if r else "/galeria", status_code=303)
 

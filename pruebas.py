@@ -689,6 +689,73 @@ def _():
         assert (r.status_code, r.text) == (200, "ok"), (r.status_code, r.text)
 
 
+print("\nFOTOS")
+
+@contextmanager
+def fotos_de_prueba():
+    """Carpetas de fotos y miniaturas temporales, con una foto grande con transparencia."""
+    from PIL import Image
+    antes = (A.FOTOS_DIR, A.MINIATURAS)
+    raiz = pathlib.Path(tempfile.mkdtemp())
+    A.FOTOS_DIR, A.MINIATURAS = raiz / "fotos", raiz / "miniaturas"
+    (A.FOTOS_DIR / "productos").mkdir(parents=True)
+    Image.new("RGBA", (3000, 2000), (200, 120, 40, 0)).save(A.FOTOS_DIR / "productos" / "porche.png")
+    try: yield A.FOTOS_DIR / "productos" / "porche.png"
+    finally: A.FOTOS_DIR, A.MINIATURAS = antes
+
+
+@prueba("Las fotos se muestran achicadas (WebP, con su transparencia); la original queda igual para descargar")
+def _():
+    from PIL import Image
+    import io
+    with erp_de_prueba() as c, fotos_de_prueba() as orig:
+        sesion_de(c, "taller")   # el taller ve el inventario con fotos: también le llegan las miniaturas
+        url = A.mini("productos/porche.png")
+        assert url.startswith("/fotos-mini/480/productos/porche.png?v="), url
+        r = c.get(url)
+        assert r.status_code == 200 and r.headers["content-type"] == "image/webp", (r.status_code, r.headers)
+        im = Image.open(io.BytesIO(r.content))
+        assert max(im.size) == 480 and im.mode == "RGBA", (im.size, im.mode)
+        assert len(r.content) < orig.stat().st_size, "la miniatura pesa más que la original"
+        assert "immutable" in r.headers["cache-control"], r.headers["cache-control"]
+        assert Image.open(orig).size == (3000, 2000), "se tocó la original"
+
+
+@prueba("Si se reemplaza una foto, la miniatura se rehace y cambia su dirección")
+def _():
+    from PIL import Image
+    import io
+    with erp_de_prueba() as c, fotos_de_prueba() as orig:
+        sesion_de(c, "admin")
+        antes = A.mini("productos/porche.png"); c.get(antes)
+        Image.new("RGB", (800, 1600), "white").save(orig)
+        t = orig.stat().st_mtime + 5; os.utime(orig, (t, t))
+        despues = A.mini("productos/porche.png")
+        assert despues != antes, "la dirección no cambió: el navegador seguiría mostrando la foto vieja"
+        assert Image.open(io.BytesIO(c.get(despues).content)).size == (240, 480)
+
+
+@prueba("Miniaturas: solo los tamaños previstos y solo de la carpeta de fotos")
+def _():
+    with erp_de_prueba() as c, fotos_de_prueba():
+        sesion_de(c, "admin")
+        assert c.get("/fotos-mini/999/productos/porche.png").status_code == 404
+        assert c.get("/fotos-mini/480/productos/no-existe.png").status_code == 404
+        assert c.get("/fotos-mini/480/..%2F..%2Fplataforma.db").status_code == 404
+        c.cookies.clear()
+        assert c.get("/fotos-mini/480/productos/porche.png", follow_redirects=False).status_code == 303   # sin entrar, no
+
+
+@prueba("Los estilos y las fotos originales se guardan en el navegador y se vuelven a pedir solo si cambiaron; las páginas no")
+def _():
+    with erp_de_prueba() as c, fotos_de_prueba():
+        sesion_de(c, "admin")
+        css = c.get("/static/estilo.css")
+        assert css.headers["cache-control"] == "private, no-cache", css.headers["cache-control"]
+        assert c.get("/static/estilo.css", headers={"if-none-match": css.headers["etag"]}).status_code == 304
+        assert c.get("/inicio").headers["cache-control"] == "no-store"
+
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

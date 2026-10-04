@@ -148,7 +148,7 @@
 {% if refirio %}<div class="dato"><b>Ha traído</b><span>{{ refirio|length }} cliente{{ 's' if refirio|length!=1 }}</span></div>
 <table data-cols="Cliente:50|Desde:25|Ha comprado:25" class="lineas" style="margin-top:8px"><tr><th>Cliente</th><th>Desde</th>{% if 'ver_dinero' in puede %}<th class="num">Ha comprado</th>{% endif %}</tr>
 {% for r in refirio %}<tr class="fila" onclick="location.href='/clientes/{{ r.id }}'"><td>{{ r.nombre }}</td><td class="mono mini">{{ r.desde|dia }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ r.gastado|usd }}</td>{% endif %}</tr>{% endfor %}</table>{% endif %}</div>{% endif %}
-{% if fotos %}<div class="tarjeta"><h3>Fotos</h3><div class="fotos-mini">{% for f in fotos %}<a href="/galeria?abrir={{ f.id }}"><img src="/fotos/{{ f.archivo }}" alt=""></a>{% endfor %}</div></div>{% endif %}
+{% if fotos %}<div class="tarjeta"><h3>Fotos</h3><div class="fotos-mini">{% for f in fotos %}<a href="/galeria?abrir={{ f.id }}"><img src="{{ mini(f.archivo) }}" loading="lazy" alt=""></a>{% endfor %}</div></div>{% endif %}
 </div>
 </div>
 <script>
