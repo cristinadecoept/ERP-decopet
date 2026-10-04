@@ -3,12 +3,9 @@
 <input type="hidden" name="tipo" value="venta"><input type="hidden" name="cliente_id" id="cl-id"><input type="hidden" name="canal" id="canal" value="whatsapp"><input type="hidden" name="factura" id="factura" value="">
 <input type="hidden" name="tipo_entrega" id="te" value=""><input type="hidden" name="dir_modo" id="dir-modo" value="hab">
 
-<!-- 2 · FECHA DE PAGO -->
-<section class="no-paso"><div class="no-paso-h"><span class="no-num">1</span><b>Fecha de pago</b> <span class="obl" id="f-pago-obl">*</span></div><input type="date" name="fecha_pago" id="f-pago" value="{{ hoy }}" style="max-width:220px">
-<div class="nota-log" id="f-pago-ce" hidden style="margin-top:0">💵 La fecha de pago se pone sola el día que se entregue y se cobre.</div></section>
-
+<!-- El orden es el de una venta: quién, por dónde llegó, qué lleva, cómo se le entrega y cómo paga -->
 <!-- 1 · CLIENTE -->
-<section class="no-paso"><div class="no-paso-h"><span class="no-num">2</span><b>Cliente</b></div>
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">1</span><b>Cliente</b></div>
 <div id="cl-buscar"><input list="cl" id="cl-in" placeholder="Escribe el nombre o teléfono…" autocomplete="off" class="no-input-grande"><datalist id="cl">{% for c in clientes %}<option value="{{ c.nombre }}" data-id="{{ c.id }}" data-tel="{{ c.telefono }}" data-ced="{{ c.cedula or '' }}" data-correo="{{ c.correo or '' }}" data-perros="{{ c.perros or '' }}" data-dir="{{ c.dir or '' }}" data-ciudad="{{ c.ciudad }}" data-credito="{{ c.credito or 0 }}" data-tam="{{ c.porche_tamano if c.porche_version=='PRO' else '' }}" data-notas="{{ c.notas or '' }}" data-porche="{% if c.porche_version=='PRO' %}Miembro PRO{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% elif c.porche_version=='Básico' %}Porche Básico{% if c.porche_tamano %} · {{ c.porche_tamano }}{% endif %}{% endif %}">{{ c.telefono }} · {{ c.ciudad }}</option>{% endfor %}</datalist>
 <div class="mini" style="margin-top:6px">Si no aparece, <a href="#" onclick="clienteNuevo();return false">crear cliente nuevo</a></div></div>
 <div id="cl-existente" hidden class="no-cliente"><div class="no-avatar" id="cl-ex-ini">C</div><div style="flex:1;min-width:0"><b id="cl-ex-nombre"></b><div class="mini" id="cl-ex-datos"></div><div class="no-perros" id="cl-ex-mascotas"></div><div class="op-nota" id="cl-ex-notas" hidden></div></div><button type="button" class="no-link" onclick="limpiarCliente()">Cambiar</button></div>
@@ -26,15 +23,14 @@
 <button type="button" class="no-link" style="margin-top:8px" onclick="agregarMascota()">+ Agregar mascotas</button>
 </section>
 
-<!-- 3 · CANAL -->
-<section class="no-paso"><div class="no-paso-h"><span class="no-num">3</span><b>Canal</b></div>
+<!-- 2 · CANAL -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">2</span><b>Canal</b></div>
 <div class="no-pills" id="canal-pills">{% for k,v in CANAL.items() if k not in ('otro','shopify') %}<button type="button" class="no-pill {{ 'act' if k=='whatsapp' }}" data-v="{{ k }}" onclick="setCanal('{{ k }}')">{{ v }}</button>{% endfor %}</div>
 <div class="no-nota" id="iva-nota" hidden>Cashea: factura fiscal e IVA 16 % incluidos siempre.</div>
-<label class="chk" id="l-factura" style="margin-top:10px"><input type="checkbox" id="factura-chk" onchange="document.getElementById('factura').value=this.checked?'1':'';calc()"> El cliente pide factura fiscal (agrega IVA 16 %)</label>
 </section>
 
 <!-- 3 · PRODUCTOS -->
-<section class="no-paso"><div class="no-paso-h"><span class="no-num">4</span><b>Productos</b></div>
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">3</span><b>Productos</b></div>
 <div id="lin"></div>
 <button type="button" class="no-add" onclick="abrirPicker()">+ Agregar producto</button>
 <div id="picker" hidden class="no-picker">{% set cats = {'porche':'El Porche','repuesto':'Repuestos y packs','comedor':'Comedores','rampa':'Rampas','kit':'Kits','accesorio':'Accesorios'} %}{% for ck,cv in cats.items() %}{% set ps = productos|selectattr('categoria','eq',ck)|list %}{% if ps %}<div class="no-picker-cat">{{ cv }}</div><div class="no-picker-grid">{% for p in ps %}<button type="button" class="no-prod" onclick="agregar({{ productos.index(p) }})"><span>{{ p.nombre }}</span><b>${{ '%.0f'|format(p.precio) }}</b></button>{% endfor %}</div>{% endif %}{% endfor %}</div>
@@ -43,8 +39,8 @@
 <div id="motivo-w" hidden style="margin-top:2px"><label>Motivo del descuento</label><select name="motivo_descuento"><option value="">—</option><option>Promoción</option><option>Referido</option><option>Cortesía</option><option>Cliente frecuente</option></select></div>
 </section>
 
-<!-- 4 · PAGO -->
-<section class="no-paso"><div class="no-paso-h"><span class="no-num">5</span><b>Entrega</b></div>
+<!-- 4 · ENTREGA -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">4</span><b>Entrega</b></div>
 <div class="nota-log" id="nada-hoy" hidden style="margin-top:0">Hoy no se entrega nada. La entrega es opcional: si la llenas (delivery, despachador), queda guardada para cuando el cliente active su repuesto.</div>
 <div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
 <div id="ent-detalle" hidden>
@@ -68,7 +64,11 @@
 <div id="fe-w" hidden><label>Fecha de entrega</label><input type="date" name="fecha_entrega" value="{{ hoy }}" style="max-width:220px"></div>
 <span id="fe-nota" hidden></span>
 </section>
-<section class="no-paso"><div class="no-paso-h"><span class="no-num">6</span><b>Pago</b></div>
+<!-- 5 · PAGO: cuándo pagó, si pide factura y con qué -->
+<section class="no-paso"><div class="no-paso-h"><span class="no-num">5</span><b>Pago</b></div>
+<label style="margin-top:0">Fecha de pago <span class="obl" id="f-pago-obl">*</span></label><input type="date" name="fecha_pago" id="f-pago" value="{{ hoy }}" style="max-width:220px">
+<div class="nota-log" id="f-pago-ce" hidden style="margin-top:6px">💵 La fecha de pago se pone sola el día que se entregue y se cobre.</div>
+<label class="chk" id="l-factura" style="margin:12px 0 4px"><input type="checkbox" id="factura-chk" onchange="document.getElementById('factura').value=this.checked?'1':'';calc()"> El cliente pide factura fiscal (agrega IVA 16 %)</label>
 <div id="cred-w" hidden class="ahora-ln nar" style="margin-bottom:8px"><span class="ahora-dot"></span><span style="flex:1">Tiene <b id="cred-m" style="margin:0"></b> a favor</span><button type="button" class="btn chico" onclick="usarCredito()">Usarlo</button></div>
 <div id="pagos"></div>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px"><button type="button" class="no-link" onclick="agregarPago()">+ Otra forma de pago</button><span class="mini" id="p-falta"></span></div>

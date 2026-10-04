@@ -1264,3 +1264,33 @@ html.guardando main[data-sin-recarga] form button{opacity:.6;pointer-events:none
 @keyframes guardando{from{background-position:-40% 0}to{background-position:140% 0}}
 ::view-transition-old(root),::view-transition-new(root){animation-duration:.18s}
 @media (prefers-reduced-motion:reduce){.aviso-flot{transition:none}html.guardando::before{animation:none}::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+
+/* Listas, buscador y calendario de Decopet (static/controles.js): reemplazan las ventanitas grises de Windows */
+.ctl-pop{position:fixed;z-index:400;background:var(--sup);border:1px solid var(--linea);border-radius:14px;box-shadow:0 18px 40px -16px rgba(28,38,34,.35),0 2px 6px rgba(28,38,34,.06);padding:6px;overflow-y:auto;animation:ctl-entra .12s ease-out}
+@keyframes ctl-entra{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.ctl-lista{max-width:min(420px,calc(100vw - 16px))}
+.ctl-op{display:flex;flex-direction:column;gap:1px;padding:8px 12px 8px 30px;border-radius:10px;cursor:pointer;font-size:13.5px;color:var(--tinta);position:relative;line-height:1.35}
+.ctl-op small{font-size:12px;color:var(--tinta-2)}
+.ctl-op.foco{background:var(--verde-tinte)}
+.ctl-op.sel{font-weight:600;color:var(--verde-osc)}
+.ctl-op.sel::before{content:"";position:absolute;left:11px;top:13px;width:9px;height:5px;border-left:2px solid var(--verde);border-bottom:2px solid var(--verde);transform:rotate(-45deg)}
+.ctl-op.des{color:var(--tinta-3);cursor:default}.ctl-op.des.foco{background:none}
+.ctl-vacio{padding:10px 12px;font-size:13px;color:var(--tinta-2)}
+.ctl-cal{width:268px;padding:12px}
+.ctl-cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ctl-cal-h b{font-size:14px;text-transform:capitalize}
+.ctl-cal-h button{width:30px;height:30px;border:0;border-radius:99px;background:transparent;color:var(--tinta-2);font-size:20px;line-height:1;cursor:pointer}
+.ctl-cal-h button:hover{background:var(--fondo);color:var(--tinta)}
+.ctl-cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.ctl-cal-d{font-size:11px;font-weight:600;color:var(--tinta-3);text-align:center;padding:4px 0}
+.ctl-cal-g button{height:32px;border:0;border-radius:10px;background:transparent;color:var(--tinta);font-size:13px;cursor:pointer;font-variant-numeric:tabular-nums}
+.ctl-cal-g button:hover:not(:disabled){background:var(--verde-tinte)}
+.ctl-cal-g button.otro{color:var(--tinta-3)}
+.ctl-cal-g button.hoy{box-shadow:inset 0 0 0 1.5px var(--verde);font-weight:600}
+.ctl-cal-g button.sel{background:var(--verde);color:#fff;font-weight:700}
+.ctl-cal-g button:disabled{opacity:.3;cursor:default}
+.ctl-cal-p{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--linea)}
+.ctl-cal-p button{flex:1;padding:7px 0;border:1px solid var(--linea);border-radius:99px;background:var(--sup);color:var(--tinta);font-size:12.5px;font-weight:600;cursor:pointer}
+.ctl-cal-p button:hover{border-color:var(--verde);color:var(--verde-osc)}
+html.oscuro .ctl-cal-g button.sel{color:#0f1512}
+@media (prefers-reduced-motion:reduce){.ctl-pop{animation:none}}

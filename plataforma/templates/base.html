@@ -110,6 +110,7 @@ fijarTablas();document.addEventListener('DOMContentLoaded',fijarTablas);
 function preguntar(msg,{si='Sí, seguir',no='Cancelar'}={}){const d=document.getElementById('dlg-preg');d.querySelector('.dlg-txt').textContent=msg;
  d.querySelector('[value=si]').textContent=si;d.querySelector('[value=no]').textContent=no;d.returnValue='';d.showModal();
  return new Promise(r=>d.addEventListener('close',()=>r(d.returnValue==='si'),{once:true}));}</script>
+<script src="/static/controles.js" defer></script>
 <dialog id="dlg-preg" class="dlg"><form method="dialog"><p class="dlg-txt"></p><div class="dlg-b"><button class="btn sec" value="no">Cancelar</button><button class="btn" value="si" autofocus>Sí, seguir</button></div></form></dialog>
 <div id="cand-w" hidden class="cand-w" onclick="if(event.target===this)candCerrar()">
  <form class="cand-c" onsubmit="candProbar(event)">
