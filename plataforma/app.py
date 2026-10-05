@@ -923,7 +923,7 @@ def inicio(request: Request, con=Depends(db)):
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
     vh = ventas_por_dia(con, h, h).get(h, (0, 0)); v = {"venta": vh[0], "n": vh[1]}
     v["extras"] = con.execute("""SELECT COUNT(*) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
-                                 WHERE l.extra_en=? AND o.estado!='cancelada'""", (h,)).fetchone()[0]   # cobros sueltos de hoy (delivery de un pack…)
+                                 WHERE l.extra_en=? AND o.estado!='cancelada' AND substr(o.creado_en,1,10)!=l.extra_en""", (h,)).fetchone()[0]   # cobros sueltos de hoy (delivery de un pack…)
     dias_mes = max(1, hoy.day - 1)
     prom = sum(m for d, (m, n) in ventas_por_dia(con, mes + "-01", h).items() if d < h) / dias_mes
     disponible = sum(x["saldo"] for x in saldos(con) if x["activa"]) if rol == "admin" else 0   # todas las cajas, igual que en Cash flow
@@ -3513,7 +3513,7 @@ def _historial_rows(con, anio, mes, q):
     if mes: cond += " AND substr(fecha,6,2)=?"; args.append(f"{int(mes):02d}")
     if q: cond += " AND (cliente LIKE ? OR producto LIKE ? OR numero LIKE ?)"; args += [f"%{q}%"] * 3
     sql = f"""SELECT * FROM (
-        SELECT NULL oid, '' numero, fecha, cliente, producto, precio, cantidad, facturacion linea, forma_pago forma, NULL color, 0 malla, NULL personalizacion, 'excel' origen, fila_excel llegada, 0 lid, fecha_original
+        SELECT NULL oid, '' numero, fecha, cliente, producto, precio, cantidad, facturacion linea, forma_pago forma, NULL color, 0 malla, NULL personalizacion, 'excel' origen, fila_excel llegada, 0 lid, fecha_original, NULL dia_orden
           FROM registro_ventas
         UNION ALL
         SELECT o.id oid, o.numero, COALESCE(l.extra_en, substr(o.creado_en,1,10)) fecha, c.nombre cliente, l.nombre producto, l.precio,
@@ -3525,7 +3525,7 @@ def _historial_rows(con, anio, mes, q):
                         (SELECT p.forma FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado' ORDER BY p.fecha, p.id LIMIT 1)) END forma, l.color, l.malla, l.personalizacion, 'orden' origen,
                1000000 + COALESCE(CASE WHEN l.extra_en IS NOT NULL THEN   -- un cobro extra va junto a las órdenes del día en que entró, no con su orden vieja
                    (SELECT MAX(CAST(substr(o2.numero,2) AS INTEGER)) FROM ordenes o2 WHERE substr(o2.creado_en,1,10) <= l.extra_en) END,
-                   CAST(substr(o.numero,2) AS INTEGER)) llegada, l.id lid, NULL fecha_original
+                   CAST(substr(o.numero,2) AS INTEGER)) llegada, l.id lid, NULL fecha_original, substr(o.creado_en,1,10) dia_orden
           FROM ordenes o JOIN clientes c ON c.id=o.cliente_id JOIN orden_lineas l ON l.orden_id=o.id
          WHERE {EN_REGISTRO}
             OR (l.extra_en IS NOT NULL AND o.estado!='cancelada'   -- un cobro extra (delivery de un retiro de pack…) cuenta el día que entra, aunque la orden sea de antes
@@ -3544,16 +3544,26 @@ def _historial_rows(con, anio, mes, q):
     deliv = {r["id"]: dict(r) for r in con.execute("""SELECT o.id, o.delivery - COALESCE((SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en IS NOT NULL AND l.nombre='Delivery'),0) delivery, o.forma_pago_prevista forma,
                  (SELECT GROUP_CONCAT(DISTINCT p.forma) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') formas
                  FROM ordenes o WHERE COALESCE(o.delivery,0)>0 AND """ + EN_REGISTRO + """""")}
+    # el delivery que se pagó el mismo día del pedido (también el adelantado de las próximas entregas de un pack) es parte de esa venta:
+    # no va en fila propia sino junto al delivery de la orden. Solo un cobro de OTRO día (un retiro después) sale aparte.
+    es_deliv_mismo = lambda d: d["origen"] == "orden" and "delivery" in (d["producto"] or "").lower() and d["fecha"] == d["dia_orden"]
+    con_producto = {d["oid"] for d in out if d["origen"] == "orden" and "delivery" not in (d["producto"] or "").lower()}
+    suma = {}
+    for d in out:
+        if es_deliv_mismo(d) and d["oid"] in con_producto: suma[d["oid"]] = round(suma.get(d["oid"], 0) + (d["linea"] or 0), 2)
+    out = [d for d in out if not (es_deliv_mismo(d) and d["oid"] in con_producto)]
     res = []; ya = set()
     for d in out:
         res.append(d)
         oid = d["oid"]
-        if oid in deliv and oid not in ya and d["origen"] == "orden":
-            ya.add(oid); dv = deliv[oid]; formas = (dv["formas"] or "").split(",")
-            if len([x for x in formas if x]) <= 1:   # una sola forma de pago: el delivery va dentro de la facturación
-                d["linea"] = round((d["linea"] or 0) + dv["delivery"], 2)
+        monto = (deliv[oid]["delivery"] if oid in deliv else 0) + suma.get(oid, 0)
+        if monto > 0 and oid not in ya and d["origen"] == "orden" and "delivery" not in (d["producto"] or "").lower():
+            ya.add(oid)
+            formas = [x for x in (con.execute("SELECT GROUP_CONCAT(DISTINCT forma) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0] or "").split(",") if x]
+            if len(formas) <= 1:   # una sola forma de pago: el delivery va dentro de la facturación
+                d["linea"] = round((d["linea"] or 0) + monto, 2)
             else:   # varias formas: línea aparte con la última forma
-                res.append(dict(d, producto="Delivery", precio=dv["delivery"], cantidad=0, linea=dv["delivery"], forma=formas[-1], color=None, malla=0, personalizacion=None))
+                res.append(dict(d, producto="Delivery", precio=monto, cantidad=0, linea=monto, forma=formas[-1], color=None, malla=0, personalizacion=None))
     return res
 
 

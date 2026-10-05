@@ -136,6 +136,18 @@ def _():
     filas = A._historial_rows(con, "2026", "", "")
     assert [(f["fecha"], f["linea"], f["forma"], f["cantidad"]) for f in filas] == [("2026-10-05", 5, "Pago Móvil VES", 0)], filas   # suma a la venta, no a las unidades
 
+@prueba("Pack con los deliverys adelantados el mismo día: en el Registro es una sola fila con todo (60 + 5 + 2×5 = 75)")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Rebecca','Rebecca')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,subtotal,delivery,forma_pago_prevista,creado_en) VALUES (1,'#1',1,'pendiente','pagada',75,70,5,'Zelle Decopet','2026-10-05 10:00')")
+    con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total) VALUES (1,'Pack 3 Repuestos Mediano',1,60,0,60)")
+    con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total,extra_en) VALUES (1,'Delivery de las próximas entregas del pack (2 × $5)',2,5,0,10,'2026-10-05')")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle Decopet',75,75,'USD','2026-10-05','confirmado')")
+    con.commit()
+    filas = A._historial_rows(con, "2026", "", "")
+    assert [(f["producto"], f["cantidad"], f["linea"]) for f in filas] == [("Pack 3 Repuestos Mediano", 1, 75)], filas
+
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():
     con = base_limpia()
