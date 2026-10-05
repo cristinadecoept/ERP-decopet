@@ -134,7 +134,7 @@ def _():
     con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Pago Móvil VES',5,5,'USD','2026-10-05','confirmado')")
     con.commit()
     filas = A._historial_rows(con, "2026", "", "")
-    assert [(f["fecha"], f["linea"], f["forma"]) for f in filas] == [("2026-10-05", 5, "Pago Móvil VES")], filas
+    assert [(f["fecha"], f["linea"], f["forma"], f["cantidad"]) for f in filas] == [("2026-10-05", 5, "Pago Móvil VES", 0)], filas   # suma a la venta, no a las unidades
 
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():

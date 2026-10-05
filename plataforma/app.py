@@ -922,6 +922,8 @@ def inicio(request: Request, con=Depends(db)):
                    "hechos_rep": len(rep_h), "hechos_cumples": len(cumples_hechos), "hechos_cobro": len(cobro_h)}
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
     vh = ventas_por_dia(con, h, h).get(h, (0, 0)); v = {"venta": vh[0], "n": vh[1]}
+    v["extras"] = con.execute("""SELECT COUNT(*) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
+                                 WHERE l.extra_en=? AND o.estado!='cancelada'""", (h,)).fetchone()[0]   # cobros sueltos de hoy (delivery de un pack…)
     dias_mes = max(1, hoy.day - 1)
     prom = sum(m for d, (m, n) in ventas_por_dia(con, mes + "-01", h).items() if d < h) / dias_mes
     disponible = sum(x["saldo"] for x in saldos(con) if x["activa"]) if rol == "admin" else 0   # todas las cajas, igual que en Cash flow
@@ -3514,12 +3516,15 @@ def _historial_rows(con, anio, mes, q):
         SELECT NULL oid, '' numero, fecha, cliente, producto, precio, cantidad, facturacion linea, forma_pago forma, NULL color, 0 malla, NULL personalizacion, 'excel' origen, fila_excel llegada, 0 lid, fecha_original
           FROM registro_ventas
         UNION ALL
-        SELECT o.id oid, o.numero, COALESCE(l.extra_en, substr(o.creado_en,1,10)) fecha, c.nombre cliente, l.nombre producto, l.precio, l.cantidad,
+        SELECT o.id oid, o.numero, COALESCE(l.extra_en, substr(o.creado_en,1,10)) fecha, c.nombre cliente, l.nombre producto, l.precio,
+               CASE WHEN l.extra_en IS NOT NULL AND l.nombre LIKE '%elivery%' THEN 0 ELSE l.cantidad END cantidad,   -- un delivery no es una unidad (en su Excel va con 0)
                ROUND(l.total * (CASE WHEN COALESCE(o.iva,0) > 0 AND o.subtotal > 0 AND l.extra_en IS NULL THEN 1 + o.iva / o.subtotal ELSE 1 END), 2) linea,   -- con IVA, como en el Excel (Cashea)
                CASE WHEN l.extra_en IS NOT NULL THEN COALESCE(l.forma_pago,   -- un extra que quedó pendiente: la forma con que se cobró después
                         (SELECT p.forma FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado' AND p.fecha>=l.extra_en ORDER BY p.fecha, p.id LIMIT 1))
                     ELSE o.forma_pago_prevista END forma, l.color, l.malla, l.personalizacion, 'orden' origen,
-               1000000 + CAST(substr(o.numero,2) AS INTEGER) llegada, l.id lid, NULL fecha_original
+               1000000 + COALESCE(CASE WHEN l.extra_en IS NOT NULL THEN   -- un cobro extra va junto a las órdenes del día en que entró, no con su orden vieja
+                   (SELECT MAX(CAST(substr(o2.numero,2) AS INTEGER)) FROM ordenes o2 WHERE substr(o2.creado_en,1,10) <= l.extra_en) END,
+                   CAST(substr(o.numero,2) AS INTEGER)) llegada, l.id lid, NULL fecha_original
           FROM ordenes o JOIN clientes c ON c.id=o.cliente_id JOIN orden_lineas l ON l.orden_id=o.id
          WHERE {EN_REGISTRO}
             OR (l.extra_en IS NOT NULL AND o.estado!='cancelada'   -- un cobro extra (delivery de un retiro de pack…) cuenta el día que entra, aunque la orden sea de antes
@@ -3568,10 +3573,12 @@ def historial(request: Request, anio: str = "", mes: str = "", semana: str = "",
     rows = _historial_rows(con, anio, mes, q)
     if semana and mes: rows = [r for r in rows if str(r["semana"]) == semana]   # semana del mes (1–5), como en su Excel
     tot = sum(r["linea"] or 0 for r in rows)
-    ordenes_ids = rows            # "Ventas" = líneas, igual que las filas de su Excel
-    unidades = sum(r["cantidad"] or 0 for r in rows)
-    # ticket promedio por PEDIDO (un cliente en un día = un pedido), no por línea: el delivery no cuenta como compra aparte
-    pedidos = {(r["oid"] if r["oid"] else (r["fecha"], (r["cliente"] or "").lower())) for r in rows}
+    # Cristina (5 oct): "la venta es el pedido, el delivery es un plus". Ventas = pedidos (en el Excel: un cliente en un día);
+    # el delivery suma a la facturación pero no es una venta ni una unidad.
+    productos = [r for r in rows if "delivery" not in (r["producto"] or "").lower()]
+    unidades = sum(r["cantidad"] or 0 for r in productos)
+    pedidos = {(r["oid"] if r["oid"] else (r["fecha"], (r["cliente"] or "").lower())) for r in productos}
+    ordenes_ids = pedidos
     ticket = tot / len(pedidos) if pedidos else 0
     por_mes = []
     return render(request, "historial.html", seccion="historial", mes_actual=str(datetime.date.today().month), rows=rows[:2000], total=tot, n_ordenes=len(ordenes_ids), unidades=unidades,

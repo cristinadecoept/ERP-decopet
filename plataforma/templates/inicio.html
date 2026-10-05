@@ -48,7 +48,7 @@
   {% else %}<div class="mini" style="margin-top:14px">Nada programado para hoy todavía.</div>{% endif %}
  </a>
  {% if rol=='admin' %}<div class="tile hoy-hero">
-  <div class="hoy-hero-cab"><div><b>{{ v.venta|usd }}</b><span>Ventas de hoy</span></div><i>{{ v.n }} órdenes · promedio del mes {{ prom|usd }} por día</i></div>
+  <div class="hoy-hero-cab"><div><b>{{ v.venta|usd }}</b><span>Ventas de hoy</span></div><i>{{ v.n }} orden{{ 'es' if v.n!=1 }}{% if v.extras %} + {{ v.extras }} cobro{{ 's' if v.extras!=1 }} suelto{{ 's' if v.extras!=1 }}{% endif %} · promedio del mes {{ prom|usd }} por día</i></div>
   {% set mx = ([prom] + serie|map(attribute=1)|list)|max %}{% set mx = mx if mx else 1 %}
   <svg viewBox="0 0 420 150" class="cf-svg hoy-graf" style="margin-top:10px">
    <line x1="0" x2="420" y1="{{ (130 - prom/mx*118)|round(1) }}" y2="{{ (130 - prom/mx*118)|round(1) }}" stroke="var(--naranja)" stroke-width="1.5" stroke-dasharray="4 3"/>
