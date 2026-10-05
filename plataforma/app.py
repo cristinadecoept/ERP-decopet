@@ -7,6 +7,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plataforma import bcv
+from plataforma import access as CF_ACCESS
+from plataforma import cf_equipo as CF_EQUIPO
 
 BASE = Path(__file__).resolve().parent
 # Dónde viven los datos. En la Mac es la carpeta de siempre; en un servidor se le dice
@@ -18,6 +20,10 @@ DB = DATOS / "plataforma.db"
 # entraba cualquiera como administradora porque solo se abría desde la propia Mac. En internet,
 # la primera clave pide además el código de instalación (DECOPET_CODIGO_INICIAL).
 EN_SERVIDOR = bool(os.environ.get("DECOPET_DATOS"))
+# Dónde está corriendo este ERP, para la franja de arriba: en una copia (la Mac, la PC del programador) o en el de
+# pruebas se ve un aviso, para no anotar una venta real donde no llega a la operación. En producción no se ve nada.
+def entorno():
+    return "local" if not EN_SERVIDOR else ("pruebas" if os.environ.get("DECOPET_STAGING") == "1" else None)
 DOCS_DIR = DATOS / "documentos"
 FOTOS_DIR = DATOS / "fotos"
 FOTOS_PRODUCTOS = FOTOS_DIR / "productos"
@@ -26,6 +32,58 @@ app = FastAPI(title="Decopet", docs_url=None, redoc_url=None, openapi_url=None) 
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 app.mount("/fotos", StaticFiles(directory=FOTOS_DIR), name="fotos")
 tpl = Jinja2Templates(directory=BASE / "templates")
+
+# Miniaturas. Las fotos de producto pesan hasta 5 MB y en pantalla se ven en cuadritos: la galería entera eran 37 MB.
+# Cada foto se achica una sola vez (WebP, conserva la transparencia) y queda guardada con los datos. La original no se
+# toca: es la que se descarga. La ?v= cambia cuando se reemplaza la foto, así el navegador puede guardar la miniatura.
+MINIATURAS = DATOS / "miniaturas"
+ANCHOS_MINI = (160, 480, 1600)   # la línea de una orden · las tarjetas · la foto abierta en grande
+
+def mini(ruta, ancho=480):
+    if not ruta: return None
+    try: v = int((FOTOS_DIR / ruta).stat().st_mtime)
+    except OSError: return f"/fotos/{ruta}"
+    return f"/fotos-mini/{ancho}/{ruta}?v={v}"
+
+tpl.env.globals["mini"] = mini
+tpl.env.filters["mini"] = mini
+
+
+def hacer_mini(ruta, ancho):
+    """La miniatura de una foto, hecha si falta o si la foto cambió. None si no existe o no se puede achicar."""
+    from PIL import Image, ImageOps
+    orig = (FOTOS_DIR / ruta).resolve()
+    if ancho not in ANCHOS_MINI or not orig.is_relative_to(FOTOS_DIR.resolve()) or not orig.is_file(): return None
+    dest = MINIATURAS / str(ancho) / f"{ruta}.webp"
+    if dest.exists() and dest.stat().st_mtime >= orig.stat().st_mtime: return dest
+    try:
+        with Image.open(orig) as im:
+            im = ImageOps.exif_transpose(im)   # las fotos del teléfono vienen acostadas y con la vuelta anotada aparte
+            im.thumbnail((ancho, ancho))
+            im = im.convert("RGBA" if im.mode in ("RGBA", "LA", "P", "PA") else "RGB")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_name(f"{dest.name}.{threading.get_ident()}.tmp")   # dos pedidos a la vez no se pisan
+            im.save(tmp, "WEBP", quality=80, method=4)
+            os.replace(tmp, dest)
+        return dest
+    except Exception as e:   # HEIC, una foto dañada
+        print(f"MINIATURA no se pudo hacer de {ruta}: {e}", flush=True)
+        return None
+
+
+def preparar_miniaturas():
+    """Al arrancar, en segundo plano: deja hechas las miniaturas de tarjeta, para que la primera visita no espere."""
+    for f in sorted(FOTOS_DIR.rglob("*")):
+        if f.is_file(): hacer_mini(f.relative_to(FOTOS_DIR).as_posix(), 480)
+
+
+@app.get("/fotos-mini/{ancho}/{ruta:path}")
+def foto_mini(ancho: int, ruta: str):
+    dest = hacer_mini(ruta, ancho)
+    if dest: return FileResponse(dest, media_type="image/webp")
+    if ancho in ANCHOS_MINI and (FOTOS_DIR / ruta).resolve().is_relative_to(FOTOS_DIR.resolve()) and (FOTOS_DIR / ruta).is_file():
+        return RedirectResponse(f"/fotos/{ruta}", status_code=307)   # existe pero no se puede achicar: se muestra entera
+    return PlainTextResponse("No existe", status_code=404)
 
 ESTADOS = ["pendiente", "en_ruta", "entregada", "cancelada"]
 E_LABEL = {"pendiente": "Pendiente", "en_ruta": "En ruta", "entregada": "Entregado", "cancelada": "Cancelada"}
@@ -152,6 +210,7 @@ PERMISOS = {
     # No ve el de la empresa ni el de nadie más. Por eso es un rol aparte de Logística.
     "despachador": {"entregar", "mis_entregas", "incidencia"},
     "invitado": set(),      # nadie conectado: no puede hacer nada hasta entrar
+    "ninguno": set(),       # está en el equipo (la nómina) pero no entra al ERP
     "sistema": set(),
 }
 # Tina (usuario de sistema) confirma sola los pagos digitales cuyo comprobante coincide; lo que no coincide queda "por revisar" para Cristina.
@@ -268,7 +327,7 @@ tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<sp
 # "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
 tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
-tpl.env.globals.update(ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
+tpl.env.globals.update(entorno=entorno, ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
 
 def db():
@@ -338,6 +397,14 @@ async def puerta(request: Request, call_next):
     if ruta == "/health":   # para Railway: ¿está vivo y puede leer la base? Sin entrar y sin contar nada más.
         vivo = base_responde()
         return con_escudos(PlainTextResponse("ok" if vivo else "mal", status_code=200 if vivo else 503))
+    # Cloudflare Access (solo en el servidor, con CF_ACCESS_ENFORCE=1): sin su firma no se llega a nada, ni a la
+    # pantalla de entrada ni a las fotos. A quien entra se le dice solo "Forbidden"; el motivo queda en el registro.
+    if CF_ACCESS.activo():
+        try:
+            request.state.cf_access = CF_ACCESS.validar(request.headers.get("cf-access-jwt-assertion", ""))
+        except Exception as e:
+            print(f"ACCESS rechazó {request.method} {ruta}: {e}", flush=True)
+            return con_escudos(PlainTextResponse("Forbidden", status_code=403))
     if viene_de_fuera(request):
         return con_escudos(JSONResponse({"error": "Esa orden no salió de tu ERP"}, status_code=403))
     try:
@@ -346,7 +413,7 @@ async def puerta(request: Request, call_next):
     except ValueError:
         return con_escudos(JSONResponse({"error": "Orden mal formada"}, status_code=400))
     if not ruta.startswith(ABIERTO):
-        if (hay_claves() or EN_SERVIDOR) and not quien_es(request):
+        if (tiene_duena() or EN_SERVIDOR) and not quien_es(request):
             return con_escudos(RedirectResponse("/entrar", status_code=303))
         permitido, casa = PUERTAS.get(rol_de(request), (None, None))
         if permitido and not ruta.startswith(permitido):
@@ -359,7 +426,13 @@ async def puerta(request: Request, call_next):
         if rol_de(request) == "despachador" and ruta.startswith("/viajes/") and not (
                 request.method == "POST" and re.fullmatch(r"/viajes/\d+/llevado", ruta)):
             return con_escudos(RedirectResponse(casa, status_code=303))
-    return con_escudos(await call_next(request))
+    resp = con_escudos(await call_next(request))
+    # Fotos, logos y estilos sí se guardan en el navegador (solo en él: "private"). Las miniaturas con su ?v= no cambian
+    # nunca; lo demás se vuelve a pedir solo si cambió (el servidor contesta "igual que antes" sin mandarlo otra vez).
+    if ruta.startswith(("/static/", "/fotos")) and resp.status_code in (200, 304):
+        fija = ruta.startswith("/fotos-mini/") and "v" in request.query_params
+        resp.headers["Cache-Control"] = "private, max-age=31536000, immutable" if fija else "private, no-cache"
+    return resp
 
 
 # Columnas que se fueron agregando con el tiempo y no están en modelo.sql.
@@ -411,6 +484,9 @@ COLUMNAS = (
     ("registro_ventas", "cuota2", "REAL"), ("registro_ventas", "cuota3", "REAL"), ("registro_ventas", "orden_excel", "TEXT"),   # vacío = asignado; con fecha = ya los llevó a la agencia (recién ahí se le debe)
     ("usuarios", "usuario", "TEXT"), ("usuarios", "clave_hash", "TEXT"), ("usuarios", "creado_en", "TEXT"),
     ("usuarios", "despachador", "TEXT"),   # a qué despachador corresponde este usuario
+    ("usuarios", "correo", "TEXT"),        # con el que entra por Cloudflare (en el servidor no hay claves del ERP)
+    ("usuarios", "nomina", "INTEGER NOT NULL DEFAULT 0"), ("usuarios", "sueldo_mes", "REAL"),   # está en la nómina de Equipo
+    ("usuarios", "visto_en", "TEXT"),      # la última vez que abrió algo del ERP
     ("repuestos_prepagados", "agencia", "TEXT"),
     ("repuestos_prepagados", "delivery", "REAL NOT NULL DEFAULT 0"),
     ("repuestos_prepagados", "delivery_forma", "TEXT"),
@@ -436,7 +512,29 @@ def preparar_base(ruta):
         if tabla not in hay: hay[tabla] = {r[1] for r in con.execute(f"PRAGMA table_info({tabla})")}
         if col not in hay[tabla]:
             con.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}"); hay[tabla].add(col)
-    con.commit(); return con
+    con.commit()
+    aplicar_migraciones(con)
+    return con
+
+
+MIGRACIONES = BASE / "migraciones"
+
+
+def aplicar_migraciones(con):
+    """Cambios de la base que no son "agregar una tabla o columna": renombrar, mover datos, cargar valores iniciales.
+    Cada uno es un archivo plataforma/migraciones/NNN_que_hace.sql y se aplica UNA sola vez, en orden, en cada base
+    (la Mac, el servidor). Así un cambio que hace Claude llega igual a producción al desplegar.
+    Si uno falla, no queda nada a medias de ese archivo y el ERP no arranca: en el servidor sigue la versión anterior."""
+    con.execute("CREATE TABLE IF NOT EXISTS migraciones (nombre TEXT PRIMARY KEY, aplicada_en TEXT DEFAULT (datetime('now','localtime')))")
+    hechas = {r[0] for r in con.execute("SELECT nombre FROM migraciones")}
+    for f in sorted(MIGRACIONES.glob("[0-9][0-9][0-9]_*.sql")):
+        if f.name in hechas: continue
+        try:
+            nombre = f.name.replace("'", "''")
+            con.executescript(f"BEGIN;\n{f.read_text(encoding='utf-8')}\n;\nINSERT INTO migraciones (nombre) VALUES ('{nombre}');\nCOMMIT;")
+        except sqlite3.Error as e:
+            if con.in_transaction: con.rollback()
+            raise RuntimeError(f"La migración {f.name} falló y no se aplicó nada de ella: {e}") from e
 
 
 @app.on_event("startup")
@@ -448,7 +546,9 @@ def _arranque():
             con.execute("INSERT OR IGNORE INTO despachadores (nombre, activo) VALUES (?,0)", (n,))
         con.commit()
     con.close(); cargar_despachadores(); cargar_formas_pago(); cargar_ajustes()
-    if os.environ.get("DECOPET_PRUEBAS") != "1": arrancar_respaldo()   # las pruebas no respaldan
+    if os.environ.get("DECOPET_PRUEBAS") != "1":   # las pruebas no respaldan ni preparan fotos
+        arrancar_respaldo()
+        threading.Thread(target=preparar_miniaturas, daemon=True, name="miniaturas").start()
     bcv.programar(DB)
 
 
@@ -516,6 +616,14 @@ DURACION_SESION = 12 * 60 * 60     # 12 horas: una jornada
 MAX_INTENTOS, VENTANA_INTENTOS = 8, 15     # 8 intentos fallidos en 15 minutos y se cierra
 
 
+def ip_de(request):
+    """La IP de quien entra, para el freno de intentos. Con Cloudflare delante, la que llega es la de Cloudflare
+    (sería la misma para todos): la real viene en CF-Connecting-IP. Solo se le cree con Access activo, porque
+    entonces nadie llega sin pasar por Cloudflare; si no, cualquiera podría inventarse esa cabecera."""
+    if CF_ACCESS.activo() and request.headers.get("cf-connecting-ip"): return request.headers["cf-connecting-ip"].strip()
+    return (request.client.host if request.client else "") or ""
+
+
 def frenado(con, usuario, ip):
     """¿Ya probó demasiadas veces? Frena al robot que prueba claves una tras otra."""
     con.execute("DELETE FROM intentos WHERE cuando < datetime('now','localtime','-1 hour')")
@@ -542,33 +650,51 @@ def abrir_sesion(con, uid):
     con.commit(); return ficha
 
 
+def correo_cf(request):
+    """El correo que Cloudflare comprobó con su código. Solo existe con Access activo (en el servidor)."""
+    if not CF_ACCESS.activo(): return ""
+    return ((getattr(request.state, "cf_access", None) or {}).get("email") or "").strip().lower()
+
+
 def quien_es(request: Request):
-    """El usuario conectado, o None. Se lee de la ficha del navegador, no de un rol escrito a mano."""
-    ficha = request.cookies.get("sesion")
-    if not ficha: return None
+    """La persona conectada, o None.
+    En el servidor es aquella cuyo correo comprobó Cloudflare: ahí no hay claves del ERP, solo el código que le
+    llega por correo. En la Mac, la de la ficha de sesión del navegador (entró con su clave)."""
+    if hasattr(request.state, "quien"): return request.state.quien   # se pregunta varias veces en un mismo pedido
     con = sqlite3.connect(DB, timeout=0.5); con.row_factory = sqlite3.Row
     try:
-        u = con.execute("""SELECT u.* FROM sesiones s JOIN usuarios u ON u.id=s.usuario_id
-                           WHERE s.ficha=? AND s.vence_en >= datetime('now','localtime') AND u.activo=1""", (ficha,)).fetchone()
+        if CF_ACCESS.activo():
+            correo = correo_cf(request)
+            u = correo and con.execute("""SELECT * FROM usuarios WHERE lower(correo)=? AND activo=1
+                                          AND rol NOT IN ('ninguno','sistema')""", (correo,)).fetchone()
+        else:
+            ficha = request.cookies.get("sesion")
+            u = ficha and con.execute("""SELECT u.* FROM sesiones s JOIN usuarios u ON u.id=s.usuario_id
+                                         WHERE s.ficha=? AND s.vence_en >= datetime('now','localtime') AND u.activo=1
+                                         AND u.rol!='ninguno'""", (ficha,)).fetchone()
         # "visto por última vez": como mucho cada 5 minutos, y si la base está ocupada guardando otra
         # cosa (esta misma petición a mitad de un cambio), se deja para la próxima. Nunca debe tumbar nada.
         if u:
             try:
-                con.execute("""UPDATE sesiones SET visto_en=datetime('now','localtime') WHERE ficha=?
-                               AND (visto_en IS NULL OR visto_en < datetime('now','localtime','-5 minutes'))""", (ficha,)); con.commit()
+                con.execute("""UPDATE usuarios SET visto_en=datetime('now','localtime') WHERE id=?
+                               AND (visto_en IS NULL OR visto_en < datetime('now','localtime','-5 minutes'))""", (u["id"],)); con.commit()
             except sqlite3.OperationalError:
                 pass
-        return dict(u) if u else None
+        request.state.quien = dict(u) if u else None
+        return request.state.quien
     finally:
         con.close()
 
 
-def hay_claves(con=None):
-    """¿Ya se puso alguna clave? Si no, el ERP todavía no tiene dueño."""
+def tiene_duena(con=None):
+    """¿El ERP ya tiene con quién entrar? En el servidor, una administradora con correo; en la Mac, alguien con
+    clave. Si no, es la primera vez: la pantalla de entrada se lo pide a la dueña."""
     propio = con is None
     if propio: con = sqlite3.connect(DB)
     try:
-        return bool(con.execute("SELECT 1 FROM usuarios WHERE clave_hash IS NOT NULL AND activo=1").fetchone())
+        sql = ("SELECT 1 FROM usuarios WHERE rol='admin' AND activo=1 AND correo IS NOT NULL" if CF_ACCESS.activo()
+               else "SELECT 1 FROM usuarios WHERE clave_hash IS NOT NULL AND activo=1")
+        return bool(con.execute(sql).fetchone())
     except sqlite3.OperationalError:
         return False
     finally:
@@ -577,7 +703,7 @@ def hay_claves(con=None):
 
 def rol_de(request: Request):
     u = quien_es(request)
-    if not u: return "admin" if not hay_claves() and not EN_SERVIDOR else "invitado"
+    if not u: return "admin" if not tiene_duena() and not EN_SERVIDOR else "invitado"
     # solo el administrador puede mirar el ERP como si fuera otro, para revisarlo
     if u["rol"] == "admin":
         ver = request.cookies.get("ver_como")
@@ -619,17 +745,21 @@ def render(request, nombre, **ctx):
 
 @app.get("/entrar", response_class=HTMLResponse)
 def entrar(request: Request, mal: str = "", con=Depends(db)):
-    if quien_es(request): return RedirectResponse("/inicio", status_code=303)
-    return render(request, "entrar.html", seccion="entrar", primera_vez=not hay_claves(con),
-                  pide_codigo=EN_SERVIDOR, mal=mal, sin_menu=True)
+    u = quien_es(request)
+    if u: return RedirectResponse(PUERTAS.get(u["rol"], (None, "/inicio"))[1], status_code=303)
+    # en el servidor no se escribe clave: Cloudflare ya comprobó el correo. Si llega aquí es que ese correo no está
+    # en el equipo (o que es la primera vez y la dueña todavía no se registró).
+    return render(request, "entrar.html", seccion="entrar", primera_vez=not tiene_duena(con),
+                  pide_codigo=EN_SERVIDOR, por_correo=CF_ACCESS.activo(), correo=correo_cf(request), mal=mal, sin_menu=True)
 
 
 @app.post("/entrar")
 def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form(""), con=Depends(db)):
-    ip = (request.client.host if request.client else "") or ""
+    if CF_ACCESS.activo(): return RedirectResponse("/entrar", status_code=303)   # en el servidor no hay claves del ERP
+    ip = ip_de(request)
     quien = usuario.strip().lower()
     if frenado(con, quien, ip): return RedirectResponse("/entrar?mal=frenado", status_code=303)
-    u = con.execute("SELECT * FROM usuarios WHERE lower(TRIM(usuario))=? AND activo=1", (quien,)).fetchone()
+    u = con.execute("SELECT * FROM usuarios WHERE lower(TRIM(usuario))=? AND activo=1 AND rol!='ninguno'", (quien,)).fetchone()
     if not (u and clave_correcta(clave, u["clave_hash"])):
         anotar_intento(con, quien, ip)
         return RedirectResponse("/entrar?mal=1", status_code=303)
@@ -645,21 +775,29 @@ def entrar_post(request: Request, usuario: str = Form(""), clave: str = Form("")
 @app.post("/entrar/primera-vez")
 def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form(""), usuario: str = Form(""),
                    codigo: str = Form(""), con=Depends(db)):
-    """La primera vez, Cristina pone su propia clave. Nadie más la ve nunca, ni queda escrita."""
-    if hay_claves(con): return RedirectResponse("/entrar", status_code=303)
+    """La primera vez, la dueña se registra. En la Mac pone su propia clave (nadie más la ve, ni queda escrita).
+    En el servidor, con el código de instalación, su correo de Cloudflare queda como el de la administradora."""
+    if tiene_duena(con): return RedirectResponse("/entrar", status_code=303)
+    correo = correo_cf(request)
+    if CF_ACCESS.activo() and not correo: return RedirectResponse("/entrar", status_code=303)
     if EN_SERVIDOR:
         esperado = os.environ.get("DECOPET_CODIGO_INICIAL", "")
-        ip = (request.client.host if request.client else "") or ""
+        ip = ip_de(request)
         if frenado(con, "primera-vez", ip): return RedirectResponse("/entrar?mal=frenado", status_code=303)
         if not (esperado and secrets.compare_digest(codigo.strip().encode(), esperado.encode())):
             anotar_intento(con, "primera-vez", ip)
             return RedirectResponse("/entrar?mal=codigo", status_code=303)
-    if len(clave.strip()) < 8 or clave != clave2:
+    if not CF_ACCESS.activo() and (len(clave.strip()) < 8 or clave != clave2):
         return RedirectResponse("/entrar?mal=" + ("corta" if len(clave.strip()) < 8 else "distinta"), status_code=303)
     u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
     if not u:   # base recién creada en un servidor: todavía no existe nadie a quien ponerle la clave
         con.execute("INSERT INTO usuarios (nombre, rol, activo, creado_en) VALUES ('Cristina', 'admin', 1, date('now'))")
         u = con.execute("SELECT * FROM usuarios WHERE rol='admin' AND activo=1 ORDER BY id LIMIT 1").fetchone()
+    if CF_ACCESS.activo():
+        con.execute("UPDATE usuarios SET correo=? WHERE id=?", (correo, u["id"]))
+        anotar_acceso(con, u["id"], u["id"], f"Se registró como administradora con {correo}")
+        con.commit(); sincronizar_cloudflare(con)
+        return RedirectResponse("/inicio", status_code=303)
     con.execute("UPDATE usuarios SET clave_hash=?, usuario=COALESCE(?, usuario) WHERE id=?",   # sin usuario no podría volver a entrar
                 (cifrar_clave(clave.strip()), usuario.strip().lower() or None, u["id"])); con.commit()
     r = RedirectResponse("/inicio", status_code=303)
@@ -673,7 +811,8 @@ def entrar_primera(request: Request, clave: str = Form(""), clave2: str = Form("
 def salir(request: Request, con=Depends(db)):
     f = request.cookies.get("sesion")
     if f: con.execute("DELETE FROM sesiones WHERE ficha=?", (f,)); con.commit()
-    r = RedirectResponse("/entrar", status_code=303)
+    # con Cloudflare, salir es cerrar su sesión de Cloudflare: la próxima vez le pide el código otra vez
+    r = RedirectResponse("/cdn-cgi/access/logout" if CF_ACCESS.activo() else "/entrar", status_code=303)
     r.delete_cookie("sesion"); r.delete_cookie("ver_como"); r.delete_cookie("rol"); r.delete_cookie("res_ok")
     return r
 
@@ -1182,10 +1321,23 @@ def registrar(con, oid, uid, accion, detalle=None, motivo=None):
     con.execute("UPDATE ordenes SET actualizado_en=datetime('now','localtime') WHERE id=?", (oid,))
 
 
+def volver_seguro(v):
+    """Solo direcciones de este mismo ERP: un enlace armado con ?volver=https://otro-sitio no puede mandarte afuera."""
+    return v if v and v.startswith("/") and not v.startswith("//") and "\\" not in v else None
+
+
 def volver(oid, request):
-    v = request.query_params.get("volver")
+    v = volver_seguro(request.query_params.get("volver"))
     if v: return RedirectResponse(v, status_code=303)
     return RedirectResponse(f"/ordenes?estado={request.query_params.get('estado','todas')}&abrir={oid}", status_code=303)
+
+
+def volver_tras_crear(oid, request):
+    """Crear una orden desde Operaciones te deja en Operaciones, con la orden recién creada abierta; desde otro lado, en Órdenes.
+    Solo Operaciones: en otras pantallas "abrir" quiere decir otra cosa (en Clientes abre un cliente)."""
+    v = volver_seguro(request.query_params.get("volver"))
+    if v and v.startswith("/operaciones"): return f"{v}{'&' if '?' in v else '?'}abrir={oid}"
+    return f"/ordenes?abrir={oid}"
 
 
 @app.post("/ordenes/{oid}/estado")
@@ -1751,7 +1903,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
     actualizar_porche_cliente(con, oid); fijar_pago_despachador(con, oid)
     pasar_entrega_a_prepagado(con, oid, uid)
-    con.commit(); return RedirectResponse(f"/ordenes?abrir={oid}", status_code=303)
+    con.commit(); return RedirectResponse(volver_tras_crear(oid, request), status_code=303)
 
 
 @app.get("/tasa", response_class=HTMLResponse)
@@ -2140,7 +2292,7 @@ def cashflow(request: Request, caja: str = "", mes: str = "", q: str = "", con=D
     # a quién le pagas cambia según la categoría: no tiene sentido ofrecer proveedores cuando pagas una quincena
     todos_prov = [r[0] for r in con.execute("SELECT nombre FROM proveedores WHERE activo=1 ORDER BY nombre")]
     desps = [r[0] for r in con.execute("SELECT nombre FROM despachadores WHERE activo=1 ORDER BY nombre")]
-    equipo = cfg_json(con, "equipo", ["Víctor", "Isaías", "Manawa"])   # la subcategoría dice qué le pagaste; aquí va quién
+    equipo = [r[0] for r in con.execute("SELECT nombre FROM usuarios WHERE nomina=1 ORDER BY nombre")]   # la subcategoría dice qué le pagaste; aquí va quién
     A_QUIEN = {
         "Producción":           [x for x in todos_prov if x in ("Walter", "David")],
         "Proveedores":          [x for x in todos_prov if x not in ("Walter", "David", "Ferretería")],
@@ -2374,32 +2526,21 @@ EMPRESA_CAMPOS = [("razon_social", "Razón social"), ("rif", "RIF"),
 
 @app.get("/configuracion", response_class=HTMLResponse)
 def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""):
-    """Todo lo que Cristina puede cambiar sin pedirlo: reglas, sueldos, datos de la empresa y el respaldo."""
+    """Todo lo que Cristina puede cambiar sin pedirlo: reglas, datos de la empresa y el respaldo.
+    Las personas, sus accesos y sus sueldos están en Equipo."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     def val(k, d=""):
         r = con.execute("SELECT valor FROM config WHERE clave=?", (k,)).fetchone()
         return r[0] if r and r[0] is not None else d
-    eq = cfg_json(con, "equipo", ["Víctor", "Isaías", "Manawa"])
-    sue = cfg_json(con, "sueldos", {}) or {}
-    # cómo se le paga a cada uno, para que se vea de una vez: sueldo por quincena o pagos fijos aparte
-    como = {n: [] for n in eq}
-    for c in con.execute("SELECT * FROM compromisos WHERE activo=1 AND proveedor IS NOT NULL"):
-        if c["proveedor"] in como:
-            cuando = {"semanal": f"cada {DIAS_SEM[c['dia'] if c['dia'] is not None else 4]}", "quincenal": "15 y último",
-                      "inicio_mes": f"primeros {c['dia'] or 5} días del mes", "mensual": f"el {c['dia']} de cada mes"}.get(c["frecuencia"], "")
-            como[c["proveedor"]].append(f"{c['nombre']}: ${(c['monto'] or 0):g} {cuando}".replace(f"{c['proveedor']}: ", ""))
-    return render(request, "configuracion.html", seccion="configuracion", pagos_de=como,
+    return render(request, "configuracion.html", seccion="configuracion",
                   empresa=cfg_json(con, "empresa", {}) or {}, EMPRESA_CAMPOS=EMPRESA_CAMPOS,
                   documentos=cfg_json(con, "documentos", []) or [],
-                  usuarios=con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY activo DESC, rol, nombre").fetchall(),
                   cats=cfg_json(con, "categorias_gasto", {}) or {},
                   cats_uso={f"{r[0]}|{r[1] or ''}": r[2] for r in con.execute(
                       "SELECT categoria, subcategoria, COUNT(*) FROM gastos GROUP BY categoria, subcategoria")},
                   cats_uso_cat={r[0]: r[1] for r in con.execute(
                       "SELECT categoria, COUNT(*) FROM gastos GROUP BY categoria")},
-                  ROLES=ROLES, ROL_CORTO=ROL_CORTO, yo=quien_es(request),
-                  despachadores_l=[r["nombre"] for r in con.execute("SELECT nombre FROM despachadores WHERE activo=1 ORDER BY nombre")],
-                  equipo=eq, sueldos=sue, ciclo=CICLO_REPUESTO, iva=round(IVA * 100, 2),
+                  ciclo=CICLO_REPUESTO, iva=round(IVA * 100, 2),
                   clave=val("clave_resultados"), ventas_auto=val("ventas_auto", "0") == "1",
                   cashflow_desde=val("cashflow_desde"),
                   respaldos=lista_respaldos(), ok=ok, err=err)
@@ -2477,41 +2618,6 @@ def documento_borrar(request: Request, nombre: str, con=Depends(db)):
     return RedirectResponse("/configuracion?ok=doc", status_code=303)
 
 
-ROLES = {"admin": "Administradora · lo ve todo", "logistica": "Logística · órdenes y clientes, sin dinero",
-         "taller": "Taller · solo su pantalla", "despachador": "Despachador · solo sus entregas"}
-ROL_CORTO = {"admin": "Administradora", "logistica": "Logística", "taller": "Taller", "despachador": "Despachador"}
-
-
-@app.post("/configuracion/usuario")
-def usuario_guardar(request: Request, id: int = Form(0), nombre: str = Form(""), usuario: str = Form(""),
-                    rol: str = Form("logistica"), despachador: str = Form(""), clave: str = Form(""),
-                    activo: str = Form(""), borrar: str = Form(""), con=Depends(db)):
-    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
-    yo = quien_es(request)
-    if borrar and id:
-        if yo and yo["id"] == id: return RedirectResponse("/configuracion?err=yo", status_code=303)
-        con.execute("UPDATE usuarios SET activo=0 WHERE id=?", (id,))   # nunca se borra: el historial lo nombra
-        con.execute("DELETE FROM sesiones WHERE usuario_id=?", (id,)); con.commit()
-        return RedirectResponse("/configuracion?ok=usuario", status_code=303)
-    u = (usuario or "").strip().lower()
-    if not (nombre.strip() and u): return RedirectResponse("/configuracion?err=usuario", status_code=303)
-    otro = con.execute("SELECT id FROM usuarios WHERE lower(TRIM(usuario))=? AND id!=?", (u, id or 0)).fetchone()
-    if otro: return RedirectResponse("/configuracion?err=repetido", status_code=303)
-    if clave.strip() and len(clave.strip()) < 8: return RedirectResponse("/configuracion?err=corta", status_code=303)
-    if id:
-        con.execute("UPDATE usuarios SET nombre=?, usuario=?, rol=?, despachador=?, activo=? WHERE id=?",
-                    (nombre.strip(), u, rol, despachador.strip() or None, 1 if activo else 0, id))
-        if not activo: con.execute("DELETE FROM sesiones WHERE usuario_id=?", (id,))
-    else:
-        cur = con.execute("INSERT INTO usuarios (nombre,usuario,rol,despachador,activo,creado_en) VALUES (?,?,?,?,1,date('now'))",
-                          (nombre.strip(), u, rol, despachador.strip() or None))
-        id = cur.lastrowid
-    if clave.strip():
-        con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), id))
-        con.execute("DELETE FROM sesiones WHERE usuario_id=? AND ficha!=?", (id, request.cookies.get("sesion") or ""))
-    con.commit(); return RedirectResponse("/configuracion?ok=usuario", status_code=303)
-
-
 @app.post("/configuracion/categoria")
 def categoria_guardar(request: Request, categoria: str = Form(""), sub: str = Form(""),
                       renombrar: str = Form(""), borrar: str = Form(""), con=Depends(db)):
@@ -2581,20 +2687,6 @@ async def configuracion_guardar(request: Request, con=Depends(db)):
         # el viaje a la agencia se edita en Logística › Tarifas, no aquí
     elif bloque == "empresa":
         poner("empresa", json.dumps({k: (f.get(k) or "").strip() for k, _ in EMPRESA_CAMPOS}, ensure_ascii=False))
-    elif bloque == "equipo":
-        # nombre y sueldo van emparejados por posición, no por el nombre: "Isaías" lleva acento
-        # y usarlo como nombre de campo perdía su sueldo al guardar.
-        crudos = f.getlist("nombre"); montos = f.getlist("sueldo")
-        nombres, sue = [], {}
-        for i, n in enumerate(crudos):
-            n = (n or "").strip()
-            if not n: continue
-            nombres.append(n)
-            v = cifra(montos[i] if i < len(montos) else "")
-            if v: sue[n] = v
-        if nombres:
-            poner("equipo", json.dumps(nombres, ensure_ascii=False))
-            poner("sueldos", json.dumps(sue, ensure_ascii=False))
     elif bloque == "erp":
         poner("ventas_auto", "1" if f.get("ventas_auto") else "0")
         d = (f.get("cashflow_desde") or "").strip()
@@ -3146,9 +3238,10 @@ def exportar_todo(request: Request, con=Depends(db)):
              ORDER BY m.fecha, m.id""")]))
 
     hojas.append(("Equipo",
-        [("Nombre", 20, ""), ("Correo o usuario", 28, ""), ("Qué puede ver", 26, ""), ("Activo", 9, "")],
-        [(u["nombre"], u["usuario"], ROLES.get(u["rol"], u["rol"]), "Sí" if u["activo"] else "No")
-         for u in con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY rol, nombre")]))
+        [("Nombre", 20, ""), ("Correo", 28, ""), ("Acceso al ERP", 18, ""), ("En la nómina", 13, ""), ("Sueldo al mes", 14, "$")],
+        [(u["nombre"], u["correo"] or u["usuario"], ACCESOS.get(u["rol"], u["rol"]) if u["activo"] else "No entra",
+          "Sí" if u["nomina"] else "No", u["sueldo_mes"])
+         for u in con.execute("SELECT * FROM usuarios WHERE rol!='sistema' ORDER BY activo DESC, rol, nombre")]))
 
     hojas.append(("Repuestos pendientes",
         [("Cliente", 24, ""), ("Tipo", 14, ""), ("Tamaño", 12, ""), ("Faltan", 9, "n"), ("Desde", 13, "f")],
@@ -3481,7 +3574,9 @@ def historial(request: Request, anio: str = "", mes: str = "", semana: str = "",
 
 
 @app.get("/historial/exportar")
-def historial_exportar(anio: str = "", mes: str = "", semana: str = "", q: str = "", con=Depends(db)):
+def historial_exportar(request: Request, anio: str = "", mes: str = "", semana: str = "", q: str = "", con=Depends(db)):
+    # lo mismo que pide la pantalla: sin esto, cualquiera que supiera la dirección bajaba todas las ventas sin la clave
+    if not solo_admin(request) or not resultados_abierto(request, con): return RedirectResponse("/historial", status_code=303)
     import csv, io
     from fastapi.responses import StreamingResponse
     rows = _historial_rows(con, anio, mes, q)
@@ -3489,7 +3584,7 @@ def historial_exportar(anio: str = "", mes: str = "", semana: str = "", q: str =
     buf = io.StringIO(); w = csv.writer(buf, delimiter=";")
     w.writerow(["Fecha", "Semana", "Mes", "Cliente", "Producto", "Precio", "Cantidad", "Facturación", "Forma de pago"])
     for r in rows:
-        w.writerow([r["fecha"], r["semana"], r["mes"], r["cliente"], r["producto"] + (f" · plato {r['color']}" if r["color"] else "") + (" + malla" if r["malla"] else ""), r["precio"], int(r["cantidad"] or 1), r["linea"], r["forma"] or ""])
+        w.writerow([r["fecha"], r["semana"], r["mes"], r["cliente"], (r["producto"] or "—") + (f" · plato {r['color']}" if r["color"] else "") + (" + malla" if r["malla"] else ""), r["precio"], int(r["cantidad"] or 1), r["linea"], r["forma"] or ""])
     buf.seek(0)
     nombre = f"decopet-ventas-{anio or 'todo'}{('-' + mes) if mes else ''}.csv"
     return StreamingResponse(iter(["\ufeff" + buf.getvalue()]), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename={nombre}"})
@@ -3657,7 +3752,7 @@ def galeria(request: Request, producto: int = 0, tipo: str = "", con=Depends(db)
     conteos = {r[0]: r[1] for r in con.execute("SELECT tipo, COUNT(*) FROM producto_fotos" + (" WHERE producto_id=?" if producto else "") + " GROUP BY 1", (producto,) if producto else ())}
     prods = con.execute("""SELECT p.id, p.nombre, (SELECT COUNT(*) FROM producto_fotos f WHERE f.producto_id=p.id) n FROM productos p
                            WHERE p.tipo='producto' AND p.activo=1 ORDER BY p.orden""").fetchall()
-    lista_js = [dict(archivo=r["archivo"], producto=r["producto"], tipo=r["tipo"], etiqueta=r["etiqueta"]) for r in rows]
+    lista_js = [dict(archivo=r["archivo"], grande=mini(f"productos/{r['archivo']}", 1600), producto=r["producto"], tipo=r["tipo"], etiqueta=r["etiqueta"]) for r in rows]
     return render(request, "galeria.html", seccion="galeria", fotos=rows, producto=producto, tipo=tipo, conteos=conteos, prods=prods, total=sum(conteos.values()), lista_js=lista_js, grupos=grupos)
 
 
@@ -3681,8 +3776,8 @@ def galeria_borrar(request: Request, fid: int, con=Depends(db)):
     if r:
         con.execute("DELETE FROM producto_fotos WHERE id=?", (fid,))
         if not con.execute("SELECT 1 FROM producto_fotos WHERE archivo=?", (r["archivo"],)).fetchone():   # el mismo archivo puede servir a varios productos
-            try: (FOTOS_PRODUCTOS / r["archivo"]).unlink()
-            except FileNotFoundError: pass
+            for f in [FOTOS_PRODUCTOS / r["archivo"]] + [MINIATURAS / str(a) / "productos" / f"{r['archivo']}.webp" for a in ANCHOS_MINI]:
+                f.unlink(missing_ok=True)
         con.commit()
     return RedirectResponse(f"/galeria?producto={r['producto_id']}" if r else "/galeria", status_code=303)
 
@@ -3763,7 +3858,7 @@ def quincena_pendiente(con, hoy):
     if arranque: tocan = [p for p in tocan if p.isoformat() >= arranque]
     if not tocan: return False, []
     desde = (max(tocan) - datetime.timedelta(days=3)).isoformat()
-    falta = [n for n in (cfg_json(con, "sueldos", {}) or {})
+    falta = [n for (n,) in con.execute("SELECT nombre FROM usuarios WHERE nomina=1 AND sueldo_mes > 0")
              if not con.execute("""SELECT 1 FROM gastos WHERE categoria='Equipo' AND subcategoria='Quincena'
                                    AND TRIM(COALESCE(proveedor,''))=? AND fecha>=?""", (n, desde)).fetchone()]
     return any(f == hoy for f in tocan), falta
@@ -3771,7 +3866,8 @@ def quincena_pendiente(con, hoy):
 
 def ficha_equipo(con, nombre, hoy):
     """Lo que le has pagado a una persona del equipo, y qué adelantos quedan por descontar."""
-    mensual = (cfg_json(con, "sueldos", {}) or {}).get(nombre)   # el sueldo se guarda por mes; se paga en dos quincenas
+    r = con.execute("SELECT sueldo_mes FROM usuarios WHERE nombre=? AND nomina=1", (nombre,)).fetchone()
+    mensual = (r[0] if r else None) or None   # el sueldo se guarda por mes; se paga en dos quincenas
     # todo lo que se le pagó a esa persona: al contador se le paga en "Impuestos y legal", no en "Equipo"
     pagos = con.execute("""SELECT g.id, g.fecha, g.monto_usd, g.monto_real, g.moneda, g.categoria, g.subcategoria,
                            g.descripcion, g.notas, cu.nombre caja,
@@ -3841,22 +3937,209 @@ def equipo_pagar(request: Request, nombre: str = Form(...), que: str = Form("Qui
     con.commit(); return RedirectResponse("/equipo", status_code=303)
 
 
+# ------------------------------------------------------------------ EQUIPO: cada persona, su acceso al ERP y su nómina
+# Una sola lista (la tabla usuarios): quien entra al ERP, quien está en la nómina, o las dos cosas. En el servidor se
+# entra con el correo (Cloudflare manda el código) y la lista de correos que Cloudflare deja pasar se arma desde aquí.
+ACCESOS = {"admin": "Administradora", "logistica": "Logística", "taller": "Taller", "despachador": "Despachador"}
+QUE_VE = {
+    "admin": "Todo: ventas, dinero, cajas, configuración y el equipo.",
+    "logistica": "Órdenes, clientes, despachos, inventario, packs y seguimientos. Ve los cobros de cada orden, no el dinero de la empresa.",
+    "taller": "Su pantalla de producción y el inventario. Nada de clientes, órdenes ni dinero.",
+    "despachador": "Sus entregas, lo que se le debe y las tarifas de delivery. No ve las de los demás.",
+}
+CORREO_OK = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+TABLAS_DESPACHADOR = ("ordenes", "entregas_repuesto", "movimientos", "repuestos_prepagados", "pagos_despachador",
+                      "viajes_agencia", "viajes_despachador")
+
+
+def renombrar_despachador(con, viejo, nuevo):
+    """Las entregas, los pagos y los viajes guardan el nombre del despachador: cambia en todos a la vez."""
+    con.execute("UPDATE despachadores SET nombre=? WHERE nombre=?", (nuevo, viejo))
+    for t in TABLAS_DESPACHADOR: con.execute(f"UPDATE {t} SET despachador=? WHERE despachador=?", (nuevo, viejo))
+    con.execute("UPDATE usuarios SET despachador=? WHERE despachador=?", (nuevo, viejo))
+
+
+def renombrar_en_nomina(con, viejo, nuevo):
+    """Los pagos, los pagos fijos y las faltas guardan el nombre de la persona."""
+    con.execute("UPDATE gastos SET proveedor=? WHERE TRIM(COALESCE(proveedor,''))=?", (nuevo, viejo))
+    con.execute("UPDATE compromisos SET proveedor=? WHERE TRIM(COALESCE(proveedor,''))=?", (nuevo, viejo))
+    con.execute("UPDATE faltas SET nombre=? WHERE nombre=?", (nuevo, viejo))
+
+
+def anotar_acceso(con, quien_id, persona_id, que):
+    con.execute("INSERT INTO accesos_registro (quien_id, persona_id, que) VALUES (?,?,?)", (quien_id, persona_id, que))
+
+
+def sincronizar_cloudflare(con):
+    """Le manda a Cloudflare los correos de quienes tienen acceso. Si falla, el ERP igual guarda el cambio y la
+    pantalla Equipo avisa con un botón para reintentar. Sin las llaves de Cloudflare (la Mac) no hace nada."""
+    if not CF_EQUIPO.configurado(): return None
+    correos = [r[0] for r in con.execute("""SELECT DISTINCT lower(correo) FROM usuarios WHERE activo=1 AND correo IS NOT NULL
+                                            AND rol NOT IN ('ninguno','sistema')""")]
+    ahora = datetime.datetime.now().isoformat(" ", "seconds")
+    try:
+        CF_EQUIPO.poner_correos(correos); estado = {"ok": True, "cuando": ahora}
+    except Exception as e:
+        print(f"CLOUDFLARE no recibió la lista del equipo: {e}", flush=True)
+        estado = {"ok": False, "cuando": ahora, "error": str(e)[:300]}
+    con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('cloudflare_equipo', ?)", (json.dumps(estado),)); con.commit()
+    return estado
+
+
+def cerrar_sesiones(con, persona):
+    """Lo saca ya: en la Mac borra sus sesiones; en el servidor le pide a Cloudflare que le vuelva a pedir el código."""
+    con.execute("DELETE FROM sesiones WHERE usuario_id=?", (persona["id"],))
+    if persona["correo"] and CF_EQUIPO.configurado():
+        try: CF_EQUIPO.cerrar_sesion(persona["correo"])
+        except Exception as e: print(f"CLOUDFLARE no cerró la sesión de {persona['correo']}: {e}", flush=True)
+
+
+def bloqueado(con, persona):
+    """¿Probó mal la clave demasiadas veces? Solo en la Mac: en el servidor no hay claves."""
+    if CF_ACCESS.activo() or not persona["usuario"]: return False
+    return con.execute("""SELECT COUNT(*) FROM intentos WHERE usuario=? AND cuando >= datetime('now','localtime',?)""",
+                       (persona["usuario"].strip().lower(), f"-{VENTANA_INTENTOS} minutes")).fetchone()[0] >= MAX_INTENTOS
+
+
 @app.get("/equipo", response_class=HTMLResponse)
-def equipo(request: Request, con=Depends(db)):
-    """Isaías, Manawa y Víctor: lo que se les ha pagado. Solo Cristina — el taller no llega aquí."""
+def equipo(request: Request, err: str = "", abrir: str = "", con=Depends(db)):
+    """Todo el equipo en una pantalla: quién entra al ERP y qué ve, y la nómina. Solo Cristina."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     hoy = datetime.date.today()
-    gente = [ficha_equipo(con, n, hoy) for n in cfg_json(con, "equipo", ["Víctor", "Isaías", "Manawa"])]
+    personas = [dict(r) for r in con.execute("""SELECT * FROM usuarios WHERE rol!='sistema'
+                                                ORDER BY activo DESC, CASE rol WHEN 'admin' THEN 0 WHEN 'logistica' THEN 1
+                                                WHEN 'taller' THEN 2 WHEN 'despachador' THEN 3 ELSE 4 END, nombre""")]
+    ahora = datetime.datetime.now()
+    for p in personas:
+        visto = datetime.datetime.fromisoformat(p["visto_en"]) if p["visto_en"] else None
+        p["conectado"] = bool(visto and p["activo"] and ahora - visto < datetime.timedelta(minutes=10))
+        p["visto"] = visto.isoformat(" ", "minutes") if visto else None
+        p["bloqueado"] = p["activo"] and bloqueado(con, p)
+    gente = []   # la nómina: sus pagos y sus faltas
     lunes = hoy - datetime.timedelta(days=hoy.weekday())
-    for p in gente:   # cuántas veces faltó: esta semana, este mes y este año, con sus fechas
-        fl = [dict(r) for r in con.execute("SELECT * FROM faltas WHERE nombre=? AND substr(fecha,1,4)=? ORDER BY fecha DESC", (p["nombre"], str(hoy.year)))]
-        p["faltas_anio"] = fl
-        p["n_sem"] = sum(1 for f in fl if f["fecha"] >= lunes.isoformat())
-        p["n_mes"] = sum(1 for f in fl if f["fecha"][:7] == hoy.isoformat()[:7])
-    return render(request, "equipo.html", seccion="equipo", gente=gente, hoy_iso=hoy.isoformat(),
-                  falta_quincena=quincena_pendiente(con, hoy)[1],
+    for n in [p["nombre"] for p in personas if p["nomina"]]:
+        f = ficha_equipo(con, n, hoy)
+        fl = [dict(r) for r in con.execute("SELECT * FROM faltas WHERE nombre=? AND substr(fecha,1,4)=? ORDER BY fecha DESC", (n, str(hoy.year)))]
+        f.update(faltas_anio=fl, n_sem=sum(1 for x in fl if x["fecha"] >= lunes.isoformat()),
+                 n_mes=sum(1 for x in fl if x["fecha"][:7] == hoy.isoformat()[:7]),
+                 id=next(p["id"] for p in personas if p["nomina"] and p["nombre"] == n))
+        gente.append(f)
+    nombres = {p["id"]: p["nombre"] for p in personas}
+    registro = [dict(r) | {"quien": nombres.get(r["quien_id"], "—"), "persona": nombres.get(r["persona_id"], "—")}
+                for r in con.execute("SELECT * FROM accesos_registro ORDER BY id DESC LIMIT 60")]
+    return render(request, "equipo.html", seccion="equipo", personas=personas, gente=gente, hoy_iso=hoy.isoformat(),
+                  falta_quincena=quincena_pendiente(con, hoy)[1], registro=registro, err=err, abrir=abrir,
+                  yo=quien_es(request), ACCESOS=ACCESOS, QUE_VE=QUE_VE, por_correo=CF_ACCESS.activo(),
+                  cloudflare=cfg_json(con, "cloudflare_equipo", None) if CF_EQUIPO.configurado() else None,
+                  despachadores_l=[r[0] for r in con.execute("SELECT nombre FROM despachadores ORDER BY activo DESC, nombre")],
                   CUENTAS=con.execute("""SELECT * FROM cuentas WHERE activa=1 AND tipo='operativa' AND moneda IN ('USD','VES')
                                          ORDER BY orden""").fetchall())
+
+
+@app.post("/equipo/persona")
+def equipo_persona(request: Request, id: int = Form(0), nombre: str = Form(""), correo: str = Form(""),
+                   acceso: str = Form("no"), despachador: str = Form(""), nomina: str = Form(""), sueldo: str = Form(""),
+                   usuario: str = Form(""), clave: str = Form(""), con=Depends(db)):
+    """Agregar a alguien o cambiar su ficha: nombre, correo, qué ve en el ERP (o si no entra), y su nómina."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    yo = quien_es(request)
+    antes = dict(con.execute("SELECT * FROM usuarios WHERE id=? AND rol!='sistema'", (id,)).fetchone() or {}) if id else {}
+    if id and not antes: return RedirectResponse("/equipo", status_code=303)
+    mal = lambda e: RedirectResponse(f"/equipo?err={e}" + (f"&abrir={id}" if id else "&abrir=nuevo"), status_code=303)
+    nombre, correo, usuario = capitalizar(nombre.strip()), correo.strip().lower(), usuario.strip().lower()
+    entra = acceso in ACCESOS
+    if not nombre: return mal("nombre")
+    if correo and not CORREO_OK.fullmatch(correo): return mal("correo")
+    if entra and CF_ACCESS.activo() and not correo: return mal("sin_correo")   # en el servidor se entra con el correo
+    if correo and con.execute("SELECT 1 FROM usuarios WHERE lower(correo)=? AND id!=?", (correo, id)).fetchone(): return mal("correo_repetido")
+    if not CF_ACCESS.activo():   # en la Mac se entra con usuario y clave
+        usuario = usuario or correo
+        if entra and not usuario: return mal("sin_usuario")
+        if usuario and con.execute("SELECT 1 FROM usuarios WHERE lower(TRIM(usuario))=? AND id!=?", (usuario, id)).fetchone(): return mal("usuario_repetido")
+        if clave.strip() and len(clave.strip()) < 8: return mal("corta")
+    else:
+        usuario = antes.get("usuario")
+    en_nomina = bool(nomina)
+    if en_nomina and con.execute("SELECT 1 FROM usuarios WHERE nombre=? AND nomina=1 AND id!=?", (nombre, id)).fetchone():
+        return mal("nombre_repetido")   # la nómina va por nombre: dos con el mismo se mezclarían los pagos
+    # nunca puede quedar el ERP sin administradora, ni Cristina quitarse a sí misma
+    if yo and antes and yo["id"] == id and acceso != "admin": return mal("yo")
+    if antes.get("rol") == "admin" and antes.get("activo") and acceso != "admin" and \
+            not con.execute("SELECT 1 FROM usuarios WHERE rol='admin' AND activo=1 AND id!=?", (id,)).fetchone():
+        return mal("ultima_admin")
+    # cambiar el nombre: los pagos, las faltas y (si el despachador lleva su nombre) las entregas cambian con él
+    if antes and antes["nombre"] != nombre:
+        if antes["nomina"]: renombrar_en_nomina(con, antes["nombre"], nombre)
+        if antes.get("despachador") == antes["nombre"] and \
+                not con.execute("SELECT 1 FROM despachadores WHERE nombre=?", (nombre,)).fetchone():
+            renombrar_despachador(con, antes["nombre"], nombre)
+            if despachador.strip() == antes["nombre"]: despachador = nombre
+            antes["despachador"] = nombre
+    # el despachador es uno de la lista de Despachadores: el que se elige, o uno nuevo con su nombre
+    desp = None
+    if acceso == "despachador":
+        desp = despachador.strip() or nombre
+        if not con.execute("SELECT 1 FROM despachadores WHERE nombre=?", (desp,)).fetchone():
+            con.execute("INSERT INTO despachadores (nombre, activo) VALUES (?,1)", (desp,))
+        else:
+            con.execute("UPDATE despachadores SET activo=1 WHERE nombre=?", (desp,))
+    rol = acceso if entra else (antes.get("rol") if antes.get("rol") in ACCESOS else "ninguno")   # sin acceso conserva su rol de antes
+    valores = (nombre, correo or None, usuario or None, rol, 1 if entra else 0, desp if entra else antes.get("despachador"),
+               1 if en_nomina else 0, cifra(sueldo) if (en_nomina and sueldo.strip()) else None)
+    if id:
+        con.execute("""UPDATE usuarios SET nombre=?, correo=?, usuario=?, rol=?, activo=?, despachador=?, nomina=?, sueldo_mes=?
+                       WHERE id=?""", valores + (id,))
+    else:
+        id = con.execute("""INSERT INTO usuarios (nombre, correo, usuario, rol, activo, despachador, nomina, sueldo_mes, creado_en)
+                            VALUES (?,?,?,?,?,?,?,?,date('now'))""", valores).lastrowid
+    yo_id = yo["id"] if yo else None
+    # lo que cambió en su acceso queda anotado
+    if not antes:
+        anotar_acceso(con, yo_id, id, f"Lo agregó al equipo" + (f" con acceso de {ACCESOS[acceso]}" if entra else " sin acceso al ERP"))
+    else:
+        if antes["activo"] and not entra: anotar_acceso(con, yo_id, id, "Le quitó el acceso al ERP")
+        elif entra and not antes["activo"]: anotar_acceso(con, yo_id, id, f"Le dio acceso de {ACCESOS[acceso]}")
+        elif entra and antes["rol"] != acceso: anotar_acceso(con, yo_id, id, f"Le cambió el acceso de {ACCESOS.get(antes['rol'], antes['rol'])} a {ACCESOS[acceso]}")
+        if (antes.get("correo") or "") != correo: anotar_acceso(con, yo_id, id, f"Cambió su correo a {correo}" if correo else "Le quitó el correo")
+        if antes["nombre"] != nombre: anotar_acceso(con, yo_id, id, f"Le cambió el nombre de {antes['nombre']} a {nombre}")
+    if clave.strip() and not CF_ACCESS.activo():
+        con.execute("UPDATE usuarios SET clave_hash=? WHERE id=?", (cifrar_clave(clave.strip()), id))
+        con.execute("DELETE FROM sesiones WHERE usuario_id=? AND ficha!=?", (id, request.cookies.get("sesion") or ""))
+        anotar_acceso(con, yo_id, id, "Le puso una clave nueva")
+    con.commit(); cargar_despachadores()
+    # si perdió el acceso o cambió de correo, sale ya: no espera a que se le venza la sesión
+    if antes and antes["activo"] and (not entra or (antes.get("correo") or "") != correo):
+        cerrar_sesiones(con, antes); con.commit()
+    if not antes or entra != bool(antes["activo"]) or (antes.get("correo") or "") != correo: sincronizar_cloudflare(con)
+    return RedirectResponse(f"/equipo#p{id}", status_code=303)
+
+
+@app.post("/equipo/persona/{pid}/cerrar-sesion")
+def equipo_cerrar_sesion(request: Request, pid: int, con=Depends(db)):
+    """Perdió el teléfono, o se lo prestó a alguien: tiene que volver a entrar con el código."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    p = con.execute("SELECT * FROM usuarios WHERE id=? AND rol!='sistema'", (pid,)).fetchone()
+    if p:
+        cerrar_sesiones(con, p); anotar_acceso(con, (quien_es(request) or {}).get("id"), pid, "Le cerró la sesión"); con.commit()
+    return RedirectResponse(f"/equipo#p{pid}", status_code=303)
+
+
+@app.post("/equipo/persona/{pid}/desbloquear")
+def equipo_desbloquear(request: Request, pid: int, con=Depends(db)):
+    """Se equivocó de clave demasiadas veces: puede volver a probar ya, sin esperar los 15 minutos."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    p = con.execute("SELECT * FROM usuarios WHERE id=?", (pid,)).fetchone()
+    if p and p["usuario"]:
+        con.execute("DELETE FROM intentos WHERE usuario=?", (p["usuario"].strip().lower(),))
+        anotar_acceso(con, (quien_es(request) or {}).get("id"), pid, "Lo desbloqueó"); con.commit()
+    return RedirectResponse(f"/equipo#p{pid}", status_code=303)
+
+
+@app.post("/equipo/cloudflare")
+def equipo_cloudflare(request: Request, con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    sincronizar_cloudflare(con)
+    return RedirectResponse("/equipo", status_code=303)
 
 
 @app.post("/finanzas/recurrentes/{cid}/saltar")
@@ -5848,8 +6131,7 @@ def despachadores_guardar(request: Request, id: int = Form(0), nombre: str = For
     if id:
         viejo = con.execute("SELECT nombre FROM despachadores WHERE id=?", (id,)).fetchone()
         con.execute("UPDATE despachadores SET nombre=?, telefono=?, notas=?, activo=? WHERE id=?", (nombre, normalizar_telefono(telefono) or None, notas or None, 1 if activo == "1" else 0, id))
-        if viejo and viejo["nombre"] != nombre:   # las órdenes y los pagos guardan el nombre
-            con.execute("UPDATE ordenes SET despachador=? WHERE despachador=?", (nombre, viejo["nombre"])); con.execute("UPDATE pagos_despachador SET despachador=? WHERE despachador=?", (nombre, viejo["nombre"]))
+        if viejo and viejo["nombre"] != nombre: renombrar_despachador(con, viejo["nombre"], nombre)   # todo lo suyo guarda el nombre
     elif nombre:
         con.execute("INSERT OR IGNORE INTO despachadores (nombre, telefono, notas, activo) VALUES (?,?,?,1)", (nombre, normalizar_telefono(telefono) or None, notas or None))
     con.commit(); cargar_despachadores()

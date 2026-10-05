@@ -1,8 +1,75 @@
 {% extends "base.html" %}{% block titulo %}Equipo · Decopet{% endblock %}{% block cuerpo %}
-<div class="fila-titulo"><div><h1>Equipo</h1></div></div>
+{% macro ficha(p) %}
+<form method="post" action="/equipo/persona" class="eqp-f">
+ <input type="hidden" name="id" value="{{ p.id if p else 0 }}">
+ {% set acc = p.rol if (p and p.activo) else 'no' %}
+ <div class="g2">
+  <div><label>Nombre</label><input name="nombre" value="{{ p.nombre if p else '' }}" required></div>
+  <div><label>Correo</label><input type="email" name="correo" value="{{ (p.correo or '') if p else '' }}" placeholder="donde le llega el código para entrar" inputmode="email" autocomplete="off"></div>
+  <div><label>Acceso al ERP</label>
+   <select name="acceso" onchange="eqpAcceso(this)"><option value="no">No entra al ERP</option>{% for k, t in ACCESOS.items() %}<option value="{{ k }}" {{ 'selected' if acc==k }}>{{ t }}</option>{% endfor %}</select>
+   <div class="mini eqp-que">{{ QUE_VE.get(acc, 'Sigue en el equipo (y en la nómina, si está), pero no puede abrir el ERP.') }}</div></div>
+  <div class="eqp-desp" {{ 'hidden' if acc != 'despachador' }}><label>¿Qué despachador es?</label>
+   <select name="despachador"><option value="">Uno nuevo, con su nombre</option>{% for d in despachadores_l %}<option {{ 'selected' if p and d==p.despachador }}>{{ d }}</option>{% endfor %}</select></div>
+  {% if not por_correo %}
+  <div><label>Usuario <span class="mini">para entrar en esta copia</span></label><input name="usuario" value="{{ (p.usuario or '') if p else '' }}" autocomplete="off"></div>
+  <div><label>Clave nueva</label><input type="password" name="clave" minlength="8" autocomplete="new-password" placeholder="{{ 'vacío: no se cambia' if p and p.clave_hash else 'al menos 8 caracteres' }}"></div>
+  {% endif %}
+  <div class="eqp-nom"><label class="cf-check"><input type="checkbox" name="nomina" {{ 'checked' if p and p.nomina }} onchange="this.closest('.eqp-nom').querySelector('.eqp-sueldo').hidden=!this.checked"><span>Está en la nómina</span></label>
+   <div class="eqp-sueldo" {{ 'hidden' if not (p and p.nomina) }}><div class="cf-in"><span class="mini">Sueldo al mes $</span><input name="sueldo" inputmode="decimal" value="{{ '%g'|format(p.sueldo_mes) if p and p.sueldo_mes else '' }}" placeholder="—" style="width:90px"></div>
+    <div class="mini">Sin sueldo, se le paga desde <a href="/finanzas/recurrentes">Pagos recurrentes</a>.</div></div></div>
+ </div>
+ <p class="eqp-b"><button class="btn chico">{{ 'Guardar' if p else 'Agregar' }}</button></p>
+</form>
+{% endmacro %}
+{% macro fila(p) %}
+<details class="eqp{{ ' apagado' if not p.activo }}" id="p{{ p.id }}" {{ 'open' if abrir == p.id|string }}>
+ <summary>
+  <span class="eqp-ini">{{ p.nombre[:1] }}</span>
+  <span class="eqp-q"><span><b>{{ p.nombre }}</b>{% if yo and yo.id == p.id %} <span class="mini">· eres tú</span>{% endif %}</span>
+   <span class="mini mono">{{ p.correo or (p.usuario if not por_correo else '') or 'sin correo' }}</span></span>
+  <span class="eqp-acc">{% if p.activo %}<span class="pago pagada">{{ ACCESOS.get(p.rol, p.rol) }}</span>{% if p.rol=='despachador' and p.despachador and p.despachador != p.nombre %}<span class="mini">{{ p.despachador }}</span>{% endif %}
+   {% else %}<span class="pago sin_pago">Sin acceso</span>{% endif %}{% if p.nomina %}<span class="mini">en la nómina</span>{% endif %}</span>
+  <span class="eqp-est mini">{% if p.bloqueado %}<span class="ln-alerta">bloqueado: probó mal la clave</span>{% elif p.conectado %}<span><span class="eqp-on"></span>conectado ahora</span>{% elif p.visto %}abrió el ERP {{ p.visto|fecha(true) }}{% elif p.activo %}nunca ha entrado{% endif %}
+   {% if p.activo and por_correo and not p.correo %}<span class="ln-alerta">falta su correo: no puede entrar</span>{% endif %}</span>
+  <span class="btn sec chico eqp-cambiar">Cambiar</span>
+ </summary>
+ <div class="eqp-cuerpo">
+  {{ ficha(p) }}
+  {% if p.activo or p.bloqueado %}<div class="eqp-otras">
+   {% if p.activo and not (yo and yo.id == p.id) %}<form method="post" action="/equipo/persona/{{ p.id }}/cerrar-sesion"><button class="btn sec chico">Cerrar su sesión</button></form>{% endif %}
+   {% if p.bloqueado %}<form method="post" action="/equipo/persona/{{ p.id }}/desbloquear"><button class="btn sec chico">Desbloquear</button></form>{% endif %}
+  </div>{% endif %}
+ </div>
+</details>
+{% endmacro %}
+<div class="fila-titulo"><div><h1>Equipo</h1></div>
+ <a class="btn" href="/equipo?abrir=nuevo#nuevo">+ Agregar persona</a></div>
+{% set avisos = {'nombre': 'Falta el nombre.', 'correo': 'Ese correo no está bien escrito.',
+  'sin_correo': 'Para entrar al ERP hace falta su correo: ahí le llega el código.', 'correo_repetido': 'Ese correo ya lo tiene otra persona.',
+  'sin_usuario': 'Para entrar en esta copia hace falta un usuario.', 'usuario_repetido': 'Ese usuario ya lo tiene otra persona.',
+  'corta': 'La clave tiene que tener al menos 8 caracteres.', 'nombre_repetido': 'Ya hay alguien en la nómina con ese nombre.',
+  'yo': 'No puedes quitarte a ti misma el acceso de administradora.', 'ultima_admin': 'Tiene que quedar al menos una administradora.'} %}
+{% if err %}<div class="cf-err">{{ avisos.get(err, 'No se pudo guardar.') }}</div>{% endif %}
+{% if cloudflare and not cloudflare.ok %}<div class="cf-err eqp-cf">Cloudflare no recibió el último cambio de la lista de correos ({{ cloudflare.error }}). Quien acabas de agregar todavía no puede entrar.
+ <form method="post" action="/equipo/cloudflare"><button class="btn chico">Reintentar</button></form></div>{% endif %}
+
+{% if abrir == 'nuevo' %}<div class="tarjeta" id="nuevo"><h3>Agregar a alguien</h3>{{ ficha(none) }}</div>{% endif %}
+
+{% set con_acceso = personas|selectattr('activo')|list %}{% set sin_acceso = personas|rejectattr('activo')|list %}
+<div class="tarjeta eqp-lista">
+ <h3>Entran al ERP <span class="mini">{{ con_acceso|length }}</span></h3>
+ {% for p in con_acceso %}{{ fila(p) }}{% endfor %}
+</div>
+{% if sin_acceso %}<div class="tarjeta eqp-lista">
+ <h3>Sin acceso <span class="mini">{{ sin_acceso|length }}</span></h3>
+ {% for p in sin_acceso %}{{ fila(p) }}{% endfor %}
+</div>{% endif %}
+
+{% if gente %}<h2 class="eqp-h2">Nómina</h2>{% endif %}
 {% for p in gente %}
 <div class="tarjeta eq">
- <div class="eq-quien"><h3>{{ p.nombre }}</h3><span class="mini">{{ 'cobra por quincena' if p.mensual else 'pagos fijos' }}</span>{% if p.mensual %}<a class="mini eq-edit" href="/configuracion#sueldos">cambiar sueldo</a>{% else %}<a class="mini eq-edit" href="/finanzas/recurrentes">cambiar monto</a>{% endif %}</div>
+ <div class="eq-quien"><h3>{{ p.nombre }}</h3><span class="mini">{{ 'cobra por quincena' if p.mensual else 'pagos fijos' }}</span>{% if p.mensual %}<a class="mini eq-edit" href="/equipo?abrir={{ p.id }}#p{{ p.id }}">cambiar sueldo</a>{% else %}<a class="mini eq-edit" href="/finanzas/recurrentes">cambiar monto</a>{% endif %}</div>
  <div class="eq-cuerpo">
  <div class="eq-stats">
   {% if p.quincena %}<div class="eq-num"><span class="mini">por quincena</span><b>{{ p.quincena|usd }}</b></div>{% endif %}
@@ -50,4 +117,19 @@
  </div>
 </div>
 {% endfor %}
+
+<details class="tarjeta eqp-reg"><summary><h3>Registro de cambios</h3><span class="mini">quién le dio o le quitó el acceso a quién</span></summary>
+ {% if registro %}<table class="lineas" data-cols="Cuándo:22|Quién:20|A quién:20|Qué:38"><tr><th>Cuándo</th><th>Quién</th><th>A quién</th><th>Qué</th></tr>
+ {% for r in registro %}<tr><td class="mono">{{ r.cuando|fecha(true) }}</td><td>{{ r.quien }}</td><td>{{ r.persona }}</td><td>{{ r.que }}</td></tr>{% endfor %}</table>
+ {% else %}<p class="mini">Todavía no hay cambios.</p>{% endif %}
+</details>
+<script>
+const QUE_VE = {{ QUE_VE|tojson }};
+function eqpAcceso(sel){
+ const f = sel.form;
+ f.querySelector('.eqp-que').textContent = QUE_VE[sel.value] || 'Sigue en el equipo (y en la nómina, si está), pero no puede abrir el ERP.';
+ f.querySelector('.eqp-desp').hidden = sel.value !== 'despachador';
+}
+document.querySelector('details.eqp[open], #nuevo')?.scrollIntoView({block: 'start'});
+</script>
 {% endblock %}

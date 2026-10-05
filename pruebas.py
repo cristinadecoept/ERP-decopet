@@ -6,7 +6,7 @@ de datos de mentira. Correrlas antes y después de cualquier cambio:
 
     ./.venv/bin/python pruebas.py
 """
-import os, re, sqlite3, datetime, tempfile, pathlib, traceback
+import os, re, time, sqlite3, datetime, tempfile, pathlib, traceback
 os.environ["DECOPET_PRUEBAS"] = "1"
 
 import plataforma.app as A
@@ -283,6 +283,8 @@ def _():
 @prueba("Lo que se compra para vender tal cual (bowls, platos) tiene a qué producto entrar")
 def _():
     con = sqlite3.connect(str(A.DB))
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE name='productos'").fetchone():
+        print("      (sin base en uso, como en GitHub: no hay catálogo real que revisar)"); return
     for item, sku in A.ITEMS_A_INVENTARIO.items():
         assert con.execute("SELECT 1 FROM productos WHERE sku=?", (sku,)).fetchone(), f"{item} apunta a {sku}, que no existe"
 
@@ -302,7 +304,7 @@ def _():
 @prueba("Sin nadie conectado (ERP recién instalado) se puede guardar y queda a nombre de un usuario")
 def _():
     class R:   # una petición sin sesión
-        cookies = {}; headers = {}
+        cookies = {}; headers = {}; state = type("Estado", (), {})()
     con = base_limpia()
     uid = A.uid_de(R())
     assert uid is not None
@@ -446,7 +448,8 @@ def erp_de_prueba(en_servidor=False, con_datos=True):
         yield TestClient(A.app)
     finally:
         A.DB, S.DB, A.EN_SERVIDOR, A.bcv.programar, A.bcv.actualizar = antes
-        A.cargar_despachadores(); A.cargar_formas_pago(); A.cargar_ajustes()
+        try: A.cargar_despachadores(); A.cargar_formas_pago(); A.cargar_ajustes()
+        except sqlite3.OperationalError: pass   # en GitHub no hay base en uso: no hay nada que volver a cargar
 
 
 def sesion_de(cliente, rol):
@@ -531,9 +534,9 @@ def _():
             datos = {"usuario": "cristina@x.com", "clave": "una-clave-larga", "clave2": "una-clave-larga"}
             r = c.post("/entrar/primera-vez", data={**datos, "codigo": "otro"}, follow_redirects=False)
             assert r.headers["location"] == "/entrar?mal=codigo", "aceptó un código equivocado"
-            assert not A.hay_claves()
+            assert not A.tiene_duena()
             r = c.post("/entrar/primera-vez", data={**datos, "codigo": "codigo-de-prueba"}, follow_redirects=False)
-            assert r.headers["location"] == "/inicio" and A.hay_claves()
+            assert r.headers["location"] == "/inicio" and A.tiene_duena()
             c.cookies.clear()                       # vuelve a entrar con el usuario que puso
             r = c.post("/entrar", data={"usuario": "cristina@x.com", "clave": "una-clave-larga"}, follow_redirects=False)
             assert r.headers["location"] == "/inicio", "no pudo volver a entrar con su usuario"
@@ -554,11 +557,414 @@ def _():
         del os.environ["DECOPET_CODIGO_INICIAL"]
 
 
+@prueba("Un ?volver= nunca te manda fuera del ERP")
+def _():
+    for malo in ("https://otro-sitio.com", "//otro-sitio.com", "/\\otro-sitio.com", "javascript:alert(1)", "", None):
+        assert A.volver_seguro(malo) is None, malo
+    assert A.volver_seguro("/operaciones?cola=hoy") == "/operaciones?cola=hoy"
+
+
+@prueba("Crear una orden desde Operaciones te deja en Operaciones con la orden abierta; desde otro lado, en Órdenes")
+def _():
+    pide = lambda v: type("R", (), {"query_params": {"volver": v} if v is not None else {}})()
+    assert A.volver_tras_crear(844, pide("/operaciones")) == "/operaciones?abrir=844"
+    assert A.volver_tras_crear(844, pide("/operaciones?cola=hoy&dia=")) == "/operaciones?cola=hoy&dia=&abrir=844"
+    assert A.volver_tras_crear(844, pide("/clientes?q=ana")) == "/ordenes?abrir=844"     # en Clientes "abrir" es un cliente
+    assert A.volver_tras_crear(844, pide("https://otro-sitio.com/operaciones")) == "/ordenes?abrir=844"
+    assert A.volver_tras_crear(844, pide(None)) == "/ordenes?abrir=844"
+
+
+@prueba("Exportar el registro de ventas pide la misma clave que la pantalla (antes se bajaba sin ella)")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB); con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('clave_resultados', 'clave-de-prueba')"); con.commit(); con.close()
+        r = c.get("/historial/exportar", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/historial", "bajó las ventas sin la clave"
+        c.cookies.set("res_ok", "clave-de-prueba")
+        r = c.get("/historial/exportar", follow_redirects=False)
+        assert r.status_code == 200 and "text/csv" in r.headers["content-type"], r.status_code
+        sesion_de(c, "logistica")
+        assert c.get("/historial/exportar", follow_redirects=False).status_code == 303, "logística bajó las ventas"
+
+
+@prueba("Cloudflare Access: sin su firma no se llega a nada; con firma buena sí; firmas falsas, vencidas o ajenas no")
+def _():
+    import jwt as JWT
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from plataforma import access as CF
+    clave, otra = (rsa.generate_private_key(public_exponent=65537, key_size=2048) for _ in range(2))
+    EQUIPO, AUD = "decopet-prueba.cloudflareaccess.com", "aud-de-prueba"
+    def firma(k=clave, aud=AUD, iss="https://" + EQUIPO, vence=600, kid="k1"):
+        return JWT.encode({"iss": iss, "aud": [aud], "exp": int(time.time()) + vence, "email": "cristina@x.com", "sub": "u1"}, k, algorithm="RS256", headers={"kid": kid})
+    antes_claves, env = CF._cargar_claves, dict(os.environ)
+    CF._cargar_claves = lambda forzar=False: {"k1": clave.public_key()}   # en vez de ir a buscarlas a Cloudflare
+    os.environ.update(CF_ACCESS_ENFORCE="1", CF_ACCESS_TEAM_DOMAIN=EQUIPO, CF_ACCESS_AUD=AUD)
+    try:
+        with erp_de_prueba() as c:
+            pide = lambda ruta, t=None: c.get(ruta, headers={"cf-access-jwt-assertion": t} if t else {}, follow_redirects=False).status_code
+            assert pide("/entrar") == 403, "sin firma llegó a la entrada"
+            assert pide("/static/estilo.css") == 403, "sin firma llegó a los archivos"
+            assert pide("/health") == 200, "Railway no puede revisar si está vivo"
+            assert pide("/entrar", firma()) == 200, "con firma buena no entró"
+            assert pide("/entrar", firma(k=otra)) == 403, "aceptó una firma falsa"
+            assert pide("/entrar", firma(aud="otra-app")) == 403, "aceptó la firma de otra aplicación"
+            assert pide("/entrar", firma(iss="https://otro-equipo.cloudflareaccess.com")) == 403, "aceptó la firma de otro equipo"
+            assert pide("/entrar", firma(vence=-120)) == 403, "aceptó una firma vencida"
+            assert pide("/entrar", firma(kid="k-desconocida")) == 403, "aceptó una clave desconocida"
+            os.environ.pop("CF_ACCESS_ENFORCE")
+            assert pide("/entrar") == 200, "apagado, igual pidió la firma"
+    finally:
+        CF._cargar_claves = antes_claves; os.environ.clear(); os.environ.update(env)
+
+
+@prueba("Freno de intentos: con Cloudflare delante cuenta la IP real de cada persona; sin Cloudflare no se cree la cabecera")
+def _():
+    pedido = lambda cab: type("R", (), {"headers": cab, "client": type("C", (), {"host": "104.22.148.30"})()})()
+    env = dict(os.environ)
+    try:
+        os.environ["CF_ACCESS_ENFORCE"] = "1"
+        assert A.ip_de(pedido({"cf-connecting-ip": "190.6.1.20"})) == "190.6.1.20", "con Access no usó la IP real"
+        assert A.ip_de(pedido({})) == "104.22.148.30"
+        os.environ.pop("CF_ACCESS_ENFORCE")
+        assert A.ip_de(pedido({"cf-connecting-ip": "1.2.3.4"})) == "104.22.148.30", "sin Access le creyó a una cabecera inventada"
+    finally:
+        os.environ.clear(); os.environ.update(env)
+
+
+@prueba("Migraciones: cada una se aplica una sola vez; la que falla no deja nada a medias y detiene el arranque")
+def _():
+    carpeta = pathlib.Path(tempfile.mkdtemp()); antes = A.MIGRACIONES; A.MIGRACIONES = carpeta
+    try:
+        (carpeta / "001_tabla_y_datos.sql").write_text("CREATE TABLE IF NOT EXISTS prueba_mig (x TEXT);\nINSERT INTO prueba_mig VALUES ('uno');", encoding="utf-8")
+        ruta = tempfile.mktemp(suffix=".db")
+        A.preparar_base(ruta).close(); A.preparar_base(ruta).close()   # arranca dos veces
+        con = sqlite3.connect(ruta)
+        assert con.execute("SELECT COUNT(*) FROM prueba_mig").fetchone()[0] == 1, "se aplicó dos veces"
+        con.close()
+        (carpeta / "002_rota.sql").write_text("INSERT INTO prueba_mig VALUES ('dos');\nINSERT INTO tabla_que_no_existe VALUES (1);", encoding="utf-8")
+        try:
+            A.preparar_base(ruta).close(); assert False, "arrancó con una migración rota"
+        except RuntimeError as e:
+            assert "002_rota.sql" in str(e), e
+        con = sqlite3.connect(ruta)
+        assert con.execute("SELECT COUNT(*) FROM prueba_mig").fetchone()[0] == 1, "quedó a medias la migración rota"
+        assert [r[0] for r in con.execute("SELECT nombre FROM migraciones ORDER BY nombre")] == ["001_tabla_y_datos.sql"]
+        con.close()
+    finally:
+        A.MIGRACIONES = antes
+
+
+@prueba("La franja de arriba dice cuándo no es la operación real: copia local o versión de prueba; en producción no sale")
+def _():
+    env = dict(os.environ)
+    try:
+        os.environ.pop("DECOPET_STAGING", None)
+        with erp_de_prueba(en_servidor=False, con_datos=False) as c:
+            assert "Copia local" in c.get("/entrar").text, "la copia local no avisa"
+        os.environ["DECOPET_CODIGO_INICIAL"] = "x"
+        with erp_de_prueba(en_servidor=True, con_datos=False) as c:
+            assert 'class="franja-entorno' not in c.get("/entrar").text, "producción muestra una franja"
+            os.environ["DECOPET_STAGING"] = "1"
+            assert "Versión de prueba" in c.get("/entrar").text, "el de pruebas no avisa"
+    finally:
+        os.environ.clear(); os.environ.update(env)
+
+
+@prueba("El buscador de arriba solo sale a quien puede usarlo (no al taller ni a los despachadores) y no queda el texto 'Prototipo'")
+def _():
+    casas = {"admin": "/inicio", "logistica": "/operaciones", "taller": "/taller", "despachador": "/mis-entregas"}
+    with erp_de_prueba() as c:
+        for rol, casa in casas.items():
+            sesion_de(c, rol); html = c.get(casa).text
+            tiene = 'class="buscar"' in html
+            assert tiene == (rol in ("admin", "logistica")), f"{rol}: buscador {'sale' if tiene else 'no sale'}"
+            assert "Prototipo" not in html, f"{rol}: todavía dice Prototipo"
+
+
 @prueba("/health dice ok sin pedir clave y sin contar nada de adentro")
 def _():
     with erp_de_prueba(en_servidor=True, con_datos=False) as c:
         r = c.get("/health", follow_redirects=False)
         assert (r.status_code, r.text) == (200, "ok"), (r.status_code, r.text)
+
+
+print("\nEQUIPO Y ACCESOS")
+
+@contextmanager
+def con_cloudflare(en_servidor=True, con_datos=True):
+    """El ERP detrás de Cloudflare Access, y una función que arma la firma de alguien con su correo.
+    La lista de correos que se le manda a Cloudflare queda en .enviado (no se llama a Cloudflare de verdad)."""
+    import jwt as JWT
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from plataforma import access as CF
+    clave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    EQUIPO, AUD = "decopet-prueba.cloudflareaccess.com", "aud-de-prueba"
+    antes = (CF._cargar_claves, A.CF_EQUIPO.poner_correos, A.CF_EQUIPO.cerrar_sesion, dict(os.environ))
+    CF._cargar_claves = lambda forzar=False: {"k1": clave.public_key()}
+    enviado = {"correos": None, "cerradas": []}
+    A.CF_EQUIPO.poner_correos = lambda correos: enviado.__setitem__("correos", sorted(correos))
+    A.CF_EQUIPO.cerrar_sesion = lambda correo: enviado["cerradas"].append(correo)
+    os.environ.update(CF_ACCESS_ENFORCE="1", CF_ACCESS_TEAM_DOMAIN=EQUIPO, CF_ACCESS_AUD=AUD, DECOPET_CODIGO_INICIAL="codigo-inicial",
+                      CF_API_TOKEN="t", CF_ACCOUNT_ID="a", CF_ACCESS_POLICY_ID="p")
+    try:
+        with erp_de_prueba(en_servidor=en_servidor, con_datos=con_datos) as c:
+            def como(correo):   # cada pedido siguiente llega firmado por Cloudflare con ese correo
+                c.headers["cf-access-jwt-assertion"] = JWT.encode(
+                    {"iss": "https://" + EQUIPO, "aud": [AUD], "exp": int(time.time()) + 600, "email": correo},
+                    clave, algorithm="RS256", headers={"kid": "k1"})
+            c.como, c.enviado = como, enviado
+            yield c
+    finally:
+        CF._cargar_claves, A.CF_EQUIPO.poner_correos, A.CF_EQUIPO.cerrar_sesion = antes[:3]
+        os.environ.clear(); os.environ.update(antes[3])
+
+
+def persona(**campos):
+    con = sqlite3.connect(A.DB)
+    cols = ", ".join(campos); marcas = ", ".join("?" * len(campos))
+    pid = con.execute(f"INSERT INTO usuarios ({cols}) VALUES ({marcas})", tuple(campos.values())).lastrowid
+    con.commit(); con.close(); return pid
+
+
+@prueba("En el servidor se entra con el correo que comprobó Cloudflare, sin clave; un correo que no es del equipo no entra")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        persona(nombre="Isaías", rol="taller", activo=1, correo="isaias@gmail.com")
+        persona(nombre="Se fue", rol="taller", activo=0, correo="sefue@gmail.com")
+        c.como("cristina@decopet.com"); assert c.get("/inicio", follow_redirects=False).status_code == 200, "la dueña no entró"
+        c.como("ISAIAS@gmail.com"); r = c.get("/inicio", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/taller", "el taller no llegó a su pantalla"
+        for correo in ("sefue@gmail.com", "extrano@gmail.com"):
+            c.como(correo)
+            assert c.get("/inicio", follow_redirects=False).headers.get("location") == "/entrar", f"{correo} entró"
+            assert "no tiene acceso" in c.get("/entrar").text
+        c.como("isaias@gmail.com")
+        assert c.post("/entrar", data={"usuario": "isaias", "clave": "x"}, follow_redirects=False).headers["location"] == "/entrar"
+        assert c.get("/salir", follow_redirects=False).headers["location"] == "/cdn-cgi/access/logout"
+
+
+@prueba("Primera vez en el servidor: con el código de instalación, el correo de Cloudflare queda como el de la administradora")
+def _():
+    with con_cloudflare(con_datos=False) as c:
+        c.como("duena@decopet.com")
+        assert "Entra como administradora" in c.get("/entrar").text
+        assert c.post("/entrar/primera-vez", data={"codigo": "otro"}, follow_redirects=False).headers["location"] == "/entrar?mal=codigo"
+        assert c.post("/entrar/primera-vez", data={"codigo": "codigo-inicial"}, follow_redirects=False).headers["location"] == "/inicio"
+        assert c.get("/inicio", follow_redirects=False).status_code == 200, "no entró después de registrarse"
+        assert c.enviado["correos"] == ["duena@decopet.com"], c.enviado
+        c.como("intruso@gmail.com")   # ya tiene dueña: el código no sirve para nadie más
+        assert c.post("/entrar/primera-vez", data={"codigo": "codigo-inicial"}, follow_redirects=False).headers["location"] == "/entrar"
+        assert c.get("/inicio", follow_redirects=False).headers["location"] == "/entrar"
+
+
+@prueba("Equipo: dar y quitar acceso le manda a Cloudflare la lista justa, la saca al momento y queda en el registro")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        c.como("cristina@decopet.com")
+        r = c.post("/equipo/persona", data={"nombre": "manawa", "correo": "Manawa@Gmail.com", "acceso": "taller"}, follow_redirects=False)
+        assert r.status_code == 303 and "err" not in r.headers["location"], r.headers["location"]
+        assert c.enviado["correos"] == ["cristina@decopet.com", "manawa@gmail.com"], c.enviado
+        pid = sqlite3.connect(A.DB).execute("SELECT id FROM usuarios WHERE correo='manawa@gmail.com'").fetchone()[0]
+        c.como("manawa@gmail.com"); assert c.get("/taller", follow_redirects=False).status_code == 200
+        c.como("cristina@decopet.com")
+        c.post("/equipo/persona", data={"id": pid, "nombre": "Manawa", "correo": "manawa@gmail.com", "acceso": "no"})
+        assert c.enviado["correos"] == ["cristina@decopet.com"] and c.enviado["cerradas"] == ["manawa@gmail.com"], c.enviado
+        c.como("manawa@gmail.com"); assert c.get("/taller", follow_redirects=False).headers["location"] == "/entrar", "sin acceso siguió entrando"
+        c.como("cristina@decopet.com")
+        que = [r[0] for r in sqlite3.connect(A.DB).execute("SELECT que FROM accesos_registro WHERE persona_id=? ORDER BY id", (pid,))]
+        assert que == ["Lo agregó al equipo con acceso de Taller", "Le quitó el acceso al ERP"], que
+        assert "Le quitó el acceso al ERP" in c.get("/equipo").text
+
+
+@prueba("Equipo: sin correo no se da acceso en el servidor, y un correo no puede ser de dos personas")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        c.como("cristina@decopet.com")
+        pide = lambda **d: c.post("/equipo/persona", data=d, follow_redirects=False).headers["location"]
+        assert "err=sin_correo" in pide(nombre="Juan", acceso="despachador")
+        assert "err=correo_repetido" in pide(nombre="Juan", correo="CRISTINA@decopet.com", acceso="despachador")
+        assert "err=correo" in pide(nombre="Juan", correo="juan-sin-arroba", acceso="despachador")
+        assert "err" not in pide(nombre="Miguel", acceso="no", nomina="1", sueldo="100")   # el contador: en la nómina, sin entrar
+
+
+@prueba("Equipo: Cristina no puede quitarse a sí misma ni dejar el ERP sin administradora")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        yo = sqlite3.connect(A.DB).execute("SELECT id FROM usuarios WHERE usuario='prueba-admin'").fetchone()[0]
+        pide = lambda **d: c.post("/equipo/persona", data=d, follow_redirects=False).headers["location"]
+        assert "err=yo" in pide(id=yo, nombre="Prueba admin", usuario="prueba-admin", acceso="taller")
+        assert "err=yo" in pide(id=yo, nombre="Prueba admin", usuario="prueba-admin", acceso="no")
+        otra = persona(nombre="Otra admin", rol="admin", activo=1, usuario="otra")
+        assert "err" not in pide(id=otra, nombre="Otra admin", usuario="otra", acceso="no"), "con otra administradora sí se puede"
+    # ERP recién instalado en la Mac (nadie tiene clave: se entra como administradora sin sesión): tampoco puede quitar a la única
+    with erp_de_prueba() as c:
+        unica = sqlite3.connect(A.DB).execute("SELECT id, nombre FROM usuarios WHERE rol='admin' AND activo=1").fetchall()
+        assert len(unica) == 1, unica
+        r = c.post("/equipo/persona", data={"id": unica[0][0], "nombre": unica[0][1], "usuario": "cristina", "acceso": "logistica"}, follow_redirects=False)
+        assert "err=ultima_admin" in r.headers["location"], r.headers["location"]
+
+
+@prueba("Equipo: un despachador sin elegir cuál queda como uno nuevo con su nombre (antes veía su pantalla vacía)")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        c.post("/equipo/persona", data={"nombre": "Víctor", "usuario": "victor", "acceso": "despachador", "clave": "clave-de-victor"})
+        con = sqlite3.connect(A.DB)
+        assert con.execute("SELECT despachador FROM usuarios WHERE usuario='victor'").fetchone()[0] == "Víctor"
+        assert con.execute("SELECT activo FROM despachadores WHERE nombre='Víctor'").fetchone() == (1,)
+
+
+@prueba("Equipo: cambiarle el nombre a alguien se lleva sus pagos, faltas y entregas (antes se perdían por ir por nombre)")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB)
+        con.execute("INSERT INTO despachadores (nombre, activo) VALUES ('Fer', 1)")
+        pid = con.execute("""INSERT INTO usuarios (nombre, usuario, rol, activo, despachador, nomina, sueldo_mes)
+                             VALUES ('Fer', 'fer', 'despachador', 1, 'Fer', 1, 200)""").lastrowid
+        oid = con.execute("SELECT id FROM ordenes LIMIT 1").fetchone()[0]
+        con.execute("UPDATE ordenes SET despachador='Fer' WHERE id=?", (oid,))
+        con.execute("INSERT INTO gastos (fecha, monto_usd, categoria, subcategoria, proveedor) VALUES ('2026-10-01', 100, 'Equipo', 'Quincena', 'Fer')")
+        con.execute("INSERT INTO faltas (nombre, fecha) VALUES ('Fer', '2026-10-02')"); con.commit()
+        c.post("/equipo/persona", data={"id": pid, "nombre": "Fercho", "usuario": "fer", "acceso": "despachador",
+                                         "despachador": "Fer", "nomina": "1", "sueldo": "200"})
+        assert con.execute("SELECT despachador FROM usuarios WHERE id=?", (pid,)).fetchone()[0] == "Fercho"
+        assert con.execute("SELECT despachador FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == "Fercho"
+        assert con.execute("SELECT COUNT(*) FROM despachadores WHERE nombre IN ('Fer','Fercho')").fetchone()[0] == 1
+        assert con.execute("SELECT proveedor FROM gastos WHERE subcategoria='Quincena' AND fecha='2026-10-01'").fetchone()[0] == "Fercho"
+        assert con.execute("SELECT nombre FROM faltas WHERE fecha='2026-10-02'").fetchone()[0] == "Fercho"
+        con.row_factory = sqlite3.Row
+        assert A.ficha_equipo(con, "Fercho", datetime.date(2026, 10, 4))["mensual"] == 200
+
+
+@prueba("La nómina vieja (dos listas de nombres en config) pasa a las fichas de las personas, sin perder sueldos")
+def _():
+    ruta = tempfile.mktemp(suffix=".db"); con = sqlite3.connect(ruta)
+    con.executescript(open(A.BASE / "modelo.sql", encoding="utf-8").read()); con.execute("ALTER TABLE usuarios ADD COLUMN usuario TEXT")
+    con.execute("INSERT INTO usuarios (id, nombre, rol, activo, usuario) VALUES (1,'Cristina','admin',1,'cristina@decopet.com'), (5,'Isaías','taller',1,'isaias')")
+    con.execute("""INSERT INTO config (clave, valor) VALUES ('equipo', '["Víctor", "Isaías"]'), ('sueldos', '{"Isaías": 300, "Miguel": 100}')""")
+    con.commit(); con.close()
+    con = A.preparar_base(ruta)
+    filas = {r[0]: r[1:] for r in con.execute("SELECT nombre, rol, activo, nomina, sueldo_mes, correo FROM usuarios")}
+    assert filas["Isaías"] == ("taller", 1, 1, 300.0, None), filas["Isaías"]
+    assert filas["Víctor"] == ("ninguno", 0, 1, None, None), filas["Víctor"]
+    assert filas["Miguel"] == ("ninguno", 0, 1, 100.0, None), filas["Miguel"]
+    assert filas["Cristina"][-1] == "cristina@decopet.com", "no tomó el correo que estaba como usuario"
+    assert not con.execute("SELECT 1 FROM config WHERE clave IN ('equipo','sueldos')").fetchone(), "quedaron las listas viejas"
+
+
+@prueba("Equipo: solo la administradora cambia accesos; Cloudflare caído no impide guardar y se puede reintentar")
+def _():
+    with con_cloudflare() as c:
+        con = sqlite3.connect(A.DB); con.execute("UPDATE usuarios SET correo='cristina@decopet.com' WHERE id=1"); con.commit(); con.close()
+        persona(nombre="Vale", rol="logistica", activo=1, correo="vale@decopet.com")
+        c.como("vale@decopet.com")
+        c.post("/equipo/persona", data={"nombre": "Colado", "correo": "colado@gmail.com", "acceso": "admin"})
+        assert not sqlite3.connect(A.DB).execute("SELECT 1 FROM usuarios WHERE correo='colado@gmail.com'").fetchone(), "logística agregó a alguien"
+        c.como("cristina@decopet.com")
+        def caido(correos): raise RuntimeError("Cloudflare no responde")
+        A.CF_EQUIPO.poner_correos = caido
+        c.post("/equipo/persona", data={"nombre": "Juan", "correo": "juan@gmail.com", "acceso": "despachador"})
+        assert sqlite3.connect(A.DB).execute("SELECT 1 FROM usuarios WHERE correo='juan@gmail.com'").fetchone(), "no guardó"
+        html = c.get("/equipo").text
+        assert "Cloudflare no recibió" in html and "/equipo/cloudflare" in html, "no avisó que Cloudflare falló"
+        A.CF_EQUIPO.poner_correos = lambda correos: c.enviado.__setitem__("correos", sorted(correos))
+        c.post("/equipo/cloudflare")
+        assert "juan@gmail.com" in c.enviado["correos"] and "Cloudflare no recibió" not in c.get("/equipo").text
+
+
+@prueba("A Cloudflare se le cambian solo los correos de la regla; su nombre, duración y lo que exija quedan igual")
+def _():
+    from plataforma import cf_equipo as CFE
+    llamadas, antes, env = [], CFE._pedir, dict(os.environ)
+    def falso(metodo, ruta, cuerpo=None):
+        llamadas.append((metodo, ruta, cuerpo))
+        return {"id": "p1", "name": "Equipo Decopet", "decision": "allow", "session_duration": "720h", "reusable": True,
+                "created_at": "x", "include": [{"email": {"email": "viejo@x.com"}}], "require": [{"login_method": {"id": "otp"}}]}
+    CFE._pedir = falso; os.environ.update(CF_ACCESS_POLICY_ID="p1")
+    try:
+        CFE.poner_correos(["b@x.com", "a@x.com"])
+        metodo, ruta, cuerpo = llamadas[-1]
+        assert (metodo, ruta) == ("PUT", "/access/policies/p1"), (metodo, ruta)
+        assert cuerpo["include"] == [{"email": {"email": "a@x.com"}}, {"email": {"email": "b@x.com"}}], cuerpo["include"]
+        assert cuerpo["name"] == "Equipo Decopet" and cuerpo["session_duration"] == "720h" and cuerpo["require"], cuerpo
+        assert not {"id", "created_at", "reusable"} & set(cuerpo), "mandó campos que pone Cloudflare"
+        try: CFE.poner_correos([]); assert False, "dejó la regla vacía"
+        except ValueError: pass
+    finally:
+        CFE._pedir = antes; os.environ.clear(); os.environ.update(env)
+
+
+print("\nFOTOS")
+
+@contextmanager
+def fotos_de_prueba():
+    """Carpetas de fotos y miniaturas temporales, con una foto grande con transparencia."""
+    from PIL import Image
+    antes = (A.FOTOS_DIR, A.MINIATURAS)
+    raiz = pathlib.Path(tempfile.mkdtemp())
+    A.FOTOS_DIR, A.MINIATURAS = raiz / "fotos", raiz / "miniaturas"
+    (A.FOTOS_DIR / "productos").mkdir(parents=True)
+    Image.new("RGBA", (3000, 2000), (200, 120, 40, 0)).save(A.FOTOS_DIR / "productos" / "porche.png")
+    try: yield A.FOTOS_DIR / "productos" / "porche.png"
+    finally: A.FOTOS_DIR, A.MINIATURAS = antes
+
+
+@prueba("Las fotos se muestran achicadas (WebP, con su transparencia); la original queda igual para descargar")
+def _():
+    from PIL import Image
+    import io
+    with erp_de_prueba() as c, fotos_de_prueba() as orig:
+        sesion_de(c, "taller")   # el taller ve el inventario con fotos: también le llegan las miniaturas
+        url = A.mini("productos/porche.png")
+        assert url.startswith("/fotos-mini/480/productos/porche.png?v="), url
+        r = c.get(url)
+        assert r.status_code == 200 and r.headers["content-type"] == "image/webp", (r.status_code, r.headers)
+        im = Image.open(io.BytesIO(r.content))
+        assert max(im.size) == 480 and im.mode == "RGBA", (im.size, im.mode)
+        assert len(r.content) < orig.stat().st_size, "la miniatura pesa más que la original"
+        assert "immutable" in r.headers["cache-control"], r.headers["cache-control"]
+        assert Image.open(orig).size == (3000, 2000), "se tocó la original"
+
+
+@prueba("Si se reemplaza una foto, la miniatura se rehace y cambia su dirección")
+def _():
+    from PIL import Image
+    import io
+    with erp_de_prueba() as c, fotos_de_prueba() as orig:
+        sesion_de(c, "admin")
+        antes = A.mini("productos/porche.png"); c.get(antes)
+        Image.new("RGB", (800, 1600), "white").save(orig)
+        t = orig.stat().st_mtime + 5; os.utime(orig, (t, t))
+        despues = A.mini("productos/porche.png")
+        assert despues != antes, "la dirección no cambió: el navegador seguiría mostrando la foto vieja"
+        assert Image.open(io.BytesIO(c.get(despues).content)).size == (240, 480)
+
+
+@prueba("Miniaturas: solo los tamaños previstos y solo de la carpeta de fotos")
+def _():
+    with erp_de_prueba() as c, fotos_de_prueba():
+        sesion_de(c, "admin")
+        assert c.get("/fotos-mini/999/productos/porche.png").status_code == 404
+        assert c.get("/fotos-mini/480/productos/no-existe.png").status_code == 404
+        assert c.get("/fotos-mini/480/..%2F..%2Fplataforma.db").status_code == 404
+        c.cookies.clear()
+        assert c.get("/fotos-mini/480/productos/porche.png", follow_redirects=False).status_code == 303   # sin entrar, no
+
+
+@prueba("Los estilos y las fotos originales se guardan en el navegador y se vuelven a pedir solo si cambiaron; las páginas no")
+def _():
+    with erp_de_prueba() as c, fotos_de_prueba():
+        sesion_de(c, "admin")
+        css = c.get("/static/estilo.css")
+        assert css.headers["cache-control"] == "private, no-cache", css.headers["cache-control"]
+        assert c.get("/static/estilo.css", headers={"if-none-match": css.headers["etag"]}).status_code == 304
+        assert c.get("/inicio").headers["cache-control"] == "no-store"
 
 
 print("\nRECONSTRUIR DESDE CERO")

@@ -1253,6 +1253,51 @@ body:has(.entrar-w) .barra-movil,body:has(.entrar-w) .velo-movil,body:has(.entra
 }
 @media (max-width:900px){.bm-logo img{height:42px!important}.barra-movil{padding:12px 16px}}
 @media (max-width:900px){.bm-logo img{height:34px!important}}
+
+/* Piloto "sin recarga" (Operaciones): aviso flotante, barra de guardando y transiciones */
+.aviso-flot{position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);background:var(--tinta);color:#fff;padding:10px 18px;border-radius:99px;font-size:13.5px;font-weight:600;box-shadow:0 10px 30px -10px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:200}
+.aviso-flot::before{content:"✓ "}.aviso-flot.mal{background:#b4432a}.aviso-flot.mal::before{content:""}
+.aviso-flot.on{opacity:1;transform:translate(-50%,0)}
+html.guardando{cursor:progress}
+html.guardando::before{content:"";position:fixed;top:0;left:0;height:3px;width:100%;z-index:300;background:linear-gradient(90deg,transparent,var(--verde),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:guardando 1s linear infinite}
+html.guardando main[data-sin-recarga] form button{opacity:.6;pointer-events:none}
+@keyframes guardando{from{background-position:-40% 0}to{background-position:140% 0}}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.18s}
+@media (prefers-reduced-motion:reduce){.aviso-flot{transition:none}html.guardando::before{animation:none}::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+
+/* Listas, buscador y calendario de Decopet (static/controles.js): reemplazan las ventanitas grises de Windows */
+.ctl-pop{position:fixed;z-index:400;background:var(--sup);border:1px solid var(--linea);border-radius:14px;box-shadow:0 18px 40px -16px rgba(28,38,34,.35),0 2px 6px rgba(28,38,34,.06);padding:6px;overflow-y:auto;animation:ctl-entra .12s ease-out}
+@keyframes ctl-entra{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.ctl-lista{max-width:min(420px,calc(100vw - 16px))}
+.ctl-op{display:flex;flex-direction:column;gap:1px;padding:8px 12px 8px 30px;border-radius:10px;cursor:pointer;font-size:13.5px;color:var(--tinta);position:relative;line-height:1.35}
+.ctl-op small{font-size:12px;color:var(--tinta-2)}
+.ctl-op.foco{background:var(--verde-tinte)}
+.ctl-op.sel{font-weight:600;color:var(--verde-osc)}
+.ctl-op.sel::before{content:"";position:absolute;left:11px;top:13px;width:9px;height:5px;border-left:2px solid var(--verde);border-bottom:2px solid var(--verde);transform:rotate(-45deg)}
+.ctl-op.des{color:var(--tinta-3);cursor:default}.ctl-op.des.foco{background:none}
+.ctl-vacio{padding:10px 12px;font-size:13px;color:var(--tinta-2)}
+.ctl-cal{width:260px;padding:10px 12px}
+.ctl-cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.ctl-cal-h b{font-size:14px;text-transform:capitalize}
+.ctl-cal-h button{width:30px;height:30px;border:0;border-radius:99px;background:transparent;color:var(--tinta-2);font-size:20px;line-height:1;cursor:pointer}
+.ctl-cal-h button:hover{background:var(--fondo);color:var(--tinta)}
+.ctl-cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.ctl-cal-d{font-size:11px;font-weight:600;color:var(--tinta-3);text-align:center;padding:4px 0}
+.ctl-cal-g button{height:29px;border:0;border-radius:10px;background:transparent;color:var(--tinta);font-size:13px;cursor:pointer;font-variant-numeric:tabular-nums}
+.ctl-cal-g button:hover:not(:disabled){background:var(--verde-tinte)}
+.ctl-cal-g button.otro{color:var(--tinta-3)}
+.ctl-cal-g button.hoy{box-shadow:inset 0 0 0 1.5px var(--verde);font-weight:600}
+.ctl-cal-g button.sel{background:var(--verde);color:#fff;font-weight:700}
+.ctl-cal-g button:disabled{opacity:.3;cursor:default}
+.ctl-cal-p{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--linea)}
+.ctl-cal-p button{flex:1;padding:7px 0;border:1px solid var(--linea);border-radius:99px;background:var(--sup);color:var(--tinta);font-size:12.5px;font-weight:600;cursor:pointer}
+.ctl-cal-p button:hover{border-color:var(--verde);color:var(--verde-osc)}
+html.oscuro .ctl-cal-g button.sel{color:#0f1512}
+@media (prefers-reduced-motion:reduce){.ctl-pop{animation:none}}
+/* modo oscuro: el selector de despachador de cada fila tenía la sombra y la flecha invisibles y parecía texto suelto */
+html.oscuro .sel-desp{box-shadow:0 0 0 1px var(--linea);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aab3ae' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+/* al pasar de una pantalla a otra se funde en vez de parpadear (navegadores que lo soportan) */
+@view-transition{navigation:auto}
 .num-orden{white-space:nowrap}
 table.fija td.cl-tel{white-space:nowrap}
 /* Operaciones · columna Cliente: nombre y debajo el número; las alertas son un punto rojo con palabra corta.
@@ -1427,3 +1472,81 @@ html.oscuro .postit:not(.nueva){color:#3b330a}
 .datos-ver i{color:var(--tinta-3);font-style:normal}
 .dir-ver{font-size:14px;margin-bottom:4px}
 .stats-bar b *{font-size:inherit !important;font-weight:inherit !important;color:inherit}
+
+/* ── Teléfono: arreglos de raíz encontrados probando en iPhone (390px) y Android (360px), oct 2026 ── */
+@media (max-width:900px){
+ /* el panel lateral va por encima de la barra de arriba: la barra tapaba su título y la × de cerrar */
+ .panel{z-index:41}.velo{z-index:40}
+ /* letra de 16px en los campos: con menos, el iPhone hace zoom solo al tocarlos para escribir */
+ input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}
+ /* botones a la medida del dedo (~40px de alto; antes muchos medían 27px) */
+ .btn,.btn.chico{min-height:40px}
+ /* los botones de arriba bajan a otra línea en vez de cortarse ("+ Nueva orden" se salía en Android) */
+ .cab-btns{flex-wrap:wrap;flex:1 1 auto;justify-content:flex-end}
+ /* tabla que se desliza de lado: sombra en el borde donde hay más columnas (la marca el script de base.html) */
+ .desliza-der{box-shadow:inset -14px 0 12px -12px rgba(0,0,0,.28),var(--sombra)}
+ .desliza-izq{box-shadow:inset 14px 0 12px -12px rgba(0,0,0,.28),var(--sombra)}
+ .desliza-izq.desliza-der{box-shadow:inset -14px 0 12px -12px rgba(0,0,0,.28),inset 14px 0 12px -12px rgba(0,0,0,.28),var(--sombra)}
+}
+/* tabla → tarjetas en el teléfono: cada fila es una tarjeta y cada dato lleva su etiqueta (data-t).
+   Para usarla en otra tabla: class="tarjetas-movil" y data-t="Etiqueta" en sus celdas. */
+@media (max-width:720px){
+ .tarjetas-movil,.tarjetas-movil tbody,.tarjetas-movil tr,.tarjetas-movil td{display:block;width:auto!important;max-width:none!important;min-width:0!important}
+ .tarjetas-movil{table-layout:auto!important}.tarjetas-movil colgroup{display:none}
+ .tarjetas-movil tr:has(>th){display:none}
+ .tarjetas-movil tr{padding:14px 16px;border-bottom:1px solid var(--linea)}
+ .tarjetas-movil td{padding:3px 0!important;border:0!important;text-align:left!important;white-space:normal!important;overflow-wrap:normal!important}
+ .tarjetas-movil td[data-t]{display:grid;grid-template-columns:88px 1fr;column-gap:12px;align-items:baseline}
+ .tarjetas-movil td[data-t]:before{content:attr(data-t);font-size:12px;color:var(--tinta-3);font-weight:600}
+ .tarjetas-movil td[data-t]>*{grid-column:2}   /* lo que va debajo ("hace 231 días") queda bajo el valor, no bajo la etiqueta */
+ .tarjetas-movil td.acciones-movil{padding-top:10px!important;display:flex;flex-wrap:wrap;gap:8px}
+ .tarjetas-movil td.acciones-movil>details{display:inline-block}
+}
+/* Nueva orden: "Crear orden" en una sola línea */
+.no-crear{white-space:nowrap}
+/* Producción en el teléfono: la tabla se desliza de lado (en la computadora queda visible para que sus formularios
+   desplegables no se recorten; con uno abierto, .tabla:has(details.cobro[open]) la vuelve visible igual) */
+@media (max-width:900px){.tabla.prod-t{overflow-x:auto}}
+/* Configuración en el teléfono: título arriba y contenido debajo, a todo el ancho (en dos columnas quedaban ~150px) */
+@media (max-width:720px){.tarjeta.cf-b,.cf-b{flex-direction:column;gap:12px;padding:18px 16px}.cf-b>h3{margin:0}}
+/* Gastos y Resultados en el teléfono: categoría y monto en una línea, la barra debajo a todo el ancho
+   (con 220px de nombre + barra + 110px de monto, el monto se cortaba: "$480.(") */
+@media (max-width:720px){.cf-fila{grid-template-columns:1fr auto;row-gap:4px;column-gap:12px}.cf-fila .cf-track{grid-column:1/-1;grid-row:2}}
+/* franja de arriba: dice cuándo NO estás en la operación real (copia local o versión de prueba); en producción no sale */
+.franja-entorno{position:relative;z-index:50;text-align:center;font-size:12.5px;font-weight:600;padding:5px 12px;letter-spacing:.01em}
+.franja-entorno.local{background:#E1782E;color:#fff}
+.franja-entorno.pruebas{background:#3f6d56;color:#fff}
+/* Equipo: una fila por persona; al tocarla se abre su ficha debajo, igual en la computadora que en el teléfono */
+.eqp-lista h3{margin-bottom:6px}
+.eqp{border-top:1px solid var(--linea)}
+.eqp-lista h3+.eqp{border-top:0}
+.eqp>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:36px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.3fr) auto;gap:12px;align-items:center;padding:12px 0}
+.eqp>summary::-webkit-details-marker{display:none}
+.eqp-ini{width:36px;height:36px;border-radius:50%;background:var(--verde-tinte);color:var(--verde-osc);display:grid;place-items:center;font-weight:600}
+.eqp.apagado .eqp-ini{background:var(--fondo);color:var(--tinta-3)}
+.eqp.apagado .eqp-q b{color:var(--tinta-2)}
+.eqp-q,.eqp-acc,.eqp-est{display:flex;flex-direction:column;gap:2px;min-width:0}
+.eqp-q .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eqp-acc .pago{align-self:flex-start}
+.eqp-on{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--verde);margin-right:6px;vertical-align:1px}
+.eqp[open] .eqp-cambiar{visibility:hidden}
+.eqp-cuerpo{padding:0 0 18px 48px}
+.eqp-otras{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.eqp-b{margin:12px 0 0}
+.eqp-sueldo{margin-top:8px}
+.eqp-cf{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.eqp-h2{font-size:20px;margin:28px 0 12px}
+.eqp-reg>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.eqp-reg>summary::-webkit-details-marker{display:none}
+.eqp-reg[open]>summary{margin-bottom:10px}
+@media (max-width:720px){
+ .eqp>summary{grid-template-columns:36px minmax(0,1fr) auto;row-gap:6px}
+ .eqp-acc{grid-column:2;flex-direction:row;flex-wrap:wrap;gap:6px;align-items:center}
+ .eqp-est{grid-column:2}
+ .eqp-cambiar{grid-column:3;grid-row:1}
+ .eqp-cuerpo{padding-left:0}
+}
+.eqp-nom{padding-top:26px}
+.eqp-f .cf-check{display:flex;align-items:center;gap:10px;margin:0}
+.eqp-f .cf-check input{width:auto;margin:0;flex:0 0 auto}
+@media (max-width:900px){.eqp-nom{padding-top:12px}}

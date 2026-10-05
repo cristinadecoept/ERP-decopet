@@ -37,5 +37,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarPanel();});
 {% if abrir %}abrirPanel('/ordenes/{{ abrir }}/panel', document.querySelector('tr[data-id="{{ abrir }}"]'));{% endif %}
 {% if nueva %}abrirPanel('/ordenes/nueva/panel?cliente={{ nueva }}');{% endif %}
 if(sessionStorage.getItem('nuevaOrden')){sessionStorage.removeItem('nuevaOrden');abrirPanel('/ordenes/nueva/panel');}
+// después de guardar sin recargar: la orden que se estaba tocando vuelve a quedar abierta, como al recargar
+function trasGuardar(url){const id=url.searchParams.get('abrir');if(!id)return false;abrirPanel('/ordenes/'+id+'/panel',document.querySelector('tr[data-id="'+id+'"]'));return true;}
 </script>
 {% endblock %}
