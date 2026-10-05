@@ -3521,7 +3521,8 @@ def _historial_rows(con, anio, mes, q):
                ROUND(l.total * (CASE WHEN COALESCE(o.iva,0) > 0 AND o.subtotal > 0 AND l.extra_en IS NULL THEN 1 + o.iva / o.subtotal ELSE 1 END), 2) linea,   -- con IVA, como en el Excel (Cashea)
                CASE WHEN l.extra_en IS NOT NULL THEN COALESCE(l.forma_pago,   -- un extra que quedó pendiente: la forma con que se cobró después
                         (SELECT p.forma FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado' AND p.fecha>=l.extra_en ORDER BY p.fecha, p.id LIMIT 1))
-                    ELSE o.forma_pago_prevista END forma, l.color, l.malla, l.personalizacion, 'orden' origen,
+                    ELSE COALESCE(NULLIF(o.forma_pago_prevista,''),   -- si al crear el pedido no se eligió, la forma con que pagó
+                        (SELECT p.forma FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado' ORDER BY p.fecha, p.id LIMIT 1)) END forma, l.color, l.malla, l.personalizacion, 'orden' origen,
                1000000 + COALESCE(CASE WHEN l.extra_en IS NOT NULL THEN   -- un cobro extra va junto a las órdenes del día en que entró, no con su orden vieja
                    (SELECT MAX(CAST(substr(o2.numero,2) AS INTEGER)) FROM ordenes o2 WHERE substr(o2.creado_en,1,10) <= l.extra_en) END,
                    CAST(substr(o.numero,2) AS INTEGER)) llegada, l.id lid, NULL fecha_original
