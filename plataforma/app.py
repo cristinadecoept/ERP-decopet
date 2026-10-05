@@ -3516,9 +3516,14 @@ def _historial_rows(con, anio, mes, q):
         UNION ALL
         SELECT o.id oid, o.numero, COALESCE(l.extra_en, substr(o.creado_en,1,10)) fecha, c.nombre cliente, l.nombre producto, l.precio, l.cantidad,
                ROUND(l.total * (CASE WHEN COALESCE(o.iva,0) > 0 AND o.subtotal > 0 AND l.extra_en IS NULL THEN 1 + o.iva / o.subtotal ELSE 1 END), 2) linea,   -- con IVA, como en el Excel (Cashea)
-               COALESCE(CASE WHEN l.extra_en IS NOT NULL THEN l.forma_pago END, o.forma_pago_prevista) forma, l.color, l.malla, l.personalizacion, 'orden' origen,
+               CASE WHEN l.extra_en IS NOT NULL THEN COALESCE(l.forma_pago,   -- un extra que quedó pendiente: la forma con que se cobró después
+                        (SELECT p.forma FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado' AND p.fecha>=l.extra_en ORDER BY p.fecha, p.id LIMIT 1))
+                    ELSE o.forma_pago_prevista END forma, l.color, l.malla, l.personalizacion, 'orden' origen,
                1000000 + CAST(substr(o.numero,2) AS INTEGER) llegada, l.id lid, NULL fecha_original
-          FROM ordenes o JOIN clientes c ON c.id=o.cliente_id JOIN orden_lineas l ON l.orden_id=o.id WHERE {EN_REGISTRO}
+          FROM ordenes o JOIN clientes c ON c.id=o.cliente_id JOIN orden_lineas l ON l.orden_id=o.id
+         WHERE {EN_REGISTRO}
+            OR (l.extra_en IS NOT NULL AND o.estado!='cancelada'   -- un cobro extra (delivery de un retiro de pack…) cuenta el día que entra, aunque la orden sea de antes
+                AND l.extra_en >= COALESCE((SELECT valor FROM config WHERE clave='registro_desde'), '2026-10-03'))
       ) WHERE 1=1 {cond} ORDER BY llegada DESC, lid DESC"""   # el orden del Excel fila por fila, al revés: lo último registrado primero (las órdenes del ERP van después de la última fila)
     out = []
     for r in con.execute(sql, args):
@@ -4977,7 +4982,9 @@ def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despach
 
 @app.post("/packs/{pid}/entregar")
 def pack_entregar(request: Request, pid: int, fecha: str = Form(""), cuantos: str = Form("1"), tipo_entrega: str = Form(""), despachador: str = Form(""), delivery_cobrado: str = Form("0"), pago_forma: str = Form(""), notas: str = Form(""), volver: str = Form(""), con=Depends(db)):
-    if not entregar_pack(con, pid, uid_de(request), fecha, cuantos, tipo_entrega, despachador, delivery_cobrado, pago_forma, notas):
+    pendiente = pago_forma == "pendiente"   # el delivery no se cobró: queda como saldo de la orden y sale en Seguimientos para cobrarlo
+    if not entregar_pack(con, pid, uid_de(request), fecha, cuantos, tipo_entrega, despachador, delivery_cobrado, "" if pendiente else pago_forma, notas,
+                         pago=None if pendiente else "confirmado"):
         return RedirectResponse("/packs", status_code=303)
     con.commit(); return RedirectResponse(volver or "/prepagados", status_code=303)
 

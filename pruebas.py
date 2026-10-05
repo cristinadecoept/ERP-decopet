@@ -109,6 +109,33 @@ def _():
     assert (p["monto_usd"], p["estado"]) == (5, "confirmado"), dict(p)
     assert con.execute("SELECT COUNT(*) FROM orden_lineas WHERE orden_id=1").fetchone()[0] == 1
 
+@prueba("Retiro de pack con el delivery pendiente: queda como deuda de la orden y no entra a ninguna caja")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total) VALUES (1,'#1',1,'entregada','pagada',72)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle Decopet',72,72,'USD','2026-10-01','confirmado')")
+    con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,0)")
+    con.commit()
+    assert A.entregar_pack(con, 1, 1, "2026-10-05", "1", "delivery", "Juan", "5", "", pago=None)
+    con.commit()
+    assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 77
+    assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=1").fetchone()[0] == 1, "no debe registrar un pago que no entró"
+    assert con.execute("SELECT estado_pago FROM ordenes WHERE id=1").fetchone()[0] == "abonada"
+
+@prueba("El delivery cobrado hoy de un pack viejo entra al Registro de ventas hoy, con la forma con que se cobró")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,creado_en) VALUES (1,'#1',1,'entregada','pagada',72,'2026-09-07 10:00')")
+    con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,0)")
+    con.commit()
+    A.entregar_pack(con, 1, 1, "2026-10-05", "1", "delivery", "Juan", "5", "", pago=None)   # quedó pendiente
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Pago Móvil VES',5,5,'USD','2026-10-05','confirmado')")
+    con.commit()
+    filas = A._historial_rows(con, "2026", "", "")
+    assert [(f["fecha"], f["linea"], f["forma"]) for f in filas] == [("2026-10-05", 5, "Pago Móvil VES")], filas
+
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():
     con = base_limpia()
