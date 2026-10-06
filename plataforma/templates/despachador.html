@@ -7,7 +7,7 @@
  {% if r.adelanto_libre %}<div class="tile"><b style="color:var(--verde-osc)">{{ r.adelanto_libre|usd }}</b><span>Adelanto por descontar</span><i>se le resta de las próximas entregas</i></div>{% endif %}
  <div class="tile"><b>{% if r.ultimo_pago %}{{ r.ultimo_pago.monto|usd }}{% else %}—{% endif %}</b><span>Último pago</span><i>{% if r.ultimo_pago %}{{ r.ultimo_pago.fecha|dia }}{% else %}todavía ninguno{% endif %}</i></div>
 </div>{% endif %}
-{% if rol=='admin' %}<details class="eq-pagar" style="margin:-4px 0 16px"><summary class="btn sec chico">Darle un adelanto</summary>
+{% if rol=='admin' %}<div class="desp-acc"><details class="eq-pagar"><summary class="btn sec chico">Darle un adelanto</summary>
  <form method="post" action="/despachadores/{{ d.id }}/adelanto" class="fal-f">
   <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
   <select name="forma" required><option value="" selected disabled>¿De qué caja?</option>{% for fp in FORMAS_PAGO %}<option value="{{ fp }}">{{ fp|caja }}</option>{% endfor %}</select>
@@ -15,14 +15,14 @@
   <input name="nota" placeholder="nota (opcional)" style="min-width:180px">
   <button class="btn chico">Registrar adelanto</button></form>
  <div class="mini" style="margin-top:6px">Sale de esa caja ya y queda en gastos. Después se le va descontando de lo que le debas por sus entregas.</div></details>
-<details class="eq-pagar" style="margin:-8px 0 16px"><summary class="btn sec chico">+ Diligencia</summary>
+<details class="eq-pagar"><summary class="btn sec chico">+ Diligencia</summary>
  <form method="post" action="/despachadores/{{ d.id }}/diligencia" class="fal-f">
   {% if tarifas_dil %}<select onchange="const o=this.selectedOptions[0];if(o.value){this.form.que.value=o.value;this.form.monto.value=o.dataset.p}"><option value="">Elegir de la lista…</option>{% for t in tarifas_dil %}<option value="{{ t.nombre }}" data-p="{{ '%g'|format(t.precio) }}">{{ t.nombre }} · ${{ '%g'|format(t.precio) }}</option>{% endfor %}</select>{% endif %}
   <input name="que" required placeholder="¿Qué hizo? (ej. buscar tela en el centro)" style="min-width:260px">
   <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
   <input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}">
   <button class="btn chico">Anotar</button></form>
- <div class="mini" style="margin-top:6px">Se suma a lo que le debes y se le paga junto con sus entregas.</div></details>{% endif %}
+ <div class="mini" style="margin-top:6px">Se suma a lo que le debes y se le paga junto con sus entregas.</div></details></div>{% endif %}
 
 {% if rol=='admin' %}{% for t in (fallidos|list + dil_aprobar|list) if t.tipo=='diligencia' %}<form method="post" action="/despachadores/{{ d.id }}/diligencia/{{ t.id }}/borrar" id="borrar-dil-{{ t.id }}"></form>{% endfor %}{% endif %}
 {% if dil_aprobar and rol=='admin' %}<div class="tarjeta" style="margin-bottom:16px;border-left:3px solid #b45a1c"><h3>Diligencias que anotó {{ d.nombre }} · por aprobar</h3>

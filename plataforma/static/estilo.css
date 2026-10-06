@@ -1560,3 +1560,7 @@ input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:non
 .hd-pie:has(.hd-mas[hidden]):not(:has(.hd-cuenta:not(:empty))){display:none}
 .hd-c b *{font-size:inherit;font-weight:inherit;color:inherit;opacity:1}   /* los montos traen su propio estilo */
 @media (max-width:720px){.hd-f{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.hd-c{min-width:0;padding:8px 10px}.hd-c b{font-size:16px}.hd-desde{grid-column:1/-1;margin:0}}
+/* Despachador: "Darle un adelanto" y "+ Diligencia" en una sola fila; el que se abre ocupa todo el ancho */
+.desp-acc{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:-4px 0 16px}
+.desp-acc>.eq-pagar{margin:0}
+.desp-acc>.eq-pagar[open]{flex-basis:100%}
