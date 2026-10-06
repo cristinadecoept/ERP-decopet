@@ -3889,6 +3889,14 @@ def proxima_quincena(hoy):
     return dias_de_pago(sig.year, sig.month)[0]
 
 
+def periodo_quincena(pago):
+    """Los días que cubre la quincena que se paga ese día: del 1 al 15, o del 16 al último del mes.
+    El día de pago puede haberse corrido al viernes; el período es siempre el del calendario."""
+    if pago.day <= 15:
+        return pago.replace(day=1).isoformat(), pago.replace(day=15).isoformat()
+    return pago.replace(day=16).isoformat(), pago.replace(day=calendar.monthrange(pago.year, pago.month)[1]).isoformat()
+
+
 def quincena_pendiente(con, hoy):
     """(¿hoy es día de pago?, a quién le falta cobrar la quincena que toca ahora)."""
     ant = datetime.date(hoy.year, hoy.month, 1) - datetime.timedelta(days=1)
@@ -3928,9 +3936,11 @@ def ficha_equipo(con, nombre, hoy):
         comps.append(dict(c_) | {"prox": v[0].isoformat() if v else None})
     quincena = round(mensual / 2, 2) if mensual else None
     diario = round(mensual / 30, 2) if mensual else 0     # el día vale el sueldo del mes entre 30
-    # las faltas se descuentan igual que los adelantos: solo las de esta quincena
-    faltas = con.execute("""SELECT * FROM faltas WHERE nombre=? AND fecha>? ORDER BY fecha DESC""",
-                         (nombre, ult_q or "0000")).fetchall()
+    # las faltas que se descuentan son solo las del período de la quincena que toca (Cristina, 6 oct): la del 15 cubre
+    # del 1 al 15 y la de fin de mes del 16 al último día. Una falta del 30/09 es de septiembre, no de la del 15/10.
+    desde_f, hasta_f = periodo_quincena(vence)
+    faltas = con.execute("""SELECT * FROM faltas WHERE nombre=? AND fecha>=? AND fecha<=? ORDER BY fecha DESC""",
+                         (nombre, desde_f, hasta_f)).fetchall()
     descuento = round(len(faltas) * diario, 2)
     neto = round(quincena - sum(p["monto_usd"] or 0 for p in adelantos) - descuento, 2) if quincena else None
     return {"nombre": nombre, "pagos": pagos, "mensual": mensual, "quincena": quincena,

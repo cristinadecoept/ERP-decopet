@@ -70,6 +70,19 @@ def _():
 
 
 # ─────────────────────────────────────────────── ritmo del cliente
+@prueba("Una falta del 30/09 es de la quincena de septiembre: no se descuenta en la del 15/10")
+def _():
+    con = base_limpia()
+    con.execute("UPDATE usuarios SET nomina=1, sueldo_mes=140 WHERE id=1")
+    con.execute("INSERT INTO faltas (nombre, fecha) VALUES ('Cristina','2026-09-30')")
+    con.commit()
+    f = A.ficha_equipo(con, "Cristina", d("2026-10-06"))
+    assert (len(f["faltas"]), f["descuento"], f["neto"]) == (0, 0, 70), (len(f["faltas"]), f["descuento"], f["neto"])
+    con.execute("INSERT INTO faltas (nombre, fecha) VALUES ('Cristina','2026-10-02')"); con.commit()
+    f = A.ficha_equipo(con, "Cristina", d("2026-10-06"))
+    assert len(f["faltas"]) == 1 and f["descuento"] == 4.67, (len(f["faltas"]), f["descuento"])
+    assert A.periodo_quincena(d("2026-10-30")) == ("2026-10-16", "2026-10-31"), "el pago corrido al viernes cubre igual hasta el 31"
+
 print("\nRITMO DEL CLIENTE")
 
 @prueba("Con menos de dos repuestos no inventa un ritmo")
