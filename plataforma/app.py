@@ -1520,6 +1520,7 @@ def orden_cobro_extra(request: Request, oid: int, concepto: str = Form(""), conc
     m = cifra(monto)
     if m > 0 and forma.strip():
         # "todavía no lo pagó": queda como saldo de la orden con la forma en que lo va a pagar (se cobra al entregar o sale en Seguimientos)
+        if no_pagado: fecha, referencia = "", ""   # se anota hoy; el día y la referencia se ponen cuando pague
         cobro_extra(con, oid, c, m, forma.strip(), (fecha or "").strip() or None, uid_de(request), referencia,
                     pago=None if no_pagado else "confirmado")
         con.commit()
