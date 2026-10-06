@@ -56,7 +56,7 @@
    <form method="post" action="{{ ret ~ '/entregado' if ret else '/ordenes/' ~ f.id ~ '/estado' }}" class="cobro-f" style="min-width:230px">
     <input type="hidden" name="estado" value="entregada">
     {% if f.cobrar %}<input type="hidden" name="moneda_recibida" value="USD">
-     <label style="margin-top:0">¿Cómo pagó? <span class="mini">falta pagar {{ f.cobrar|usd }}</span></label>
+     <label style="margin-top:0">¿Cómo pagó? <span class="mini">falta pagar {{ f.cobrar|usd }}{% if f.cobrar_forma %} · dijo que por {{ f.cobrar_forma }}{% endif %}</span></label>
      <select name="forma_recibida" onchange="this.form.querySelector('.me-monto').hidden=this.value==='despues';this.form.querySelector('.me-otro').hidden=this.value!=='Otro'">
       <option value="Efectivo USD">Efectivo</option><option>Zelle</option><option>Binance</option><option>Pago Móvil</option><option>Otro</option>
       <option value="despues">No pagó · se le cobra después</option></select>

@@ -148,6 +148,19 @@ def _():
     filas = A._historial_rows(con, "2026", "", "")
     assert [(f["producto"], f["cantidad"], f["linea"]) for f in filas] == [("Pack 3 Repuestos Mediano", 1, 75)], filas
 
+@prueba("Agregar un delivery que todavía no pagó: sube el total, queda como saldo y no entra ningún pago")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,subtotal) VALUES (1,'#1',1,'pendiente','pagada',98,98)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle Decopet',98,98,'USD','2026-10-05','confirmado')")
+    con.commit()
+    A.cobro_extra(con, 1, "Delivery", 12, None, "2026-10-06", 1, pago=None)
+    con.commit()
+    o = con.execute("SELECT total, delivery, estado_pago FROM ordenes WHERE id=1").fetchone()
+    assert (o["total"], o["delivery"], o["estado_pago"]) == (110, 12, "abonada"), dict(o)
+    assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=1").fetchone()[0] == 1, "no debe registrar un pago que no entró"
+
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():
     con = base_limpia()

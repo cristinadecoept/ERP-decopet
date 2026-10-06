@@ -133,6 +133,15 @@ def cobro_extra(con, oid, concepto, monto, forma, fecha, uid, referencia=None, n
     return monto
 
 
+def forma_por_cobrar(con, oid):
+    """Cómo dijo el cliente que va a pagar lo que agregó y todavía no pagó (ej. el delivery 'por Pago Móvil')."""
+    r = con.execute("""SELECT l.forma_pago FROM orden_lineas l WHERE l.orden_id=? AND l.extra_en IS NOT NULL AND l.forma_pago IS NOT NULL
+                       AND NOT EXISTS (SELECT 1 FROM pagos p WHERE p.orden_id=l.orden_id AND p.estado='confirmado' AND p.forma=l.forma_pago
+                                       AND ABS(p.monto_usd - l.total) < 0.01 AND substr(p.fecha,1,10) >= l.extra_en)
+                       ORDER BY l.id DESC LIMIT 1""", (oid,)).fetchone()
+    return r[0] if r else None
+
+
 def ventas_por_dia(con, desde, hasta):
     """Ventas de cada día: los pedidos creados ese día (sin lo que se les agregó después) más los cobros extra
     que entraron ese día (el delivery de un retiro, por ejemplo). Solo pedidos: las entradas del Cash flow no cuentan."""
@@ -1292,7 +1301,10 @@ def resumen_despacho(o, con_plata=True):
         if o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado"): L.append("💵 Falta pagar")
         else: L.append("✅ Pagado, no cobrar nada")
     elif o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado") and o["total"] - o["pagado"] > 0.009:
-        L.append(f"💵 Falta pagar {fmt_usd(o['total'] - o['pagado'])}")
+        c = sqlite3.connect(DB)   # esta función no recibe la conexión (igual que con_global_prepagados)
+        try: fp = forma_por_cobrar(c, o["id"]) if o.get("id") else None
+        finally: c.close()
+        L.append(f"💵 Falta pagar {fmt_usd(o['total'] - o['pagado'])}" + (f" · por {fp}" if fp else ""))
     else: L.append("✅ Pagado, no cobrar nada")
     if o["notas_entrega"]: L.append(f"📝 {o['notas_entrega']}")
     for n in o.get("notas_cliente") or []:   # lo que siempre hay que saber de este cliente
@@ -1500,14 +1512,16 @@ def factura_toggle(request: Request, oid: int, hecha: str = Form("0"), requiere:
 
 @app.post("/ordenes/{oid}/cobro-extra")
 def orden_cobro_extra(request: Request, oid: int, concepto: str = Form(""), concepto_otro: str = Form(""), monto: str = Form("0"),
-                      forma: str = Form(""), fecha: str = Form(""), referencia: str = Form(""), con=Depends(db)):
+                      forma: str = Form(""), fecha: str = Form(""), referencia: str = Form(""), no_pagado: str = Form(""), con=Depends(db)):
     """El cliente agrega algo a una orden que ya existe y lo paga: sube el total de esa orden y queda el pago."""
     rol = rol_de(request)
     if "confirmar_pago" not in PERMISOS[rol]: return volver(oid, request)
     c = (concepto_otro.strip() if concepto == "Otro" else concepto.strip()) or "Cobro adicional"
     m = cifra(monto)
     if m > 0 and forma.strip():
-        cobro_extra(con, oid, c, m, forma.strip(), (fecha or "").strip() or None, uid_de(request), referencia)
+        # "todavía no lo pagó": queda como saldo de la orden con la forma en que lo va a pagar (se cobra al entregar o sale en Seguimientos)
+        cobro_extra(con, oid, c, m, forma.strip(), (fecha or "").strip() or None, uid_de(request), referencia,
+                    pago=None if no_pagado else "confirmado")
         con.commit()
     return volver(oid, request)
 
@@ -5875,6 +5889,7 @@ def ruta_despachador(con, nombre, hoy):
         falta = round((d["total"] or 0) - pagado, 2)
         # solo lo que el despachador tiene que cobrar en la puerta; lo demás no es asunto suyo
         d["cobrar"] = falta if (d["estado_pago"] in ("contra_entrega", "sin_pago", "abonada", "rechazado") and falta > 0) else 0
+        d["cobrar_forma"] = forma_por_cobrar(con, d["id"]) if d["cobrar"] else None
         d["que_lleva"] = lo_que_lleva(con, d["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
         d["indicaciones"] = indicaciones_cliente(con, d["cid"], d["notas_entrega"])
         d["kind"] = "orden"
@@ -5916,7 +5931,7 @@ def texto_ruta(filas, hoy):
         if f["maps"]: out.append(f"   {f['maps']}")
         out.append(f"   {f['que_lleva']}")
         for t in f.get("indicaciones") or []: out.append(f"   📌 {t}")
-        if f["cobrar"]: out.append(f"   COBRAR ${f['cobrar']:,.2f}")
+        if f["cobrar"]: out.append(f"   COBRAR ${f['cobrar']:,.2f}" + (f" · por {f['cobrar_forma']}" if f.get("cobrar_forma") else ""))
         out.append("")
     cobros = sum(f["cobrar"] for f in filas)
     if cobros: out.append(f"Total a cobrar: ${cobros:,.2f}")

@@ -68,7 +68,7 @@
 <label style="margin-top:0">¿Qué le agregó?</label><select name="concepto" onchange="this.form.querySelector('[name=concepto_otro]').hidden=(this.value!='Otro')">{% for x in CONCEPTOS_EXTRA %}<option>{{ x }}</option>{% endfor %}</select>
 <input name="concepto_otro" placeholder="escríbelo" hidden style="margin-top:6px">
 <label>Monto USD</label><input name="monto" inputmode="decimal" placeholder="5.00" required>
-<label>Forma de pago <span class="obl">*</span></label><select name="forma" required><option value="" selected disabled>Elegir…</option>{% for x in FORMAS_COBRO %}<option value="{{ x }}">{{ x|caja }}</option>{% endfor %}</select>
+<label>Forma de pago <span class="obl">*</span></label><select name="forma" required><option value="" selected disabled>Elegir…</option>{% for x in FORMAS_COBRO %}<option value="{{ x }}">{{ x|caja }}</option>{% endfor %}</select><label class="chk" style="margin-top:8px"><input type="checkbox" name="no_pagado" value="1"> <span>Todavía no lo pagó</span></label>
 <label>¿Qué día lo pagó?</label><input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}">
 <label>Referencia <span class="mini">(opcional)</span></label><input name="referencia">
 <p style="margin:8px 0 0"><button class="btn chico">Agregar a la orden</button></p></form></details>{% endif %}
