@@ -7,7 +7,7 @@
  {% if r.adelanto_libre %}<div class="tile"><b style="color:var(--verde-osc)">{{ r.adelanto_libre|usd }}</b><span>Adelanto por descontar</span><i>se le resta de las próximas entregas</i></div>{% endif %}
  <div class="tile"><b>{% if r.ultimo_pago %}{{ r.ultimo_pago.monto|usd }}{% else %}—{% endif %}</b><span>Último pago</span><i>{% if r.ultimo_pago %}{{ r.ultimo_pago.fecha|dia }}{% else %}todavía ninguno{% endif %}</i></div>
 </div>{% endif %}
-{% if rol=='admin' %}<details class="eq-pagar" style="margin:-4px 0 16px"><summary class="btn sec chico">Darle un adelanto</summary>
+{% if rol=='admin' %}<div class="desp-acc"><details class="eq-pagar"><summary class="btn sec chico">Darle un adelanto</summary>
  <form method="post" action="/despachadores/{{ d.id }}/adelanto" class="fal-f">
   <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
   <select name="forma" required><option value="" selected disabled>¿De qué caja?</option>{% for fp in FORMAS_PAGO %}<option value="{{ fp }}">{{ fp|caja }}</option>{% endfor %}</select>
@@ -15,14 +15,14 @@
   <input name="nota" placeholder="nota (opcional)" style="min-width:180px">
   <button class="btn chico">Registrar adelanto</button></form>
  <div class="mini" style="margin-top:6px">Sale de esa caja ya y queda en gastos. Después se le va descontando de lo que le debas por sus entregas.</div></details>
-<details class="eq-pagar" style="margin:-8px 0 16px"><summary class="btn sec chico">+ Diligencia</summary>
+<details class="eq-pagar"><summary class="btn sec chico">+ Diligencia</summary>
  <form method="post" action="/despachadores/{{ d.id }}/diligencia" class="fal-f">
   {% if tarifas_dil %}<select onchange="const o=this.selectedOptions[0];if(o.value){this.form.que.value=o.value;this.form.monto.value=o.dataset.p}"><option value="">Elegir de la lista…</option>{% for t in tarifas_dil %}<option value="{{ t.nombre }}" data-p="{{ '%g'|format(t.precio) }}">{{ t.nombre }} · ${{ '%g'|format(t.precio) }}</option>{% endfor %}</select>{% endif %}
   <input name="que" required placeholder="¿Qué hizo? (ej. buscar tela en el centro)" style="min-width:260px">
   <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
   <input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}">
   <button class="btn chico">Anotar</button></form>
- <div class="mini" style="margin-top:6px">Se suma a lo que le debes y se le paga junto con sus entregas.</div></details>{% endif %}
+ <div class="mini" style="margin-top:6px">Se suma a lo que le debes y se le paga junto con sus entregas.</div></details></div>{% endif %}
 
 {% if rol=='admin' %}{% for t in (fallidos|list + dil_aprobar|list) if t.tipo=='diligencia' %}<form method="post" action="/despachadores/{{ d.id }}/diligencia/{{ t.id }}/borrar" id="borrar-dil-{{ t.id }}"></form>{% endfor %}{% endif %}
 {% if dil_aprobar and rol=='admin' %}<div class="tarjeta" style="margin-bottom:16px;border-left:3px solid #b45a1c"><h3>Diligencias que anotó {{ d.nombre }} · por aprobar</h3>
@@ -72,25 +72,49 @@
  <span class="cf-in" id="pp-monto" hidden><span class="mini">$</span><input name="monto_pago" id="monto-pago" inputmode="decimal" style="width:100px" placeholder="0.00" oninput="sumar()"></span></div></div>
 <div style="flex:1;min-width:150px"><label>Nota <span class="mini">(opcional)</span></label><input name="nota"></div><button class="btn" id="btn-pagar">Pago completo · <span id="suma"></span></button></div>{% endif %}
 </form>{% else %}<div class="vacio">No le debes nada. Cada pedido que le asignes aparece aquí con lo que le pagas por esa zona, hasta que marques pagado.</div>{% endif %}</div>
-{% if rol=='admin' %}<div class="tarjeta" style="margin-bottom:14px"><h3>Todo lo que ha entregado</h3>
-{% if hist %}<div class="rec-t">
- <div class="rec-n"><b>{{ record.entregadas }}</b><span>entregada{{ 's' if record.entregadas != 1 }}</span></div>
- {% if record.viajes %}<div class="rec-n"><b>{{ record.viajes }}</b><span>viaje{{ 's' if record.viajes!=1 }} a la agencia</span></div>{% endif %}
- {% if record.diligencias %}<div class="rec-n"><b>{{ record.diligencias }}</b><span>diligencia{{ 's' if record.diligencias!=1 }}</span></div>{% endif %}
- {% if record.fallidos %}<div class="rec-n"><b>{{ record.fallidos }}</b><span>no le recibieron</span></div>{% endif %}
- <div class="rec-n"><b style="color:{{ '#b45a1c' if record.por_entregar else 'inherit' }}">{{ record.por_entregar }}</b><span>por entregar</span></div>
- <div class="rec-n"><b>{{ record.pagado|usd }}</b><span>le pagaste</span></div>
- {% if record.por_pagar %}<div class="rec-n"><b style="color:#b45a1c">{{ record.por_pagar|usd }}</b><span>por pagarle</span></div>{% endif %}
- {% if record.primera %}<div class="rec-n chico"><b>{{ record.primera|dia }}</b><span>desde</span></div>{% endif %}
+{% if rol=='admin' %}<div class="tarjeta hd" style="margin-bottom:14px"><h3>Todo lo que ha hecho</h3>
+{% if hist %}{% set grupos = [('', record.n, 'todo', ''), ('entregada', record.entregadas, 'entregada' if record.entregadas == 1 else 'entregadas', ''),
+  ('viaje', record.viajes, 'viaje a la agencia' if record.viajes == 1 else 'viajes a la agencia', ''),
+  ('diligencia', record.diligencias, 'diligencia' if record.diligencias == 1 else 'diligencias', ''),
+  ('no_entregado', record.fallidos, 'no le recibieron', ''),
+  ('por_entregar', record.por_entregar, 'por entregar', 'alerta' if record.por_entregar else '')] %}
+<div class="hd-f" role="group" aria-label="Mostrar">
+ {% for f, n, txt, cl in grupos %}{% if n or not f %}<button type="button" class="hd-c {{ cl }}" data-f="{{ f }}"><b>{{ n }}</b><span>{{ txt }}</span></button>{% endif %}{% endfor %}
+ <button type="button" class="hd-c" data-f="cobro:pagado"><b>{{ record.pagado|usd }}</b><span>le pagaste</span></button>
+ {% if record.por_pagar %}<button type="button" class="hd-c alerta" data-f="cobro:por_pagar"><b>{{ record.por_pagar|usd }}</b><span>por pagarle</span></button>{% endif %}
+ {% if record.primera %}<div class="hd-desde mini">desde {{ record.primera|dia }}</div>{% endif %}
 </div>
-<details class="rec-w"><summary>Ver todo lo asignado, una por una ({{ record.n }})</summary>
-<table data-cols="Fecha:13|Orden:11|Cliente:28|Zona:17|Estado:16|Le pagaste:15" class="lineas"><tr><th>Fecha</th><th>Orden</th><th>Cliente</th><th>Zona</th><th>Estado</th><th class="num">Le pagaste</th></tr>
-{% for h in hist %}<tr>
- <td class="mono mini">{{ h.fecha|dia }}</td><td class="mono">{{ h.numero or '—' }}</td><td>{{ h.cliente or h.quien or '—' }}{% if not h.cliente and h.direccion %}<div class="mini">{{ h.direccion }}</div>{% endif %}</td>
- <td class="mini">{{ h.zona or h.ciudad or '—' }}</td>
- <td><span class="est {{ h.estado }}">{{ 'No se pudo entregar' if h.estado=='no_entregado' else E_LABEL.get(h.estado, h.estado) }}</span>{% if h.que %}<div class="mini">{{ h.que }}</div>{% endif %}{% if h.estado=='no_entregado' %}<div class="mini">fue al sitio{% if h.nota %} · {{ h.nota }}{% endif %}</div>{% endif %}</td>
- <td class="num">{% if h.estado in ['pendiente','en_ruta'] %}<span class="mini">al entregar</span>{% else %}{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">por pagarle</div>{% endif %}{% endif %}</td>
-</tr>{% endfor %}</table></details>
+<table data-cols="Fecha:12|Qué:36|Zona:16|Estado:18|Le toca:18" class="lineas tarjetas-movil hd-t"><tr><th>Fecha</th><th>Qué</th><th>Zona</th><th>Estado</th><th class="num">Le toca</th></tr>
+{% for h in hist %}<tr data-grupo="{{ h.grupo }}" data-cobro="{{ h.cobro }}">
+ <td data-t="Fecha" class="mono mini">{{ h.fecha|dia }}</td>
+ <td data-t="Qué"><span>{% if h.numero %}<a class="mono" href="/ordenes?estado=todas&abrir={{ h.id }}">{{ h.numero }}</a> · {% endif %}{{ h.cliente or h.quien or '—' }}</span>{% if not h.cliente and h.direccion %}<div class="mini">{{ h.direccion }}</div>{% endif %}</td>
+ <td data-t="Zona" class="mini">{{ h.zona or h.ciudad or '—' }}</td>
+ <td data-t="Estado">{% if h.grupo == 'viaje' %}<span class="est entregada">Llevado</span>{% else %}<span class="est {{ h.estado }}">{{ 'No le recibieron' if h.estado=='no_entregado' else ('Diligencia' if h.estado=='diligencia' else E_LABEL.get(h.estado, h.estado)) }}</span>{% endif %}{% if h.estado=='no_entregado' and h.nota %}<div class="mini">{{ h.nota }}</div>{% endif %}</td>
+ <td data-t="Le toca" class="num">{% if h.cobro == 'al_entregar' %}<span class="mini">al entregar</span>{% else %}{{ h.pago|usd }}<div class="mini{{ ' ln-alerta' if h.cobro == 'por_pagar' }}">{{ 'pagado' if h.cobro == 'pagado' else 'por pagarle' }}</div>{% endif %}</td>
+</tr>{% endfor %}</table>
+<div class="vacio hd-vacio" hidden>Nada en este grupo.</div>
+<div class="hd-pie"><span class="mini hd-cuenta"></span><button type="button" class="btn sec chico hd-mas" hidden>Ver más</button></div>
+<script>
+(() => {   // los números de arriba filtran la lista; se muestran de a 20 para que no sea una pared
+  const w = document.currentScript.closest('.hd'), filas = [...w.querySelectorAll('tr[data-grupo]')], mas = w.querySelector('.hd-mas');
+  let f = '', tope = 20;
+  const pintar = () => {
+    let n = 0, vistas = 0;
+    filas.forEach(tr => {
+      const es = !f || (f.startsWith('cobro:') ? tr.dataset.cobro === f.slice(6) : tr.dataset.grupo === f);
+      if (es) n++;
+      tr.hidden = !(es && n <= tope); if (!tr.hidden) vistas++;
+    });
+    w.querySelector('.hd-t').hidden = !n; w.querySelector('.hd-vacio').hidden = !!n;
+    w.querySelector('.hd-cuenta').textContent = n > vistas ? `${vistas} de ${n}` : '';
+    mas.hidden = n <= vistas;
+    w.querySelectorAll('.hd-c').forEach(b => { b.classList.toggle('act', b.dataset.f === f); b.setAttribute('aria-pressed', b.dataset.f === f); });
+  };
+  w.querySelectorAll('.hd-c').forEach(b => b.addEventListener('click', () => { f = f === b.dataset.f ? '' : b.dataset.f; tope = 20; pintar(); }));
+  mas.addEventListener('click', () => { tope += 50; pintar(); });
+  pintar();
+})();
+</script>
 {% else %}<div class="vacio">Todavía no le has asignado ninguna entrega.</div>{% endif %}</div>{% endif %}
 
 <div class="g2" style="align-items:start">

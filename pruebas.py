@@ -939,6 +939,27 @@ def _():
         CFE._pedir = antes; os.environ.clear(); os.environ.update(env)
 
 
+@prueba("Despachador: cada número de 'Todo lo que ha hecho' cuenta justo las filas que muestra al tocarlo")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        d = con.execute("""SELECT d.id, d.nombre FROM despachadores d JOIN ordenes o ON o.despachador=d.nombre
+                           GROUP BY d.id ORDER BY COUNT(*) DESC LIMIT 1""").fetchone()
+        con.execute("UPDATE ordenes SET origen_excel=0, despachador_pagado=(id % 2) WHERE despachador=?", (d["nombre"],))
+        con.execute("INSERT INTO viajes_agencia (fecha, despachador, agencia, monto, pedidos, llevado_en, pagado) VALUES ('2026-10-02',?,'MRW',10,3,'2026-10-02 15:00',0)", (d["nombre"],))
+        con.commit()
+        html = c.get(f"/despachadores/{d['id']}").text
+        filas = re.findall(r'<tr data-grupo="([^"]+)" data-cobro="([^"]+)">', html)
+        botones = dict(re.findall(r'data-f="([^"]*)"><b>(.*?)</b>', html))
+        assert filas, "no hay filas"
+        assert botones[""] == str(len(filas)), (botones[""], len(filas))
+        for g in ("entregada", "viaje", "por_entregar", "no_entregado", "diligencia"):
+            n = sum(1 for x, _ in filas if x == g)
+            assert botones.get(g, "0") == str(n), f"{g}: el número dice {botones.get(g)}, la lista tiene {n}"
+        assert not any(x == "por_entregar" and cobro != "al_entregar" for x, cobro in filas), "algo por entregar sale como pagado o por pagar"
+
+
 print("\nFOTOS")
 
 @contextmanager
