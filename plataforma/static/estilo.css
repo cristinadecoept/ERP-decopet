@@ -1564,3 +1564,16 @@ input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:non
 .desp-acc{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:-4px 0 16px}
 .desp-acc>.eq-pagar{margin:0}
 .desp-acc>.eq-pagar[open]{flex-basis:100%}
+
+/* Ventas de hoy: 14 días en columnas finas, hoy resaltado, el promedio como referencia */
+.hoy-graf .hg-base{stroke:var(--linea);stroke-width:1}
+.hoy-graf .hg-prom{stroke:var(--naranja);stroke-width:1;opacity:.7}
+.hg-leyenda{display:inline-block;width:14px;height:0;border-top:1.5px solid var(--naranja);opacity:.8;vertical-align:middle;margin-right:5px}
+.hoy-graf .hg-barra{fill:var(--verde);opacity:.45;transition:opacity .15s}
+.hoy-graf .hoy .hg-barra{fill:var(--verde-osc);opacity:1}
+.hoy-graf .hg-cero{fill:var(--linea)}
+.hoy-graf .hg-hit{fill:transparent;cursor:default}
+.hoy-graf .hg-col:hover .hg-barra{opacity:.8}
+.hoy-graf .hoy:hover .hg-barra{opacity:1}
+.hoy-graf .hg-valor{font-size:11px;font-weight:600;fill:var(--tinta)}
+.hoy-graf .hg-hoy-t{font-weight:600;fill:var(--tinta)}

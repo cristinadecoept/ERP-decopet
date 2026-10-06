@@ -48,12 +48,19 @@
   {% else %}<div class="mini" style="margin-top:14px">Nada programado para hoy todavía.</div>{% endif %}
  </a>
  {% if rol=='admin' %}<div class="tile hoy-hero">
-  <div class="hoy-hero-cab"><div><b>{{ v.venta|usd }}</b><span>Ventas de hoy</span></div><i>{{ v.n }} orden{{ 'es' if v.n!=1 }}{% if v.extras %} + {{ v.extras }} cobro{{ 's' if v.extras!=1 }} suelto{{ 's' if v.extras!=1 }}{% endif %} · promedio del mes {{ prom|usd }} por día</i></div>
-  {% set mx = ([prom] + serie|map(attribute=1)|list)|max %}{% set mx = mx if mx else 1 %}
-  <svg viewBox="0 0 420 150" class="cf-svg hoy-graf" style="margin-top:10px">
-   <line x1="0" x2="420" y1="{{ (130 - prom/mx*118)|round(1) }}" y2="{{ (130 - prom/mx*118)|round(1) }}" stroke="var(--naranja)" stroke-width="1.5" stroke-dasharray="4 3"/>
-   {% for d, tt, n in serie %}{% set x = loop.index0 * 30 %}{% set hh = (tt/mx*118)|round(1) %}<rect x="{{ x + 4 }}" y="{{ 130 - hh }}" width="22" height="{{ hh }}" rx="3" fill="{{ 'var(--verde-osc)' if loop.last else 'var(--verde)' }}" opacity="{{ '1' if loop.last else '.55' }}" class="cf-hit" data-t="{{ d|dia }} · {{ '${:,.0f}'.format(tt) }} · {{ n }} órdenes"/>
-   {% if loop.index0 % 3 == 0 or loop.last %}<text x="{{ x + 15 }}" y="146" class="cf-ax" text-anchor="middle">{{ d.strftime('%d/%m') }}</text>{% endif %}{% endfor %}
+  <div class="hoy-hero-cab"><div><b>{{ v.venta|usd }}</b><span>Ventas de hoy</span></div><i>{{ v.n }} {{ 'orden' if v.n == 1 else 'órdenes' }}{% if v.extras %} + {{ v.extras }} cobro{{ 's' if v.extras!=1 }} suelto{{ 's' if v.extras!=1 }}{% endif %} · <span class="hg-leyenda"></span>promedio del mes {{ prom|usd }} por día</i></div>
+  {% set mx = ([prom] + serie|map(attribute=1)|list)|max %}{% set mx = mx if mx else 1 %}{% set B = 140 %}{% set H = 108 %}
+  <svg viewBox="0 0 420 160" class="cf-svg hoy-graf" role="img" aria-label="Ventas de los últimos 14 días">
+   <line x1="0" x2="420" y1="{{ B }}" y2="{{ B }}" class="hg-base"/>
+   {% set py = (B - prom/mx*H)|round(1) %}<line x1="0" x2="420" y1="{{ py }}" y2="{{ py }}" class="hg-prom"/>
+   {% for d, tt, n in serie %}{% set x = loop.index0 * 30 %}{% set hh = (tt/mx*H)|round(1) %}{% set hoy_b = loop.last %}
+   <g class="hg-col{{ ' hoy' if hoy_b }}">
+    {% if hh >= 4 %}<path class="hg-barra" d="M{{ x + 7 }},{{ B }} V{{ B - hh + 4 }} Q{{ x + 7 }},{{ B - hh }} {{ x + 11 }},{{ B - hh }} H{{ x + 19 }} Q{{ x + 23 }},{{ B - hh }} {{ x + 23 }},{{ B - hh + 4 }} V{{ B }} Z"/>
+    {% else %}<rect class="hg-cero" x="{{ x + 7 }}" y="{{ B - 2 }}" width="16" height="2" rx="1"/>{% endif %}
+    {% if hoy_b %}<text x="{{ x + 15 }}" y="{{ B - hh - 6 }}" class="hg-valor" text-anchor="middle">{{ '${:,.0f}'.format(tt) }}</text>{% endif %}
+    <rect x="{{ x }}" y="0" width="30" height="{{ B }}" class="cf-hit hg-hit" data-t="{{ d|dia }} · {{ '${:,.0f}'.format(tt) }} · {{ n }} {{ 'orden' if n == 1 else 'órdenes' }}"/>
+   </g>
+   {% if loop.index0 % 3 == 1 or hoy_b %}<text x="{{ x + 15 }}" y="155" class="cf-ax{{ ' hg-hoy-t' if hoy_b }}" text-anchor="middle">{{ 'hoy' if hoy_b else d.strftime('%d/%m') }}</text>{% endif %}{% endfor %}
   </svg>
   
  </div>{% endif %}
