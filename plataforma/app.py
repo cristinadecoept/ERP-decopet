@@ -394,6 +394,8 @@ async def puerta(request: Request, call_next):
 
     if ruta == "/robots.txt":
         return con_escudos(PlainTextResponse("User-agent: *\nDisallow: /\n"))
+    if ruta == "/favicon.ico":   # la huellita de Decopet en la pestaña (el navegador la pide aquí aunque la página diga otra cosa)
+        return con_escudos(FileResponse(BASE / "static" / "favicon.ico", media_type="image/x-icon", headers={"Cache-Control": "public, max-age=604800"}))
     if ruta == "/health":   # para Railway: ¿está vivo y puede leer la base? Sin entrar y sin contar nada más.
         vivo = base_responde()
         return con_escudos(PlainTextResponse("ok" if vivo else "mal", status_code=200 if vivo else 503))
