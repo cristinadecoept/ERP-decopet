@@ -5958,12 +5958,18 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                                    WHERE despachador=? AND llevado_en IS NOT NULL""", (d["nombre"],)).fetchone()
     record["viajes"] = viajes_hechos["n"]; record["viajes_monto"] = round(viajes_hechos["m"], 2)
     hist = sorted([dict(h) for h in hist] + viajes_hist(con, d["nombre"]), key=lambda h: h["fecha"] or "", reverse=True)
-    # los retiros de repuesto que llevó también son entregas suyas; los viajes en que no le recibieron, no
-    ent = [h for h in hist if h["estado"] == "entregada"]
-    record.update(n=len(hist), entregadas=len(ent),
-                  n_mes=sum(1 for h in ent if (h["fecha"] or "")[:7] == mes),
-                  total=round(sum(h["pago"] or 0 for h in ent), 2),
-                  mes=round(sum(h["pago"] or 0 for h in ent if (h["fecha"] or "")[:7] == mes), 2),
+    # por estado, sin contar nada dos veces (Cristina, 6 oct): entregas (pedidos y retiros de pack), viajes a la agencia,
+    # diligencias, lo que tiene asignado y todavía no entrega, y las veces que fue y no le recibieron
+    es_viaje = lambda h: h["estado"] == "entregada" and (h.get("quien") or "").startswith("Viaje a")
+    ent = [h for h in hist if h["estado"] == "entregada" and not es_viaje(h)]
+    hechos = [h for h in hist if h["estado"] in ("entregada", "diligencia", "no_entregado")]   # lo que ya se le paga
+    record.update(n=len(hist), entregadas=len(ent), viajes=sum(1 for h in hist if es_viaje(h)),
+                  por_entregar=sum(1 for h in hist if h["estado"] in ("pendiente", "en_ruta")),
+                  fallidos=sum(1 for h in hist if h["estado"] == "no_entregado"),
+                  diligencias=sum(1 for h in hist if h["estado"] == "diligencia"),
+                  total=round(sum(h["pago"] or 0 for h in hechos), 2),
+                  pagado=round(sum(h["pago"] or 0 for h in hechos if h["despachador_pagado"]), 2),
+                  por_pagar=round(sum(h["pago"] or 0 for h in hechos if not h["despachador_pagado"]), 2),
                   primera=hist[-1]["fecha"] if hist else None)
     return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO,
                   CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,

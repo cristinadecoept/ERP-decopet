@@ -74,19 +74,22 @@
 </form>{% else %}<div class="vacio">No le debes nada. Cada pedido que le asignes aparece aquí con lo que le pagas por esa zona, hasta que marques pagado.</div>{% endif %}</div>
 {% if rol=='admin' %}<div class="tarjeta" style="margin-bottom:14px"><h3>Todo lo que ha entregado</h3>
 {% if hist %}<div class="rec-t">
- <div class="rec-n"><b>{{ record.entregadas }}</b><span>entrega{{ 's' if record.entregadas != 1 }}</span></div>
- <div class="rec-n"><b>{{ record.n_mes }}</b><span>este mes</span></div>
+ <div class="rec-n"><b>{{ record.entregadas }}</b><span>entregada{{ 's' if record.entregadas != 1 }}</span></div>
  {% if record.viajes %}<div class="rec-n"><b>{{ record.viajes }}</b><span>viaje{{ 's' if record.viajes!=1 }} a la agencia</span></div>{% endif %}
- <div class="rec-n"><b>{{ record.total|usd }}</b><span>en entregas</span></div>
+ {% if record.diligencias %}<div class="rec-n"><b>{{ record.diligencias }}</b><span>diligencia{{ 's' if record.diligencias!=1 }}</span></div>{% endif %}
+ {% if record.fallidos %}<div class="rec-n"><b>{{ record.fallidos }}</b><span>no le recibieron</span></div>{% endif %}
+ <div class="rec-n"><b style="color:{{ '#b45a1c' if record.por_entregar else 'inherit' }}">{{ record.por_entregar }}</b><span>por entregar</span></div>
+ <div class="rec-n"><b>{{ record.pagado|usd }}</b><span>le pagaste</span></div>
+ {% if record.por_pagar %}<div class="rec-n"><b style="color:#b45a1c">{{ record.por_pagar|usd }}</b><span>por pagarle</span></div>{% endif %}
  {% if record.primera %}<div class="rec-n chico"><b>{{ record.primera|dia }}</b><span>desde</span></div>{% endif %}
 </div>
-<details class="rec-w"><summary>Ver {{ 'la' if record.n == 1 else 'las' }} {{ record.n }} entrega{{ 's' if record.n != 1 }} una por una</summary>
+<details class="rec-w"><summary>Ver todo lo asignado, una por una ({{ record.n }})</summary>
 <table data-cols="Fecha:13|Orden:11|Cliente:28|Zona:17|Estado:16|Le pagaste:15" class="lineas"><tr><th>Fecha</th><th>Orden</th><th>Cliente</th><th>Zona</th><th>Estado</th><th class="num">Le pagaste</th></tr>
 {% for h in hist %}<tr>
- <td class="mono mini">{{ h.fecha|dia }}</td><td class="mono">{{ h.numero }}</td><td>{{ h.cliente }}</td>
+ <td class="mono mini">{{ h.fecha|dia }}</td><td class="mono">{{ h.numero or '—' }}</td><td>{{ h.cliente or h.quien or '—' }}{% if not h.cliente and h.direccion %}<div class="mini">{{ h.direccion }}</div>{% endif %}</td>
  <td class="mini">{{ h.zona or h.ciudad or '—' }}</td>
  <td><span class="est {{ h.estado }}">{{ 'No se pudo entregar' if h.estado=='no_entregado' else E_LABEL.get(h.estado, h.estado) }}</span>{% if h.que %}<div class="mini">{{ h.que }}</div>{% endif %}{% if h.estado=='no_entregado' %}<div class="mini">fue al sitio{% if h.nota %} · {{ h.nota }}{% endif %}</div>{% endif %}</td>
- <td class="num">{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">por pagarle</div>{% endif %}</td>
+ <td class="num">{% if h.estado in ['pendiente','en_ruta'] %}<span class="mini">al entregar</span>{% else %}{{ h.pago|usd }}{% if not h.despachador_pagado %}<div class="mini">por pagarle</div>{% endif %}{% endif %}</td>
 </tr>{% endfor %}</table></details>
 {% else %}<div class="vacio">Todavía no le has asignado ninguna entrega.</div>{% endif %}</div>{% endif %}
 
