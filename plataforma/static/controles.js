@@ -183,9 +183,11 @@
       pintar();
     };
     inp.addEventListener('mousedown', e => { if (inp.disabled) return; e.preventDefault(); inp.focus(); abrir(); });
+    // el iconito del calendario abre el de Windows con el clic (no con el mousedown): salían los dos a la vez
+    inp.addEventListener('click', e => e.preventDefault());
     inp.addEventListener('keydown', e => {
       if (e.key === 'Escape' && esDe(inp)) { e.preventDefault(); e.stopPropagation(); cerrar(); }   // solo el calendario, no el panel
-      else if ((e.key === 'ArrowDown' && e.altKey) || e.key === 'F4') { e.preventDefault(); abrir(); }
+      else if ((e.key === 'ArrowDown' && e.altKey) || e.key === 'F4' || e.key === ' ') { e.preventDefault(); abrir(); }
     });
   }
 

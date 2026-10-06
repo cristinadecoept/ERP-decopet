@@ -1550,3 +1550,5 @@ html.oscuro .postit:not(.nueva){color:#3b330a}
 .eqp-f .cf-check{display:flex;align-items:center;gap:10px;margin:0}
 .eqp-f .cf-check input{width:auto;margin:0;flex:0 0 auto}
 @media (max-width:900px){.eqp-nom{padding-top:12px}}
+/* el iconito del campo de fecha no abre el calendario de Windows: el toque pasa al campo y abre el del ERP */
+input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:none}
