@@ -5971,6 +5971,10 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                   pagado=round(sum(h["pago"] or 0 for h in hechos if h["despachador_pagado"]), 2),
                   por_pagar=round(sum(h["pago"] or 0 for h in hechos if not h["despachador_pagado"]), 2),
                   primera=hist[-1]["fecha"] if hist else None)
+    # cada fila dice a qué grupo pertenece, para que al tocar un número de arriba la lista muestre justo esas
+    for h in hist:
+        h["grupo"] = "viaje" if es_viaje(h) else ("por_entregar" if h["estado"] in ("pendiente", "en_ruta") else h["estado"])
+        h["cobro"] = "al_entregar" if h["grupo"] == "por_entregar" else ("pagado" if h["despachador_pagado"] else "por_pagar")
     return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO,
                   CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,
                   tarifas_dil=tarifas_diligencia(con), ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),

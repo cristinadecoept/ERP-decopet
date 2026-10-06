@@ -746,13 +746,6 @@ html.oscuro .falta-p{background:rgba(255,255,255,.12)}
 html.oscuro .ruta-p{background:rgba(255,255,255,.07)}
 /* Récord del despachador: todo lo que ha entregado */
 .rec-t{display:flex;gap:30px;flex-wrap:wrap;margin-bottom:6px}
-.rec-n{display:flex;flex-direction:column;line-height:1.35}
-.rec-n b{font-size:19px}
-.rec-n span{font-size:12px;opacity:.65}
-.rec-w{margin-top:10px}
-.rec-w summary{cursor:pointer;font-size:13px;opacity:.75;width:max-content}
-.rec-w table{margin-top:10px}
-.rec-n.chico b{font-size:14px;font-weight:600;opacity:.8}
 
 /* Candado del ojo: esconder es libre, mostrar pide clave */
 .cand-w{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
@@ -1552,3 +1545,18 @@ html.oscuro .postit:not(.nueva){color:#3b330a}
 @media (max-width:900px){.eqp-nom{padding-top:12px}}
 /* el iconito del campo de fecha no abre el calendario de Windows: el toque pasa al campo y abre el del ERP */
 input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:none}
+/* Despachador · todo lo que ha hecho: los números de arriba son filtros de la lista */
+.hd-f{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:2px 0 14px}
+.hd-c{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 14px;min-width:92px;border-radius:12px;border:1px solid var(--linea);background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
+.hd-c b{font-size:18px;line-height:1.25}
+.hd-c span{font-size:12px;color:var(--tinta-3)}
+.hd-c:hover{border-color:var(--verde)}
+.hd-c.alerta b{color:#b45a1c}
+.hd-c.act{background:var(--verde-tinte);border-color:var(--verde)}
+.hd-c.act span{color:var(--verde-osc)}
+.hd-desde{align-self:center;margin-left:auto}
+.hd-t tr[hidden]{display:none!important}
+.hd-pie{display:flex;align-items:center;gap:10px;margin-top:10px}
+.hd-pie:has(.hd-mas[hidden]):not(:has(.hd-cuenta:not(:empty))){display:none}
+.hd-c b *{font-size:inherit;font-weight:inherit;color:inherit;opacity:1}   /* los montos traen su propio estilo */
+@media (max-width:720px){.hd-f{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.hd-c{min-width:0;padding:8px 10px}.hd-c b{font-size:16px}.hd-desde{grid-column:1/-1;margin:0}}
