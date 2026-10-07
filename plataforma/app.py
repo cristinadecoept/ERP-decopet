@@ -662,7 +662,8 @@ COLUMNAS = (
     ("mov_inventario", "color", "TEXT"),
     ("movimientos", "categoria", "TEXT"), ("movimientos", "comprobante", "TEXT"),
     ("movimientos", "notas", "TEXT"), ("movimientos", "subcategoria", "TEXT"),
-    ("notas_taller", "produccion_id", "INTEGER"),
+    ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"),
+    ("notas_taller", "produccion_id", "INTEGER"), ("notas_taller", "danado_id", "INTEGER"),
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
     ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"), ("pagos_despachador", "confirmado_en", "TEXT"),
@@ -951,6 +952,10 @@ def render(request, nombre, **ctx):
     ctx.update(request=request, rol=rol, puede=PERMISOS[rol], hoy=datetime.date.today().isoformat(),
                seccion=ctx.get("seccion", ""), usuario=ctx.get("usuario") or quien_es(request),
                viendo_como=request.cookies.get("ver_como") or "")
+    if rol in ("admin", "logistica", "taller") and "casos_abiertos" not in ctx:
+        try:
+            con = sqlite3.connect(DB); ctx["casos_abiertos"] = con.execute("SELECT COUNT(*) FROM danados WHERE estado IN ('pendiente','reparando')").fetchone()[0]; con.close()
+        except sqlite3.Error: ctx["casos_abiertos"] = 0
     resp = tpl.TemplateResponse(nombre, ctx, headers={"Cache-Control": "no-store"})   # Safari guardaba paneles viejos
     # al salir de Resultados se cierra la sesión: si vuelve, pide la clave otra vez
     if not request.url.path.startswith(("/finanzas", "/historial")) and request.cookies.get("res_ok"):
@@ -1215,7 +1220,7 @@ def inicio(request: Request, con=Depends(db)):
                              AND EXISTS (SELECT 1 FROM receta r WHERE r.producto_id=p.id) ORDER BY p.orden""").fetchall()
     armados = [dict(a) | {"corto": a["nombre"].replace("El Porche Versión PRO ", "")} for a in armados]
     n_armados = sum(a["listos"] for a in armados)
-    avisos_taller = con.execute("SELECT * FROM notas_taller WHERE resuelto=0 AND visto=0 ORDER BY id DESC LIMIT 5").fetchall() if rol == "admin" else []
+    avisos_taller = con.execute("SELECT * FROM notas_taller WHERE (resuelto=0 OR danado_id IS NOT NULL) AND visto=0 ORDER BY id DESC LIMIT 5").fetchall() if rol == "admin" else []
     c["avisos_pendientes"] = con.execute("SELECT COUNT(*) FROM notas_taller WHERE resuelto=0").fetchone()[0] if rol == "admin" else 0
     cuentas_act = con.execute("SELECT id, codigo, nombre FROM cuentas WHERE activa=1 ORDER BY orden").fetchall() if rol == "admin" else []
     hoy_lista = sorted([o for o in activas if (o["fecha_prometida"] or h) <= h], key=lambda o: (o["coordinada"], o["tipo_entrega"] or ""))[:6]
@@ -4101,23 +4106,77 @@ def inventario(request: Request, q: str = "", con=Depends(db)):
     return render(request, "inventario.html", seccion="inventario", q=q, productos=prods, movs=movs, danados=danados)
 
 
+@app.get("/inventario/casos", response_class=HTMLResponse)
+def inventario_casos(request: Request, con=Depends(db)):
+    """Casos abiertos: lo dañado que todavía no se resolvió (por revisar o arreglándose) y lo último que se cerró."""
+    cerrados = con.execute("""SELECT d.*, p.nombre producto, u.nombre quien, r.nombre cerro FROM danados d JOIN productos p ON p.id=d.producto_id
+                              LEFT JOIN usuarios u ON u.id=d.usuario_id LEFT JOIN usuarios r ON r.id=d.resuelto_por
+                              WHERE d.estado NOT IN ('pendiente','reparando') ORDER BY d.resuelto_en DESC, d.id DESC LIMIT 15""").fetchall()
+    return render(request, "casos.html", seccion="casos", danados=danados_pendientes(con), cerrados=cerrados, arregladores=arregladores(con), externos=PROVEEDORES_VISIBLES_TALLER)
+
+
+def arregladores(con):
+    """Quién puede llevarse algo dañado para arreglarlo: la gente del taller y Walter (el carpintero)."""
+    return [r[0] for r in con.execute("SELECT nombre FROM usuarios WHERE rol='taller' AND activo=1 AND nombre!='Taller' ORDER BY nombre")] + list(PROVEEDORES_VISIBLES_TALLER)
+
+
+def aviso_de_caso(con, request, d, texto):
+    """Lo que hace el taller con un caso le llega a Cristina en Inicio, una sola vez."""
+    if rol_de(request) == "admin": return
+    con.execute("INSERT INTO notas_taller (fecha, texto, usuario_id, resuelto, resuelto_en, danado_id) VALUES (?,?,?,1,?,?)",
+                (datetime.date.today().isoformat(), f"{(quien_es(request) or {}).get('nombre') or 'El taller'}: {texto}", uid_de(request), datetime.date.today().isoformat(), d["id"]))
+
+
+def nombre_caso(d):
+    n = d['cantidad']; return f"{int(n) if float(n).is_integer() else n} {d['nombre']}" + (f" plato {d['color']}" if d["color"] else "")
+
+
+@app.post("/inventario/danado/{did}/reparando")
+def inventario_danado_reparando(request: Request, did: int, arregla: str = Form(""), con=Depends(db)):
+    """Avisa quién se lo llevó y lo está arreglando (Isaías, Manawa o Walter)."""
+    if rol_de(request) not in ("admin", "logistica", "taller"): return RedirectResponse("/inventario", status_code=303)
+    d = con.execute("SELECT d.*, p.nombre FROM danados d JOIN productos p ON p.id=d.producto_id WHERE d.id=? AND d.estado='pendiente'", (did,)).fetchone()
+    if d:
+        arregla = arregla.strip()[:60] or None
+        con.execute("UPDATE danados SET estado='reparando', reparando_en=?, reparando_por=?, arregla=? WHERE id=?", (datetime.date.today().isoformat(), uid_de(request), arregla, did))
+        aviso_de_caso(con, request, d, f"{arregla + ' está arreglando' if arregla else 'se está arreglando'} {nombre_caso(d)}")
+        con.commit()
+    return RedirectResponse("/inventario/casos", status_code=303)
+
+
+@app.post("/inventario/danado/{did}/listo")
+def inventario_danado_listo(request: Request, did: int, nota: str = Form(""), con=Depends(db)):
+    """Ya quedó: vuelve a disponible en el inventario y el caso se cierra."""
+    if rol_de(request) not in ("admin", "logistica", "taller"): return RedirectResponse("/inventario", status_code=303)
+    d = con.execute("SELECT d.*, p.nombre FROM danados d JOIN productos p ON p.id=d.producto_id WHERE d.id=? AND d.estado IN ('pendiente','reparando')", (did,)).fetchone()
+    if d:
+        hoy = datetime.date.today().isoformat()
+        con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
+                    (d["producto_id"], hoy, "reparado", d["cantidad"], "se reparó, vuelve a disponible" + (f": {nota.strip()}" if nota.strip() else ""), d["color"], uid_de(request)))
+        con.execute("UPDATE danados SET estado='reparado', resuelto_en=?, resuelto_por=?, resolucion=? WHERE id=?", (hoy, uid_de(request), nota.strip() or None, did))
+        aviso_de_caso(con, request, d, f"ya quedó {nombre_caso(d)}: volvió al inventario")
+        con.commit()
+    return RedirectResponse("/inventario/casos", status_code=303)
+
+
 @app.post("/inventario/danado/{did}/resolver")
 def inventario_danado_resolver(request: Request, did: int, como: str = Form(...), nota: str = Form(""), con=Depends(db)):
     """Qué pasó con lo dañado: se reparó (vuelve a disponible), se botó, o se devolvió al proveedor."""
     if not solo_admin(request): return RedirectResponse("/inventario", status_code=303)
-    d = con.execute("SELECT d.*, p.nombre FROM danados d JOIN productos p ON p.id=d.producto_id WHERE d.id=? AND d.estado='pendiente'", (did,)).fetchone()
-    if not d or como not in ("reparado", "desechado", "devuelto"): return RedirectResponse("/inventario#danados", status_code=303)
+    d = con.execute("SELECT d.*, p.nombre FROM danados d JOIN productos p ON p.id=d.producto_id WHERE d.id=? AND d.estado IN ('pendiente','reparando')", (did,)).fetchone()
+    if not d or como not in ("reparado", "desechado", "devuelto"): return RedirectResponse("/inventario/casos", status_code=303)
     hoy = datetime.date.today().isoformat()
     if como == "reparado":
         con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
                     (d["producto_id"], hoy, "reparado", d["cantidad"], "se reparó, vuelve a disponible" + (f": {nota.strip()}" if nota.strip() else ""), d["color"], uid_de(request)))
     con.execute("UPDATE danados SET estado=?, resuelto_en=?, resuelto_por=?, resolucion=? WHERE id=?", (como, hoy, uid_de(request), nota.strip() or None, did))
-    con.commit(); return RedirectResponse("/inventario#danados", status_code=303)
+    con.commit(); return RedirectResponse("/inventario/casos", status_code=303)
 
 
 def danados_pendientes(con):
-    return [dict(r) for r in con.execute("""SELECT d.*, p.nombre producto, u.nombre quien FROM danados d JOIN productos p ON p.id=d.producto_id
-                                           LEFT JOIN usuarios u ON u.id=d.usuario_id WHERE d.estado='pendiente' ORDER BY d.fecha, d.id""")]
+    return [dict(r) for r in con.execute("""SELECT d.*, p.nombre producto, u.nombre quien, COALESCE(d.arregla, a.nombre) quien_arregla FROM danados d JOIN productos p ON p.id=d.producto_id
+                                           LEFT JOIN usuarios u ON u.id=d.usuario_id LEFT JOIN usuarios a ON a.id=d.reparando_por
+                                           WHERE d.estado IN ('pendiente','reparando') ORDER BY d.fecha, d.id""")]
 
 
 @app.post("/inventario/mov")
@@ -4139,7 +4198,7 @@ def inventario_mov(request: Request, producto_id: str = Form(...), tipo: str = F
         con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
                     (producto_id, fecha or datetime.date.today().isoformat(), "dañado", -abs(cantidad), "dañado" + (f": {nota.strip()}" if nota.strip() else ""),
                      (color or "").lower() or None, uid_de(request)))
-        con.commit(); return RedirectResponse("/inventario#danados", status_code=303)
+        con.commit(); return RedirectResponse("/inventario/casos", status_code=303)
     q = abs(cantidad) if tipo == "entrada" else (-abs(cantidad) if tipo == "salida" else cantidad)
     con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
                 (producto_id, fecha or datetime.date.today().isoformat(), tipo, q, nota or None, (color or "").lower() or None, uid_de(request)))

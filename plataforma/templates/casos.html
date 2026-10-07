@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block titulo %}Casos abiertos · Decopet{% endblock %}{% block cuerpo %}
+<div class="fila-titulo"><div><h1>Casos abiertos</h1></div><a class="btn" href="/inventario?reportar=1">+ Reportar dañado</a></div>
+<div class="tabla" style="margin-bottom:18px">{% if danados %}{% for d in danados %}<div class="caso">
+<div class="caso-info"><div><b>{{ d.cantidad|cant }} × {{ d.producto }}</b>{% if d.color %} <span class="pl-{{ d.color }}">plato {{ d.color }}</span>{% endif %}</div>
+ <div>{% if d.estado == 'reparando' %}<span class="pago abonada">Arreglándose</span> <span class="mini">{{ d.quien_arregla or '—' }} · desde {{ d.reparando_en|dia }}</span>{% else %}<span class="pago sin_pago">Por revisar</span>{% endif %}</div>
+ <div class="mini">{{ d.nota or 'sin nota' }} · reportó {{ d.quien or '—' }} el {{ d.fecha|dia }}</div></div>
+<div class="caso-bot">{% if d.estado == 'pendiente' %}<details class="cobro"><summary class="btn sec chico">Se está arreglando</summary><form method="post" action="/inventario/danado/{{ d.id }}/reparando" class="cobro-f" style="min-width:200px">
+ <label style="margin-top:0">¿Quién lo arregla?</label><select name="arregla">{% for n in arregladores %}<option>{{ n }}</option>{% endfor %}</select>
+ <p style="margin:8px 0 0"><button class="btn chico">Guardar</button></p></form></details>{% endif %}
+<details class="cobro"><summary class="btn chico">{{ 'Ya volvió' if d.arregla in externos else 'Ya quedó' }}</summary><form method="post" action="/inventario/danado/{{ d.id }}/listo" class="cobro-f" style="min-width:220px">
+ <label style="margin-top:0">¿Qué se le hizo? <span class="mini">(opcional)</span></label><input name="nota" placeholder="ej. se le cambió la grama">
+ <p style="margin:8px 0 0"><button class="btn chico">Vuelve al inventario</button></p></form></details>
+{% if rol == 'admin' %}<details class="cobro"><summary class="btn sec chico">No se pudo</summary><form method="post" action="/inventario/danado/{{ d.id }}/resolver" class="cobro-f" style="min-width:220px">
+ <label style="margin-top:0">¿Qué se hizo?</label><select name="como"><option value="desechado">Se botó</option><option value="devuelto">Se devolvió al proveedor</option></select>
+ <label>Nota <span class="mini">(opcional)</span></label><input name="nota" placeholder="ej. se devolvió a Walter">
+ <p style="margin:8px 0 0"><button class="btn chico">Guardar</button></p></form></details>{% endif %}</div></div>{% endfor %}
+{% else %}<div class="vacio">No hay casos abiertos.</div>{% endif %}</div>
+{% if cerrados %}<h2 class="seccion-t">Cerrados</h2>
+<div class="tabla"><table data-cols="Cerrado:12|Producto:28|Cant.:8|Cómo terminó:18|Quién:14|Nota:20"><tr><th>Cerrado</th><th>Producto</th><th class="num">Cant.</th><th>Cómo terminó</th><th>Quién</th><th>Nota</th></tr>
+{% set FIN = {'reparado': ('Reparado', 'pagada'), 'desechado': ('Se botó', 'rechazado'), 'devuelto': ('Devuelto', 'reembolsada')} %}
+{% for d in cerrados %}{% set f = FIN.get(d.estado, (d.estado, '')) %}<tr><td class="mono">{{ d.resuelto_en|dia if d.resuelto_en else '—' }}</td><td>{{ d.producto }}{% if d.color %} <span class="pl-{{ d.color }}">plato {{ d.color }}</span>{% endif %}</td><td class="num">{{ d.cantidad|cant }}</td><td><span class="pago {{ f[1] }}">{{ f[0] }}</span></td><td class="mini">{{ d.cerro or '—' }}</td><td class="mini">{{ d.resolucion or '—' }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

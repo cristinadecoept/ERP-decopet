@@ -1250,6 +1250,32 @@ def _():
         assert con.execute("SELECT estado FROM danados WHERE id=?", (d["id"],)).fetchone()[0] == "reparado" and stock() == s0
         con.close()
 
+@prueba("Casos abiertos: el taller avisa que se está arreglando y, cuando queda, lo devuelve al inventario; a Cristina le llega el aviso")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        stock = lambda: con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?", (p,)).fetchone()[0]
+        con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad) VALUES (?,date('now'),'entrada',10)", (p,)); con.commit()
+        sesion_de(c, "taller")
+        c.post("/inventario/mov", data={"producto_id": str(p), "tipo": "danado", "cantidad": "2", "nota": "madera rajada"})
+        d = con.execute("SELECT * FROM danados WHERE producto_id=?", (p,)).fetchone()
+        r = c.get("/inventario/casos"); assert r.status_code == 200 and "madera rajada" in r.text and "Por revisar" in r.text
+        assert "Se botó" not in r.text, "botar o devolver lo decide Cristina"
+        assert "Walter" in c.get("/inventario/casos").text, "se puede elegir a Walter"
+        c.post(f"/inventario/danado/{d['id']}/reparando", data={"arregla": "Walter"})
+        assert tuple(con.execute("SELECT estado, arregla FROM danados WHERE id=?", (d["id"],)).fetchone()) == ("reparando", "Walter") and stock() == 8
+        r = c.get("/inventario/casos").text; assert "Arreglándose" in r and "Ya volvió" in r
+        c.post(f"/inventario/danado/{d['id']}/listo", data={"nota": "se le cambió la tabla"})
+        assert con.execute("SELECT estado FROM danados WHERE id=?", (d["id"],)).fetchone()[0] == "reparado" and stock() == 10, stock()
+        assert "No hay casos abiertos" in c.get("/inventario/casos").text
+        sesion_de(c, "admin")
+        inicio = c.get("/inicio").text
+        assert "Prueba taller: Walter está arreglando 2" in inicio and "volvió al inventario" in inicio, "Cristina se entera en Inicio"
+        sesion_de(c, "despachador")
+        assert "madera rajada" not in c.get("/inventario/casos").text, "el despachador no entra"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

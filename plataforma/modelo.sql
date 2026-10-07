@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS viajes_despachador (
 -- si se reparó (vuelve), se botó o se devolvió al proveedor.
 CREATE TABLE IF NOT EXISTS danados (
   id INTEGER PRIMARY KEY, producto_id INTEGER NOT NULL REFERENCES productos(id), color TEXT, cantidad REAL NOT NULL,
-  nota TEXT, fecha TEXT NOT NULL, usuario_id INTEGER, estado TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | reparado | desechado | devuelto
+  nota TEXT, fecha TEXT NOT NULL, usuario_id INTEGER, estado TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | reparando | reparado | desechado | devuelto
   resuelto_en TEXT, resuelto_por INTEGER, resolucion TEXT,
   creado_en TEXT DEFAULT (datetime('now','localtime')));
 
