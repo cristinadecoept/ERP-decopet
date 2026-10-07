@@ -6574,7 +6574,9 @@ def taller_hoy(request: Request, con=Depends(db)):
         d = g["agencia"] if agencia else g["cosas"]   # lo de la agencia va aparte: eso hay que embalarlo
         d[producto] = d.get(producto, 0) + n
 
-    for o in con.execute("""SELECT o.id, o.despachador, o.tipo_entrega, o.agencia FROM ordenes o
+    for o in con.execute("""SELECT o.id, COALESCE(NULLIF(TRIM(o.despachador),''),   -- un envío nacional lo lleva quien tiene el viaje a la agencia
+                                   (SELECT v.despachador FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL)) despachador,
+                            o.tipo_entrega, o.agencia FROM ordenes o
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
                               AND o.estado='pendiente' AND o.origen_excel=0   -- en ruta = ya salió del taller
                               AND """ + HAY_QUE_ENTREGAR() + """
