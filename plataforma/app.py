@@ -2,6 +2,7 @@
 import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, hashlib
 
 from pathlib import Path
+from urllib.parse import quote
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -366,7 +367,17 @@ def wa(tel):
     if s.strip().startswith("+"): return "https://wa.me/" + d
     if d.startswith("58"): return "https://wa.me/" + d
     return "https://wa.me/58" + d.lstrip("0")
+def wa_aviso(tel, cliente, despachador, lleva, manana=False):
+    """WhatsApp del cliente con el aviso ya escrito, para que el despachador solo le dé a enviar (Cristina, 6 oct)."""
+    base = wa(tel)
+    if not base: return ""
+    que = re.sub(r"[⟪⟫]", "", str(lleva or "")).strip()
+    hola = f"¡Hola{' ' + cliente if cliente else ''}! 👋 Soy {despachador} de Decopet. "
+    txt = hola + (f"Mañana te llevo tu pedido: {que}. Te aviso cuando esté en camino 🐾" if manana
+                  else f"Estoy por llevarte tu pedido: {que}. Te aviso cuando esté cerca 🐾")
+    return base + "?text=" + quote(txt)
 tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa=wa)
+tpl.env.globals["wa_aviso"] = wa_aviso
 # ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
 tpl.env.tests["lower_empieza"] = lambda caja, dijo: bool(dijo) and (caja or "").lower().startswith((dijo or "").lower())
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
@@ -586,6 +597,7 @@ COLUMNAS = (
     ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
     ("pagos", "en_cashflow", "INTEGER NOT NULL DEFAULT 0"),   # ya lo pasó Cristina al libro a mano
     ("viajes_agencia", "llevado_en", "TEXT"),
+    ("viajes_agencia", "oficina", "TEXT"),   # a qué oficina de esa agencia lo lleva (Tealca: Los Palos Grandes $5 o Catia $10)
     ("registro_ventas", "fecha_original", "TEXT"), ("registro_ventas", "inicial", "REAL"), ("registro_ventas", "cuota1", "REAL"),   # el Excel tal cual
     ("registro_ventas", "cuota2", "REAL"), ("registro_ventas", "cuota3", "REAL"), ("registro_ventas", "orden_excel", "TEXT"),   # vacío = asignado; con fecha = ya los llevó a la agencia (recién ahí se le debe)
     ("usuarios", "usuario", "TEXT"), ("usuarios", "clave_hash", "TEXT"), ("usuarios", "creado_en", "TEXT"),
@@ -2168,8 +2180,9 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     # en Operaciones solo lo que falta llevar. Lo ya llevado pasa a la ficha del despachador (ahí se deshace si hizo falta).
     # Pagarlo no es de aquí: se le paga el viernes con lo demás, desde su ficha de despachador.
     tarifas_ag = {a: tarifa_agencia(con, a) for a in AGENCIAS}
+    oficinas_ag = oficinas_agencia(con)
     return render(request, "operaciones.html", seccion="operaciones", grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, total=len(lista), hoy_iso=hoy, manana_iso=manana,
-                  por_llevar=por_llevar, por_agencia=por_agencia, viajes=viajes, tarifas_ag=tarifas_ag,
+                  por_llevar=por_llevar, por_agencia=por_agencia, viajes=viajes, tarifas_ag=tarifas_ag, oficinas_ag=oficinas_ag,
                   tipo=tipo, agencia=agencia, conteos_tipo=conteos_tipo, conteos_ag=conteos_ag, dia=dia, desp=desp, despachadores=despachadores, conteos_desp=conteos_desp, vista=vista, fecha_larga=fecha_larga, q=q)
 
 
@@ -5643,6 +5656,14 @@ def fijar_pago_despachador(con, oid):
     referencia para chequear; no deciden lo que se le paga."""
     con.execute("UPDATE ordenes SET pago_despachador=NULL WHERE id=?", (oid,))
 
+OFICINAS_AGENCIA = {"Tealca": {"Los Palos Grandes": 5.0, "Catia": 10.0}}   # valor de arranque; se cambia en Tarifas
+
+def oficinas_agencia(con):
+    """Las agencias en que se paga distinto según la oficina a la que se lleva (Cristina, 6 oct: Tealca Los Palos
+    Grandes $5, Tealca Catia $10). Las demás agencias no se distinguen por oficina."""
+    return cfg_json(con, "oficinas_agencia", OFICINAS_AGENCIA) or OFICINAS_AGENCIA
+
+
 def tarifa_agencia(con, agencia):
     """Llevar los pedidos a la agencia se paga por viaje, no por pedido: lleve 1 o lleve 6, es la misma tarifa."""
     t = cfg_json(con, "tarifa_agencia", {}) or {}
@@ -5950,7 +5971,7 @@ def viajes_hist(con, nombre, vigentes=False):
     for v in con.execute("""SELECT * FROM viajes_agencia WHERE despachador=? AND llevado_en IS NOT NULL """ + ("AND NOT (pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=pago_id) IS NOT NULL) " if vigentes else "") +
                          """ORDER BY fecha DESC, id DESC LIMIT 60""", (nombre,)):
         n = v["pedidos"] or 0
-        out.append({"id": None, "numero": None, "fecha": v["fecha"], "pago": v["monto"], "quien": f"Viaje a {v['agencia'] or 'la agencia'}", "cliente": None,
+        out.append({"id": None, "numero": None, "fecha": v["fecha"], "pago": v["monto"], "quien": f"Viaje a {v['agencia'] or 'la agencia'}" + (f" {v['oficina']}" if v["oficina"] else ""), "cliente": None,
                     "zona": None, "direccion": f"llevó {n} pedido{'s' if n != 1 else ''}" if n else None, "ciudad": None,
                     "despachador_pagado": v["pagado"], "estado": "entregada", "nota": v["nota"], "que": None})
     return out
@@ -6228,15 +6249,18 @@ async def viaje_crear(request: Request, con=Depends(db)):
     filas = con.execute(f"SELECT id, agencia FROM ordenes WHERE id IN ({q}) AND viaje_id IS NULL", ids).fetchall()
     if not filas: return RedirectResponse(volver, status_code=303)
     agencia = (f.get("agencia") or "").strip() or next((r["agencia"] for r in filas if r["agencia"]), "")
-    monto = cifra(f.get("monto")) if (f.get("monto") or "").strip() else tarifa_agencia(con, agencia)
+    ofis = oficinas_agencia(con).get(agencia) or {}
+    oficina = (f.get("oficina") or "").strip() if ofis else ""
+    if ofis and oficina not in ofis: return RedirectResponse(volver, status_code=303)   # en Tealca hay que decir a cuál oficina
+    monto = cifra(f.get("monto")) if (f.get("monto") or "").strip() else (ofis[oficina] if oficina else tarifa_agencia(con, agencia))
     fecha = f.get("fecha") or datetime.date.today().isoformat()
     uid = uid_de(request)
-    cur = con.execute("""INSERT INTO viajes_agencia (fecha, despachador, agencia, monto, pedidos, nota, usuario_id)
-                         VALUES (?,?,?,?,?,?,?)""", (fecha, desp, agencia or None, monto, len(filas), (f.get("nota") or "").strip() or None, uid))
+    cur = con.execute("""INSERT INTO viajes_agencia (fecha, despachador, agencia, oficina, monto, pedidos, nota, usuario_id)
+                         VALUES (?,?,?,?,?,?,?,?)""", (fecha, desp, agencia or None, oficina or None, monto, len(filas), (f.get("nota") or "").strip() or None, uid))
     vid = cur.lastrowid
     con.execute(f"UPDATE ordenes SET viaje_id=?, agencia=COALESCE(NULLIF(agencia,''),?) WHERE id IN ({','.join('?' * len(filas))})",
                 (vid, agencia or None, *[r["id"] for r in filas]))
-    for r in filas: registrar(con, r["id"], uid, "despachador", f"{desp} lo va a llevar a {agencia or 'la agencia'}")
+    for r in filas: registrar(con, r["id"], uid, "despachador", f"{desp} lo va a llevar a {agencia or 'la agencia'}" + (f" {oficina}" if oficina else ""))
     con.commit()
     return RedirectResponse(volver, status_code=303)
 
@@ -6286,7 +6310,7 @@ def despachadores_guardar(request: Request, id: int = Form(0), nombre: str = For
 def tarifas(request: Request, q: str = "", con=Depends(db)):
     rows = con.execute("SELECT * FROM tarifas WHERE zona LIKE ? ORDER BY orden, tarifa, zona", (f"%{q}%",)).fetchall()
     ta = cfg_json(con, "tarifa_agencia", {}) or {}
-    return render(request, "tarifas.html", seccion="tarifas", tarifas=rows, tarifas_dil=tarifas_diligencia(con), tarifas_ag={a: float(ta.get(a, ta.get("*", 5))) for a in AGENCIAS})
+    return render(request, "tarifas.html", seccion="tarifas", tarifas=rows, tarifas_dil=tarifas_diligencia(con), tarifas_ag={a: float(ta.get(a, ta.get("*", 5))) for a in AGENCIAS}, oficinas_ag=oficinas_agencia(con))
 
 
 @app.post("/tarifas/guardar")
@@ -6326,6 +6350,12 @@ async def tarifas_agencias(request: Request, con=Depends(db)):
         v = (f.get(f"ag_{a}") or "").strip()
         if v: t[a] = cifra(v)
     t["*"] = cifra(f.get("ag_otra") or "5")
+    ofis = {a: dict(o) for a, o in oficinas_agencia(con).items()}
+    for a, o in ofis.items():
+        for nom in o:
+            v = (f.get(f"of_{a}_{nom}") or "").strip()
+            if v: o[nom] = cifra(v)
+    con.execute("INSERT INTO config (clave,valor) VALUES ('oficinas_agencia',?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor", (json.dumps(ofis, ensure_ascii=False),))
     con.execute("INSERT INTO config (clave,valor) VALUES ('tarifa_agencia',?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor", (json.dumps(t, ensure_ascii=False),))
     con.commit(); return RedirectResponse("/tarifas", status_code=303)
 
