@@ -28,10 +28,10 @@
  <td class="mini">{{ proveedor_visible(rol, l.responsable) or '—' }}</td>
  <td class="num" style="padding-right:18px">{{ l.cantidad }}</td>
  <td class="mono">{% if l.fecha_esperada and l.fecha_esperada <= hoy_iso %}<b>hoy</b>{% elif l.fecha_esperada %}{{ l.fecha_esperada|dia }}{% else %}—{% endif %}</td>
- <td style="padding-left:20px"><form method="post" action="/taller/llegada/{{ l.id }}" style="display:flex;gap:6px;align-items:center">
+ <td style="padding-left:20px"><form method="post" action="/taller/llegada/{{ l.id }}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
    {% if l.requiere_color %}<span class="pl-azul">azul</span><input name="azul" inputmode="numeric" placeholder="0" style="width:56px;text-align:right"><span class="pl-rosado">rosado</span><input name="rosado" inputmode="numeric" placeholder="0" style="width:56px;text-align:right">
-   {% else %}<input name="cantidad" inputmode="numeric" {% if l.recibido %}placeholder="faltan {{ l.cantidad - l.recibido }}"{% else %}value="{{ l.cantidad }}"{% endif %} required style="width:90px;text-align:right">{% endif %}
-   <input name="nota" placeholder="¿algo vino mal?" style="width:160px">
+   {% else %}<input name="cantidad" inputmode="numeric" {% if l.recibido %}placeholder="faltan {{ l.cantidad - l.recibido }}"{% else %}value="{{ l.cantidad }}"{% endif %} required style="width:70px;text-align:right">{% endif %}
+   <input name="nota" placeholder="¿algo vino mal?" style="flex:1 1 120px;min-width:0;max-width:170px">
    <button class="btn chico">Confirmar</button></form></td>
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">No hay nada pedido esperando llegar.</div>{% endif %}</div>
