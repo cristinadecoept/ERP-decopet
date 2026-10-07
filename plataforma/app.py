@@ -4612,8 +4612,8 @@ def recurrente_toggle(request: Request, cid: int, con=Depends(db)):
 PIEZAS_PRODUCCION = [
     # las cajas entran como insumo: el porche las descuenta de ahí al venderse (ver receta)
     ("Caja de madera mediana", "INS-CAJAM", True), ("Caja de madera grande", "INS-CAJAG", True),
-    ("Comedor Mini", "COM-10", True), ("Comedor Pequeño", "COM-15", True), ("Comedor Mediano", "COM-20", True),
-    ("El Bar Grande", "BAR-25", True), ("El Bar Gigante", "BAR-30", True),
+    ("Comedor Mini 10 cm", "COM-10", True), ("Comedor Pequeño 15 cm", "COM-15", True), ("Comedor Mediano 20 cm", "COM-20", True),
+    ("El Bar Grande 25 cm", "BAR-25", True), ("El Bar Gigante 30 cm", "BAR-30", True),
     # Walter entrega el Slow Chow sin plato; al confirmar que llegó, el taller dice cuántos van azules y cuántos rosados
     ("Slow Chow Pequeño 10 cm", "SLOW-10", True), ("Slow Chow Mediano 15 cm", "SLOW-15", True), ("Slow Chow Grande 25 cm", "SLOW-20", True), ("Slow Chow Gigante 30 cm", "SLOW-30", True),
     ("Rampa Nueva", "RAMPA-N", True), ("Rampa Para Perros Mini", "RAMPA-MINI", True),
