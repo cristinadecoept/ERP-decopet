@@ -242,6 +242,8 @@ def _():
     t = A.texto_aviso("Oreana", "Ingrid", "1× Comedor", False, "La Urbina", "https://www.google.com/maps?q=10.4877,-66.8043&z=17", "Caracas")
     assert "Voy a: La Urbina" in t and "📍 https://www.google.com/maps?q=10.4877,-66.8043" in t and "¿Me confirmas que es tu dirección?" in t, t
     assert "❤" not in t and "💚" in t, "en Decopet el corazón es verde"
+    t = A.texto_aviso("Marisol", "Ingrid", "1× Rampa", True, "Caricuao UD-4", None, "Caracas")
+    assert "Voy a: Caricuao UD-4" in t and "http" not in t and "me mandas tu ubicación" in t, "sin link guardado no se inventa un mapa"
     t = A.texto_aviso("Pedro", "Ingrid", "1× Rampa", True)
     assert "¿Me pasas tu dirección y tu ubicación" in t and "Mañana te llevo" in t, t
 
