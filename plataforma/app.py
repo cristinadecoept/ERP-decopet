@@ -1137,6 +1137,7 @@ def inicio(request: Request, con=Depends(db)):
                    "hechos_rep": len(rep_h), "hechos_cumples": len(cumples_hechos), "hechos_cobro": len(cobro_h)}
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
     c["faltan_agencia"] = faltan_datos_agencia(con)
+    c["danados"] = danados_pendientes(con)
     c["falta_ubicacion"] = falta_ubicacion(con)
     # clientes nuevos (desde que arrancó el registro) que compraron y no tienen ningún perro anotado (Cristina, 7 oct)
     desde_r = (con.execute("SELECT valor FROM config WHERE clave='registro_desde'").fetchone() or ["2026-10-03"])[0]
@@ -4094,7 +4095,29 @@ def inventario(request: Request, q: str = "", con=Depends(db)):
     prods = filas
     if q.strip(): prods = [p for p in prods if q.strip().lower() in (p["nombre"] or "").lower()]
     movs = con.execute("SELECT m.*, p.nombre producto, u.nombre usuario FROM mov_inventario m JOIN productos p ON p.id=m.producto_id LEFT JOIN usuarios u ON u.id=m.usuario_id ORDER BY m.id DESC LIMIT 40").fetchall()
-    return render(request, "inventario.html", seccion="inventario", q=q, productos=prods, movs=movs)
+    danados = danados_pendientes(con)
+    for p in prods:   # cuántos de esa fila están dañados (con su color, si lleva)
+        p["danados"] = sum(d["cantidad"] for d in danados if d["producto_id"] == p["id"] and (not p.get("color") or d["color"] == p.get("color")))
+    return render(request, "inventario.html", seccion="inventario", q=q, productos=prods, movs=movs, danados=danados)
+
+
+@app.post("/inventario/danado/{did}/resolver")
+def inventario_danado_resolver(request: Request, did: int, como: str = Form(...), nota: str = Form(""), con=Depends(db)):
+    """Qué pasó con lo dañado: se reparó (vuelve a disponible), se botó, o se devolvió al proveedor."""
+    if not solo_admin(request): return RedirectResponse("/inventario", status_code=303)
+    d = con.execute("SELECT d.*, p.nombre FROM danados d JOIN productos p ON p.id=d.producto_id WHERE d.id=? AND d.estado='pendiente'", (did,)).fetchone()
+    if not d or como not in ("reparado", "desechado", "devuelto"): return RedirectResponse("/inventario#danados", status_code=303)
+    hoy = datetime.date.today().isoformat()
+    if como == "reparado":
+        con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
+                    (d["producto_id"], hoy, "reparado", d["cantidad"], "se reparó, vuelve a disponible" + (f": {nota.strip()}" if nota.strip() else ""), d["color"], uid_de(request)))
+    con.execute("UPDATE danados SET estado=?, resuelto_en=?, resuelto_por=?, resolucion=? WHERE id=?", (como, hoy, uid_de(request), nota.strip() or None, did))
+    con.commit(); return RedirectResponse("/inventario#danados", status_code=303)
+
+
+def danados_pendientes(con):
+    return [dict(r) for r in con.execute("""SELECT d.*, p.nombre producto, u.nombre quien FROM danados d JOIN productos p ON p.id=d.producto_id
+                                           LEFT JOIN usuarios u ON u.id=d.usuario_id WHERE d.estado='pendiente' ORDER BY d.fecha, d.id""")]
 
 
 @app.post("/inventario/mov")
@@ -4109,6 +4132,14 @@ def inventario_mov(request: Request, producto_id: str = Form(...), tipo: str = F
     lleva_color = con.execute("SELECT requiere_color FROM productos WHERE id=?", (producto_id,)).fetchone()
     if not (lleva_color and lleva_color[0]): color = ""   # el formulario manda el color aunque esté escondido
     elif (color or "").lower() not in PLATO_DE_COLOR: return RedirectResponse("/inventario", status_code=303)   # Slow Chow siempre con su color
+    if tipo == "danado":   # está pero está malo: sale de lo disponible y queda pendiente de qué hacer con él
+        if not cantidad: return RedirectResponse("/inventario", status_code=303)
+        con.execute("INSERT INTO danados (producto_id, color, cantidad, nota, fecha, usuario_id) VALUES (?,?,?,?,?,?)",
+                    (producto_id, (color or "").lower() or None, abs(cantidad), nota.strip() or None, fecha or datetime.date.today().isoformat(), uid_de(request)))
+        con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
+                    (producto_id, fecha or datetime.date.today().isoformat(), "dañado", -abs(cantidad), "dañado" + (f": {nota.strip()}" if nota.strip() else ""),
+                     (color or "").lower() or None, uid_de(request)))
+        con.commit(); return RedirectResponse("/inventario#danados", status_code=303)
     q = abs(cantidad) if tipo == "entrada" else (-abs(cantidad) if tipo == "salida" else cantidad)
     con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
                 (producto_id, fecha or datetime.date.today().isoformat(), tipo, q, nota or None, (color or "").lower() or None, uid_de(request)))

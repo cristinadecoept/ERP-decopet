@@ -6,6 +6,7 @@
 {% set pend = [] %}
 {% if rol=='admin' and c.por_revisar %}{% set _ = pend.append(('/ordenes?estado=por_revisar', c.por_revisar ~ ' pago' ~ ('s' if c.por_revisar!=1) ~ ' por revisar', 'revisar', 'nar')) %}{% endif %}
 {% if 'ver_cobros' in puede and c.con_saldo %}{% set _ = pend.append(('/operaciones?cola=con_saldo', c.con_saldo ~ ' orden' ~ ('es' if c.con_saldo!=1) ~ ' con saldo pendiente · ' ~ (c.saldo_total|usd), 'cobrar', 'nar')) %}{% endif %}
+{% if rol == 'admin' %}{% for d in c.danados %}{% set _ = pend.append(('/inventario#danados', (d.quien or 'El taller') ~ ' reportó dañado: ' ~ (d.cantidad|cant) ~ ' ' ~ d.producto ~ (' plato ' ~ d.color if d.color else '') ~ (' · ' ~ d.nota if d.nota else ''), 'resolver', 'nar')) %}{% endfor %}{% endif %}
 {% if rol in ['admin','logistica'] %}{% for x in c.sin_mascota %}{% set _ = pend.append(('__mascota__' ~ x.id, 'Registraste a ' ~ x.nombre ~ ' (cliente nuevo) y no tiene info de su perro', x, '')) %}{% endfor %}{% endif %}
 {% if rol in ['admin','logistica'] %}{% for x in c.falta_ubicacion %}{% set _ = pend.append(('__agencia__' ~ x.id, 'Delivery ' ~ x.numero ~ ' · ' ~ x.quien ~ ': falta la ubicación (link de Maps)', x, 'nar')) %}{% endfor %}{% endif %}
 {% if rol in ['admin','logistica'] %}{% for x in c.faltan_agencia %}{% set _ = pend.append(('__agencia__' ~ x.id, 'Envío nacional ' ~ x.numero ~ ' · ' ~ x.quien ~ ': falta ' ~ x.faltan ~ ' para ' ~ x.agencia, x, 'nar')) %}{% endfor %}{% endif %}

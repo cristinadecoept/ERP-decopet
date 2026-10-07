@@ -1211,6 +1211,26 @@ def _():
         assert "Registraste a Mariel Mora" not in c.get("/inicio").text
         con.close()
 
+@prueba("Dañados: el taller reporta una rampa dañada (sale de disponible, queda pendiente); solo Cristina la resuelve")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        stock = lambda: con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?", (p,)).fetchone()[0]
+        con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad) VALUES (?,date('now'),'entrada',10)", (p,)); con.commit()
+        s0 = stock()
+        sesion_de(c, "taller")
+        c.post("/inventario/mov", data={"producto_id": str(p), "tipo": "danado", "cantidad": "1", "nota": "tela rota"})
+        d = con.execute("SELECT * FROM danados WHERE producto_id=?", (p,)).fetchone()
+        assert d and d["estado"] == "pendiente" and d["nota"] == "tela rota" and stock() == s0 - 1, (dict(d) if d else None, stock())
+        c.post(f"/inventario/danado/{d['id']}/resolver", data={"como": "reparado"})
+        assert con.execute("SELECT estado FROM danados WHERE id=?", (d["id"],)).fetchone()[0] == "pendiente", "el taller no decide"
+        sesion_de(c, "admin")
+        assert "tela rota" in c.get("/inicio").text, "Cristina lo ve en Inicio"
+        c.post(f"/inventario/danado/{d['id']}/resolver", data={"como": "reparado"})
+        assert con.execute("SELECT estado FROM danados WHERE id=?", (d["id"],)).fetchone()[0] == "reparado" and stock() == s0
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

@@ -244,6 +244,14 @@ CREATE TABLE IF NOT EXISTS viajes_despachador (
   usuario_id INTEGER, creado_en TEXT DEFAULT (datetime('now','localtime')));
 
 -- Avisos que deja el taller: "llegaron 2 partidas", "se acabó la cinta". Los lee Cristina en Inicio.
+-- Lo que está pero está malo (Cristina, 7 oct 2026): sale de lo disponible y queda pendiente hasta que se decide
+-- si se reparó (vuelve), se botó o se devolvió al proveedor.
+CREATE TABLE IF NOT EXISTS danados (
+  id INTEGER PRIMARY KEY, producto_id INTEGER NOT NULL REFERENCES productos(id), color TEXT, cantidad REAL NOT NULL,
+  nota TEXT, fecha TEXT NOT NULL, usuario_id INTEGER, estado TEXT NOT NULL DEFAULT 'pendiente',   -- pendiente | reparado | desechado | devuelto
+  resuelto_en TEXT, resuelto_por INTEGER, resolucion TEXT,
+  creado_en TEXT DEFAULT (datetime('now','localtime')));
+
 CREATE TABLE IF NOT EXISTS notas_taller (
   id INTEGER PRIMARY KEY, fecha TEXT NOT NULL, texto TEXT NOT NULL,
   usuario_id INTEGER, visto INTEGER NOT NULL DEFAULT 0,
