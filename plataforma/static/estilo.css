@@ -1359,8 +1359,10 @@ html.oscuro .cal-ev{filter:brightness(.85)}
 .cal-dia-ln{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--linea);color:inherit;text-decoration:none}
 .cal-dia-ln .cal-ev{white-space:normal;font-size:12.5px}
 .cal-nuevo{display:flex;gap:6px;margin-top:10px}.cal-nuevo input{flex:1}
-.cal-nuevo2{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin:8px 0}
-.cal-nuevo2 input[name=texto]{grid-column:1/-1}
+.cal-nuevo2{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}   /* en la tarjeta angosta se acomoda en líneas, sin salirse */
+.cal-nuevo2>*{flex:1 1 auto;min-width:0}
+.cal-nuevo2>.btn{flex:0 0 auto}
+.cal-nuevo2 input[name=texto]{flex:1 1 100%}
 .cal-nuevo2 .btn.pel{grid-column:3}
 .pend-ln{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--linea)}
 .pend-ln.atras .mini{color:#b45a1c}

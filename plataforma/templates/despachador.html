@@ -18,7 +18,7 @@
 <details class="eq-pagar"><summary class="btn sec chico">+ Diligencia</summary>
  <form method="post" action="/despachadores/{{ d.id }}/diligencia" class="fal-f">
   {% if tarifas_dil %}<select onchange="const o=this.selectedOptions[0];if(o.value){this.form.que.value=o.value;this.form.monto.value=o.dataset.p}"><option value="">Elegir de la lista…</option>{% for t in tarifas_dil %}<option value="{{ t.nombre }}" data-p="{{ '%g'|format(t.precio) }}">{{ t.nombre }} · ${{ '%g'|format(t.precio) }}</option>{% endfor %}</select>{% endif %}
-  <input name="que" required placeholder="¿Qué hizo? (ej. buscar tela en el centro)" style="min-width:260px">
+  <input name="que" required placeholder="¿Qué hizo? (ej. buscar tela en el centro)" style="min-width:min(260px,100%)">
   <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
   <input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}">
   <button class="btn chico">Anotar</button></form>
