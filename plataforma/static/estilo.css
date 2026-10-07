@@ -1580,3 +1580,5 @@ input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:non
 .hoy-graf .hg-valor{font-size:11px;font-weight:600;fill:var(--tinta)}
 .hoy-graf .hg-hoy-t{font-weight:600;fill:var(--tinta)}
 .hg-cobrar{color:#b45a1c;font-weight:600;text-decoration:none}.hg-cobrar:hover{text-decoration:underline}
+.ctl-buscar{position:sticky;top:0;z-index:1;width:100%;margin:0 0 4px;padding:8px 10px;border:1px solid var(--linea);border-radius:8px;background:var(--sup);font:inherit;font-size:13.5px}
+.ctl-pop .ctl-op[hidden],.ctl-pop .ctl-vacio[hidden]{display:none}

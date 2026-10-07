@@ -48,8 +48,27 @@
   }
 
   // ── lista de opciones (para los select y para el buscador)
-  function lista(dueno, items, alElegir, actual, vacio) {
+  function lista(dueno, items, alElegir, actual, vacio, buscar) {
     const p = caja(dueno, 'ctl-lista'); p.setAttribute('role', 'listbox');
+    if (buscar) {   // lista larga (zonas, productos…): un buscador arriba; se escribe y quedan solo las que coinciden
+      const b = document.createElement('input');
+      b.className = 'ctl-buscar'; b.placeholder = 'Buscar…'; b.setAttribute('autocomplete', 'off');
+      b.addEventListener('input', () => {
+        const q = plano(b.value.trim());
+        p.querySelectorAll('.ctl-op').forEach(o => { o.hidden = !!q && !plano(o.textContent).includes(q); });
+        const v = p.querySelector('.ctl-vacio-b'); if (v) v.hidden = !!p.querySelector('.ctl-op:not([hidden])');
+        enfocar(p.querySelector('.ctl-op:not(.des):not([hidden])'));
+      });
+      b.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); mover(e.key === 'ArrowDown' ? 1 : -1); }
+        else if (e.key === 'Enter') { e.preventDefault(); elegirFoco(); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(); dueno.focus(); }
+        else if (e.key === 'Tab') cerrar();
+      });
+      p.appendChild(b);
+      const v = document.createElement('div'); v.className = 'ctl-vacio ctl-vacio-b'; v.textContent = 'No aparece'; v.hidden = true; p.appendChild(v);
+      setTimeout(() => b.focus(), 0);
+    }
     items.forEach(it => {
       const o = document.createElement('div');
       o.className = 'ctl-op' + (it.valor === actual ? ' sel' : '') + (it.des ? ' des' : '');
@@ -70,7 +89,7 @@
     o.classList.add('foco'); o.scrollIntoView({ block: 'nearest' });
   }
   function mover(d) {
-    const ops = [...abierto.querySelectorAll('.ctl-op:not(.des)')];
+    const ops = [...abierto.querySelectorAll('.ctl-op:not(.des):not([hidden])')];
     if (!ops.length) return;
     const i = ops.indexOf(abierto.querySelector('.ctl-op.foco'));
     enfocar(ops[Math.max(0, Math.min(ops.length - 1, i + d))]);
@@ -91,8 +110,9 @@
     sel.dataset.ctl = '1';
     const abrir = () => {
       if (esDe(sel)) { cerrar(); return; }
-      lista(sel, [...sel.options].filter(o => !o.hidden).map(o => ({ valor: o.value, texto: o.textContent.trim() || '—', des: o.disabled })),
-        it => { if (sel.value !== it.valor) { sel.value = it.valor; avisar(sel); } sel.focus(); }, sel.value);
+      const ops = [...sel.options].filter(o => !o.hidden);
+      lista(sel, ops.map(o => ({ valor: o.value, texto: o.textContent.trim() || '—', des: o.disabled })),
+        it => { if (sel.value !== it.valor) { sel.value = it.valor; avisar(sel); } sel.focus(); }, sel.value, null, ops.length > 12);
     };
     sel.addEventListener('mousedown', e => { if (sel.disabled) return; e.preventDefault(); sel.focus(); abrir(); });
     sel.addEventListener('keydown', e => {
@@ -104,7 +124,7 @@
         else if (k === 'Tab') cerrar();
       } else if (k === 'Enter' || k === ' ' || k === 'ArrowDown' || (k === 'ArrowUp' && e.altKey) || k === 'F4') { e.preventDefault(); abrir(); }
     });
-    sel.addEventListener('blur', () => setTimeout(() => { if (esDe(sel) && document.hasFocus() && document.activeElement !== sel) cerrar(); }, 120));
+    sel.addEventListener('blur', () => setTimeout(() => { if (esDe(sel) && document.hasFocus() && document.activeElement !== sel && !abierto.contains(document.activeElement)) cerrar(); }, 120));
   }
 
   // ── buscador (campos con lista de sugerencias): se busca por nombre sin importar tildes, o por teléfono
