@@ -71,10 +71,11 @@
   {% if fija %}<td class="num">{{ l.cantidad|int }}</td><td class="num">{{ l.precio|usd }}</td><td></td>
   {% else %}<td class="num"><input name="cant_{{ l.id }}" inputmode="decimal" value="{{ '%g'|format(l.cantidad) }}" style="width:56px;text-align:right"></td>
   <td class="num"><input name="precio_{{ l.id }}" inputmode="decimal" value="{{ '%g'|format(l.precio or 0) }}" style="width:76px;text-align:right"></td>
-  <td><label class="chk" title="Quitar este producto"><input type="checkbox" name="quitar_{{ l.id }}" value="1"> <span class="mini">quitar</span></label></td>{% endif %}
+  <td><label class="chk" title="Quitar este producto"><input type="checkbox" name="quitar_{{ l.id }}" value="1"> <span class="mini">quitar</span></label>{% if l.color or (l.nombre or '').startswith('Slow Chow') %}<select name="color_{{ l.id }}" style="margin-top:4px;width:auto;font-size:12.5px"><option value="azul" {{ 'selected' if l.color=='azul' }}>plato azul</option><option value="rosado" {{ 'selected' if l.color=='rosado' }}>plato rosado</option>{% if not l.color %}<option value="" selected>sin color</option>{% endif %}</select>{% endif %}</td>{% endif %}
  </tr>{% endfor %}
  </table>
- <div style="display:flex;gap:6px;align-items:center;margin-top:8px"><select name="nuevo_producto" style="flex:1;min-width:0"><option value="">+ Agregar producto…</option>{% for p in vendibles %}<option value="{{ p.id }}">{{ p.nombre }} · {{ '$%g'|format(p.precio or 0) }}</option>{% endfor %}</select>
+ <div style="display:flex;gap:6px;align-items:center;margin-top:8px"><select name="nuevo_producto" style="flex:1;min-width:0" onchange="const c=this.form.querySelector('[name=nuevo_color]'),o=this.selectedOptions[0];c.hidden=!(o&&o.dataset.color==='1');c.required=!c.hidden"><option value="">+ Agregar producto…</option>{% for p in vendibles %}<option value="{{ p.id }}" data-color="{{ 1 if p.requiere_color else 0 }}">{{ p.nombre }} · {{ '$%g'|format(p.precio or 0) }}</option>{% endfor %}</select>
+  <select name="nuevo_color" hidden style="width:auto"><option value="">plato…</option><option value="azul">azul</option><option value="rosado">rosado</option></select>
   <input name="nuevo_cant" inputmode="decimal" value="1" style="width:56px;text-align:right" title="Cantidad"></div>
  <div class="g2" style="margin-top:6px"><div><label>Descuento USD</label><input name="descuento" inputmode="decimal" value="{{ '%g'|format(o.descuento or 0) }}"></div>
  <div><label>Delivery USD</label><input name="delivery" inputmode="decimal" value="{{ '%g'|format(o.delivery - (o.lineas|selectattr('extra_en')|selectattr('nombre','equalto','Delivery')|map(attribute='total')|sum)) }}"></div></div>

@@ -1547,7 +1547,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
 def orden_panel(request: Request, oid: int, con=Depends(db)):
     o = cargar_orden(con, oid)
     if not o: return HTMLResponse("<p>No existe.</p>")
-    vendibles = con.execute("""SELECT id, nombre, precio FROM productos WHERE activo=1 AND tipo NOT IN ('opcion','insumo') AND COALESCE(sku,'') NOT LIKE 'PACK%'
+    vendibles = con.execute("""SELECT id, nombre, precio, requiere_color FROM productos WHERE activo=1 AND tipo NOT IN ('opcion','insumo') AND COALESCE(sku,'') NOT LIKE 'PACK%'
                                ORDER BY categoria, nombre""").fetchall()
     return render(request, "_orden_panel.html", o=o, vendibles=vendibles)
 
@@ -1734,14 +1734,20 @@ async def editar_orden(request: Request, oid: int, con=Depends(db)):
         if abs(c - (l["cantidad"] or 0)) > 1e-9 or abs(pu - (l["precio"] or 0)) > 1e-9:
             con.execute("UPDATE orden_lineas SET cantidad=?, precio=?, total=? WHERE id=?", (c, pu, round(pu * c + (l["extras"] or 0), 2), l["id"]))
             cambios.append(f"{l['nombre']}: {l['cantidad']:g}× {fmt_usd(l['precio'] or 0)} → {c:g}× {fmt_usd(pu)}")
+        col = f.get(f"color_{l['id']}")
+        if col in PLATO_DE_COLOR and col != (l["color"] or ""):
+            con.execute("UPDATE orden_lineas SET color=? WHERE id=?", (col, l["id"])); cambios.append(f"{l['nombre']}: plato {l['color'] or 'sin color'} → {col}")
     for pid_n, cant_n in zip(f.getlist("nuevo_producto"), f.getlist("nuevo_cant")):
         if not pid_n: continue
         p = con.execute("SELECT * FROM productos WHERE id=? AND tipo NOT IN ('opcion','insumo')", (pid_n,)).fetchone()
         if not p or (p["sku"] or "").startswith("PACK"): continue
+        col = f.get("nuevo_color") if p["requiere_color"] else None
+        if p["requiere_color"] and col not in PLATO_DE_COLOR:
+            con.rollback(); return _falta("Falta elegir el color del plato (azul o rosado) del Slow Chow que agregaste.")
         c = cifra(cant_n) or 1
-        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,?,?,?,?)",
-                    (oid, p["id"], p["nombre"], c, p["precio"], p["costo"], round(precio_linea(p, c), 2)))
-        cambios.append(f"agregó {c:g}× {p['nombre']}")
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total,color) VALUES (?,?,?,?,?,?,?,?)",
+                    (oid, p["id"], p["nombre"], c, p["precio"], p["costo"], round(precio_linea(p, c), 2), col))
+        cambios.append(f"agregó {c:g}× {p['nombre']}" + (f" (plato {col})" if col else ""))
     lineas = con.execute("SELECT l.*, p.costo costo_p FROM orden_lineas l LEFT JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?", (oid,)).fetchall()
     normales = [l for l in lineas if not l["extra_en"]]
     if not normales: con.rollback(); return volver(oid, request)   # una orden sin productos: para eso está Cancelar
@@ -2180,6 +2186,8 @@ async def crear_orden(request: Request, con=Depends(db)):
         subtotal += base + extras; costo += (p["costo"] or 0) * c + extras_costo
     if not lineas:
         con.rollback(); return HTMLResponse("<p style='font-family:sans-serif;padding:30px'>La orden no tiene productos. Vuelve atrás y agrega al menos uno.</p>", 400)
+    if any(p["requiere_color"] and color not in PLATO_DE_COLOR for (p, _c, _pe, color, *_r) in lineas):   # sin color no se sabe qué plato sale del inventario
+        con.rollback(); return _falta("Falta elegir el color del plato (azul o rosado) del Slow Chow.")
     px = float(f.get("personalizacion_extra") or 0)
     if px > 0:   # personalización cobrada aparte (monto libre): entra como línea de opción
         lineas.append((OPC["OPC-PERSO"], 1, (f.get("personalizacion_nombre") or "").strip() or None, None, 0, 0, px, False)); subtotal += px; costo += OPC["OPC-PERSO"]["costo"] or 0
@@ -4077,6 +4085,9 @@ def inventario(request: Request, q: str = "", con=Depends(db)):
                                  AND o.creado_en>=date('now','-30 days')""", (p["id"], col)).fetchone()[0]
             filas.append(dict(p) | {"color": col, "stock_calc": st, "vendidos_30": v30,
                                     "minimo": (p["minimo"] or 0) // 2})
+        # lo que quedó anotado sin color (no debería pasar) se ve aparte para poder corregirlo, en vez de perderse
+        sc = con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=? AND COALESCE(color,'') NOT IN ('azul','rosado')", (p["id"],)).fetchone()[0]
+        if abs(sc) > 1e-9: filas.append(dict(p) | {"color": None, "sin_color": True, "stock_calc": sc, "vendidos_30": 0, "minimo": 0})
     prods = filas
     if q.strip(): prods = [p for p in prods if q.strip().lower() in (p["nombre"] or "").lower()]
     movs = con.execute("SELECT m.*, p.nombre producto, u.nombre usuario FROM mov_inventario m JOIN productos p ON p.id=m.producto_id LEFT JOIN usuarios u ON u.id=m.usuario_id ORDER BY m.id DESC LIMIT 40").fetchall()
@@ -4084,12 +4095,17 @@ def inventario(request: Request, q: str = "", con=Depends(db)):
 
 
 @app.post("/inventario/mov")
-def inventario_mov(request: Request, producto_id: int = Form(...), tipo: str = Form(...), cantidad: str = Form(...),
+def inventario_mov(request: Request, producto_id: str = Form(...), tipo: str = Form(...), cantidad: str = Form(...),
                    nota: str = Form(""), fecha: str = Form(""), color: str = Form(""), con=Depends(db)):
+    # el Slow Chow viene como "15:rosado" (cada color es su propia opción en la lista)
+    producto_id, _, col = producto_id.partition(":")
+    if not producto_id.isdigit(): return RedirectResponse("/inventario", status_code=303)
+    producto_id = int(producto_id); color = col or color
     cantidad = cifra(cantidad) or 0
     cantidad = int(cantidad) if float(cantidad).is_integer() else round(cantidad, 2)
     lleva_color = con.execute("SELECT requiere_color FROM productos WHERE id=?", (producto_id,)).fetchone()
     if not (lleva_color and lleva_color[0]): color = ""   # el formulario manda el color aunque esté escondido
+    elif (color or "").lower() not in PLATO_DE_COLOR: return RedirectResponse("/inventario", status_code=303)   # Slow Chow siempre con su color
     q = abs(cantidad) if tipo == "entrada" else (-abs(cantidad) if tipo == "salida" else cantidad)
     con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
                 (producto_id, fecha or datetime.date.today().isoformat(), tipo, q, nota or None, (color or "").lower() or None, uid_de(request)))

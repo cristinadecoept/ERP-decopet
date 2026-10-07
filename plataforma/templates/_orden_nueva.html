@@ -192,7 +192,7 @@ function faltanDatos(){   // un cliente que ya existe puede no tener correo, tel
  w.hidden=!(ft||fc||fd);}
 function validar(){const fp=document.getElementById('f-pago');
  if(!fp.disabled&&!fp.value){alert('Falta la fecha de pago. Solo se puede dejar vacía si lo paga en efectivo al recibir.');fp.focus();return false;}
- if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if(!document.getElementById('te').value&&!nadaHoy()){alert('Elige el tipo de entrega.');return false;}
+ if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if([...document.querySelectorAll('#lin input[name=color]')].some(i=>!i.value)){alert('Elige el color del plato (azul o rosado) del Slow Chow.');return false;}if(!document.getElementById('te').value&&!nadaHoy()){alert('Elige el tipo de entrega.');return false;}
  const val=n=>((document.querySelector('[name='+n+']')||{}).value||'').trim(),nuevo=!document.getElementById('cl-id').value,nac=document.getElementById('te').value==='nacional';
  const pedir=(id,n,msg)=>{const w=document.getElementById(id);if(!w.hidden&&!val(n)){alert(msg);w.querySelector('input').focus();return false;}return true;};
  if(nuevo){if(!val('cliente_telefono')){alert('El teléfono del cliente es obligatorio.');return false;}
