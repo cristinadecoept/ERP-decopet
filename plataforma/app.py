@@ -1734,6 +1734,29 @@ def orden_cobro_extra(request: Request, oid: int, concepto: str = Form(""), conc
     return volver(oid, request)
 
 
+@app.post("/ordenes/{oid}/linea/{lid}/quitar")
+def quitar_cobro_extra(request: Request, oid: int, lid: int, con=Depends(db)):
+    """Quitar un cobro que se agregó a la orden y todavía no se pagó (Cristina, 7 oct: Marisol iba por delivery y al final
+    pasa a buscar la rampa; el delivery de $12 ya no va). Baja el total; si era el delivery, también lo que se le paga al
+    despachador. Lo que ya se pagó no se quita aquí."""
+    if "confirmar_pago" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    l = con.execute("SELECT * FROM orden_lineas WHERE id=? AND orden_id=? AND extra_en IS NOT NULL", (lid, oid)).fetchone()
+    o = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if not l or not o: return volver(oid, request)
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+    if (o["total"] or 0) - pagado < (l["total"] or 0) - 0.01: return volver(oid, request)   # ya se pagó: no se quita
+    m = l["total"] or 0
+    con.execute("DELETE FROM orden_lineas WHERE id=?", (lid,))
+    con.execute("UPDATE ordenes SET subtotal=MAX(COALESCE(subtotal,0)-?,0), total=MAX(COALESCE(total,0)-?,0) WHERE id=?", (m, m, oid))
+    if (l["nombre"] or "").strip().lower() == "delivery":
+        con.execute("UPDATE ordenes SET delivery=MAX(COALESCE(delivery,0)-?,0) WHERE id=?", (m, oid))
+    t = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()[0]
+    con.execute("UPDATE ordenes SET estado_pago=? WHERE id=? AND estado_pago NOT IN ('por_cobrar','reembolsada')", (estado_pago_de(pagado, t), oid))
+    fijar_pago_despachador(con, oid)
+    registrar(con, oid, uid_de(request), "pago", f"Se quitó el cobro «{l['nombre']}» de {fmt_usd(m)} (no se había pagado)")
+    con.commit(); return volver(oid, request)
+
+
 @app.post("/ordenes/{oid}/cobrar")
 async def cobrar_saldo(request: Request, oid: int, con=Depends(db)):
     """Cristina o logística registran un cobro y queda confirmado de una. ('Por revisar' es solo para lo que reporta un despachador.)"""

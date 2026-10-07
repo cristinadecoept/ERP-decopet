@@ -1137,6 +1137,26 @@ def _():
         assert c.get("/inicio").headers["cache-control"] == "no-store"
 
 
+@prueba("Quitar un delivery agregado que no se pagó: baja el total y la orden queda pagada; uno pagado no se quita")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (9001,'Marisol','Marisol')")
+        con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,total,tipo_entrega,creado_en) VALUES (9001,'#99001',9001,'pendiente','pagada',98,98,'pickup','2026-10-05 10:00')")
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (9001,'Zelle Decopet',98,98,'USD','2026-10-05','confirmado')")
+        con.commit()
+        A.cobro_extra(con, 9001, "Delivery", 12, "Pago Móvil VES", "2026-10-06", 1, pago=None); con.commit()
+        lid = con.execute("SELECT id FROM orden_lineas WHERE orden_id=9001 AND extra_en IS NOT NULL").fetchone()[0]
+        c.post(f"/ordenes/9001/linea/{lid}/quitar")
+        o = con.execute("SELECT total, delivery, estado_pago FROM ordenes WHERE id=9001").fetchone()
+        assert (o["total"], o["delivery"], o["estado_pago"]) == (98, 0, "pagada"), dict(o)
+        A.cobro_extra(con, 9001, "Propina", 3, "Zelle Decopet", "2026-10-06", 1); con.commit()   # pagado
+        lid = con.execute("SELECT id FROM orden_lineas WHERE orden_id=9001 AND extra_en IS NOT NULL").fetchone()[0]
+        c.post(f"/ordenes/9001/linea/{lid}/quitar")
+        assert con.execute("SELECT total FROM ordenes WHERE id=9001").fetchone()[0] == 101, "lo pagado no se quita"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")
