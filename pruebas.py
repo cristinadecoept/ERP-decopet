@@ -1246,6 +1246,9 @@ def _():
         assert con.execute("SELECT estado FROM danados WHERE id=?", (d["id"],)).fetchone()[0] == "pendiente", "el taller no decide"
         sesion_de(c, "admin")
         assert "tela rota" in c.get("/inicio").text, "Cristina lo ve en Inicio"
+        c.post(f"/inventario/danado/{d['id']}/visto")
+        assert "tela rota" not in c.get("/inicio").text, "con Visto deja de salir en Inicio"
+        assert "tela rota" in c.get("/inventario/casos").text, "pero el caso sigue abierto"
         c.post(f"/inventario/danado/{d['id']}/resolver", data={"como": "reparado"})
         assert con.execute("SELECT estado FROM danados WHERE id=?", (d["id"],)).fetchone()[0] == "reparado" and stock() == s0
         con.close()
@@ -1265,7 +1268,7 @@ def _():
         assert "Walter" in c.get("/inventario/casos").text, "se puede elegir a Walter"
         c.post(f"/inventario/danado/{d['id']}/reparando", data={"arregla": "Walter"})
         assert tuple(con.execute("SELECT estado, arregla FROM danados WHERE id=?", (d["id"],)).fetchone()) == ("reparando", "Walter") and stock() == 8
-        r = c.get("/inventario/casos").text; assert "Arreglándose" in r and "Ya volvió" in r
+        r = c.get("/inventario/casos").text; assert "Arreglándose" in r and "Arreglado" in r
         c.post(f"/inventario/danado/{d['id']}/listo", data={"nota": "se le cambió la tabla"})
         assert con.execute("SELECT estado FROM danados WHERE id=?", (d["id"],)).fetchone()[0] == "reparado" and stock() == 10, stock()
         assert "No hay casos abiertos" in c.get("/inventario/casos").text

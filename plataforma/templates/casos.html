@@ -7,7 +7,7 @@
 <div class="caso-bot">{% if d.estado == 'pendiente' %}<details class="cobro"><summary class="btn sec chico">Se está arreglando</summary><form method="post" action="/inventario/danado/{{ d.id }}/reparando" class="cobro-f" style="min-width:200px">
  <label style="margin-top:0">¿Quién lo arregla?</label><select name="arregla">{% for n in arregladores %}<option>{{ n }}</option>{% endfor %}</select>
  <p style="margin:8px 0 0"><button class="btn chico">Guardar</button></p></form></details>{% endif %}
-<details class="cobro"><summary class="btn chico">{{ 'Ya volvió' if d.arregla in externos else 'Ya quedó' }}</summary><form method="post" action="/inventario/danado/{{ d.id }}/listo" class="cobro-f" style="min-width:220px">
+<details class="cobro"><summary class="btn chico">Arreglado</summary><form method="post" action="/inventario/danado/{{ d.id }}/listo" class="cobro-f" style="min-width:220px">
  <label style="margin-top:0">¿Qué se le hizo? <span class="mini">(opcional)</span></label><input name="nota" placeholder="ej. se le cambió la grama">
  <p style="margin:8px 0 0"><button class="btn chico">Vuelve al inventario</button></p></form></details>
 {% if rol == 'admin' %}<details class="cobro"><summary class="btn sec chico">No se pudo</summary><form method="post" action="/inventario/danado/{{ d.id }}/resolver" class="cobro-f" style="min-width:220px">

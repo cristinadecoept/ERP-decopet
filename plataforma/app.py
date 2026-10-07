@@ -662,7 +662,7 @@ COLUMNAS = (
     ("mov_inventario", "color", "TEXT"),
     ("movimientos", "categoria", "TEXT"), ("movimientos", "comprobante", "TEXT"),
     ("movimientos", "notas", "TEXT"), ("movimientos", "subcategoria", "TEXT"),
-    ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"),
+    ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"), ("danados", "visto", "INTEGER NOT NULL DEFAULT 0"),
     ("notas_taller", "produccion_id", "INTEGER"), ("notas_taller", "danado_id", "INTEGER"),
     ("notas_taller", "agotando_id", "INTEGER"), ("notas_taller", "agotando_color", "TEXT"),
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
@@ -4151,6 +4151,14 @@ def nombre_caso(d):
     n = d['cantidad']; return f"{int(n) if float(n).is_integer() else n} {d['nombre']}" + (f" plato {d['color']}" if d["color"] else "")
 
 
+@app.post("/inventario/danado/{did}/visto")
+def inventario_danado_visto(request: Request, did: int, con=Depends(db)):
+    """Cristina ya vio el reporte: deja de salir en Inicio (el caso sigue abierto en Casos abiertos)."""
+    if not solo_admin(request): return RedirectResponse("/inicio", status_code=303)
+    con.execute("UPDATE danados SET visto=1 WHERE id=?", (did,)); con.commit()
+    return RedirectResponse("/inicio", status_code=303)
+
+
 @app.post("/inventario/danado/{did}/reparando")
 def inventario_danado_reparando(request: Request, did: int, arregla: str = Form(""), con=Depends(db)):
     """Avisa quién se lo llevó y lo está arreglando (Isaías, Manawa o Walter)."""
@@ -4166,7 +4174,7 @@ def inventario_danado_reparando(request: Request, did: int, arregla: str = Form(
 
 @app.post("/inventario/danado/{did}/listo")
 def inventario_danado_listo(request: Request, did: int, nota: str = Form(""), con=Depends(db)):
-    """Ya quedó: vuelve a disponible en el inventario y el caso se cierra."""
+    """Arreglado: vuelve a disponible en el inventario y el caso se cierra."""
     if rol_de(request) not in ("admin", "logistica", "taller"): return RedirectResponse("/inventario", status_code=303)
     d = con.execute("SELECT d.*, p.nombre FROM danados d JOIN productos p ON p.id=d.producto_id WHERE d.id=? AND d.estado IN ('pendiente','reparando')", (did,)).fetchone()
     if d:
@@ -4174,7 +4182,7 @@ def inventario_danado_listo(request: Request, did: int, nota: str = Form(""), co
         con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, color, usuario_id) VALUES (?,?,?,?,?,?,?)",
                     (d["producto_id"], hoy, "reparado", d["cantidad"], "se reparó, vuelve a disponible" + (f": {nota.strip()}" if nota.strip() else ""), d["color"], uid_de(request)))
         con.execute("UPDATE danados SET estado='reparado', resuelto_en=?, resuelto_por=?, resolucion=? WHERE id=?", (hoy, uid_de(request), nota.strip() or None, did))
-        aviso_de_caso(con, request, d, f"ya quedó {nombre_caso(d)}: volvió al inventario")
+        aviso_de_caso(con, request, d, f"{nombre_caso(d)} arreglado: volvió al inventario")
         con.commit()
     return RedirectResponse("/inventario/casos", status_code=303)
 
