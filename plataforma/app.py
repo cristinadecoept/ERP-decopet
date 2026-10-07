@@ -465,6 +465,12 @@ tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa
 tpl.env.globals["wa_aviso"] = wa_aviso
 tpl.env.globals["texto_aviso"] = texto_aviso
 tpl.env.globals["navegacion"] = navegacion
+def wa_api(tel):
+    """Chat de WhatsApp por el enlace directo (api.whatsapp.com): wa.me daña los emojis del texto al redirigir."""
+    b = wa(tel)
+    return ("https://api.whatsapp.com/send?phone=" + b.rsplit("/", 1)[1]) if b else ""
+tpl.env.filters["wa_api"] = wa_api
+tpl.env.globals["wa_texto"] = lambda tel, txt: (wa_api(tel) + "&text=" + quote(txt or "")) if wa_api(tel) else ""
 # ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
 tpl.env.tests["lower_empieza"] = lambda caja, dijo: bool(dijo) and (caja or "").lower().startswith((dijo or "").lower())
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
@@ -4969,7 +4975,8 @@ def cumples_proximos(con, ventana=30):
 @app.get("/seguimientos", response_class=HTMLResponse)
 def seguimientos(request: Request, ver: str = "pendientes", tipo: str = "", q: str = "", con=Depends(db)):
     sincronizar_packs(con)
-    todos = seguimientos_pendientes(con)
+    todos = [dict(x, mensajes=mensajes_repuesto(con, x)) if x.get("tipo") in ("primer_repuesto", "repuesto", "prepagado") and x.get("cliente_id") else x
+             for x in seguimientos_pendientes(con)]
     n_atr = sum(1 for s in todos if s.get("fase") == "atrasado")
     pend = [s for s in todos if (s.get("fase", "hoy") == "atrasado") == (ver == "atrasados")] if ver != "hechos" else todos
     if tipo: pend = [s for s in (todos if ver != "hechos" else pend) if s["tipo"] == tipo]   # al filtrar por tipo se ven de una vez los de hoy y los atrasados
