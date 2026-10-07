@@ -438,13 +438,17 @@ def _():
         assert con.execute("SELECT 1 FROM productos WHERE sku=?", (sku,)).fetchone(), f"{item} apunta a {sku}, que no existe"
 
 
-@prueba("La pega se compra por cuñete o galón y entra al inventario en litros")
+@prueba("La pega entra al inventario por envase (2 cuñetes = 2); si el producto se lleva en litros, se convierte")
 def _():
     con = base_limpia()
     con.execute("INSERT INTO proveedores (id,nombre) VALUES (8,'Ferretería')")
     con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (8,'Pega amarilla',86,'cuñete')")
     con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (8,'Cinta antideslizante',1,'rollo')")
-    r = {"pieza": "Pega amarilla", "responsable": "Ferretería"}
+    con.execute("INSERT INTO productos (id,sku,nombre,tipo,unidad,activo) VALUES (71,'INS-PEGA','Pega amarilla','insumo','litro',1)")
+    con.execute("INSERT INTO productos (id,sku,nombre,tipo,unidad,activo) VALUES (72,'INS-PEGA-CUN','Pega amarilla · cuñete','insumo','cuñete',1)")
+    assert A.sku_pega(con, "Pega amarilla", "Ferretería") == "INS-PEGA-CUN"
+    assert A.a_inventario(con, {"pieza": "Pega amarilla", "responsable": "Ferretería", "producto_id": 72}, 2) == 2
+    r = {"pieza": "Pega amarilla", "responsable": "Ferretería", "producto_id": 71}   # el producto viejo, en litros
     assert A.a_inventario(con, r, 2) == 37.8, A.a_inventario(con, r, 2)
     assert A.a_inventario(con, {"pieza": "Cinta antideslizante", "responsable": "Ferretería"}, 3) == 3
     assert A.fmt_cant(37.8, "litro") == "37,8 litros" and A.fmt_cant(1, "rollo") == "1 rollo"

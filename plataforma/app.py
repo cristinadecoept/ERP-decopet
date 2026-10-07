@@ -523,7 +523,10 @@ def fmt_cant(v, unidad=None):
     v = round(float(v or 0), 1)
     n = str(int(v)) if v.is_integer() else f"{v:.1f}".replace(".", ",")
     if not unidad: return n
-    return f"{n} {unidad}" if v == 1 else f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
+    if v == 1: return f"{n} {unidad}"
+    if unidad.endswith("ón"): return f"{n} {unidad[:-2]}ones"   # galón → galones (sin tilde en el plural)
+    if unidad.endswith("ete"): return f"{n} {unidad}s"          # cuñete → cuñetes
+    return f"{n} {unidad}{'s' if unidad[-1] in 'aeiou' else 'es'}"
 tpl.env.filters["cant"] = fmt_cant
 # el color del plato (Slow Chow, comedores) resaltado, para no entregar el que no es
 def _platos(t):
@@ -4650,11 +4653,24 @@ LITROS_POR = {"cuñete": 18.9, "cunete": 18.9, "galón": 3.785, "galon": 3.785}
 
 
 def a_inventario(con, r, n):
-    """Cuánto entra al inventario cuando llegan n de lo que se pidió, en la unidad en que se lleva el stock."""
+    """Cuánto entra al inventario cuando llegan n de lo que se pidió, en la unidad en que se lleva el stock.
+    Solo se pasa a litros si el producto se lleva en litros; la pega por envase (cuñete, galón) entra tal cual."""
     u = con.execute("""SELECT pi.unidad FROM proveedor_items pi LEFT JOIN proveedores pv ON pv.id=pi.proveedor_id
                        WHERE pi.item=? ORDER BY (pv.nombre=?) DESC LIMIT 1""", (r["pieza"] or "", r["responsable"] or "")).fetchone()
+    pid = r["producto_id"] if "producto_id" in r.keys() else None
+    dest = con.execute("SELECT unidad FROM productos WHERE id=?", (pid,)).fetchone() if pid else None
+    if dest and (dest[0] or "").strip().lower() not in ("litro", "litros"): return n
     f = LITROS_POR.get((u[0] or "").strip().lower()) if u else None
     return round(n * f, 2) if f else n
+
+
+def sku_pega(con, pieza, quien):
+    """La pega va al envase en que se compra: cuñete, galón o ¼ de galón."""
+    u = con.execute("""SELECT pi.unidad FROM proveedor_items pi LEFT JOIN proveedores pv ON pv.id=pi.proveedor_id
+                       WHERE pi.item=? ORDER BY (pv.nombre=?) DESC LIMIT 1""", (pieza, quien or "")).fetchone()
+    u = (u[0] if u else "").strip().lower()
+    sku = "INS-PEGA-14" if ("1/4" in u or "¼" in u or "cuarto" in u) else ("INS-PEGA-GAL" if u.startswith("gal") else "INS-PEGA-CUN")
+    return sku if con.execute("SELECT 1 FROM productos WHERE sku=? AND activo=1", (sku,)).fetchone() else "INS-PEGA"
 # nombre de la pieza → ítem del proveedor (para sacar el precio de Taller › Proveedores)
 PIEZA_ITEM = {"Caja de madera mediana": "Caja de madera mediana", "Caja de madera grande": "Caja de madera grande",
               "Rampa Nueva": "Rampa Nueva", "Rampa Para Perros Mini": "Rampa Para Perros Mini"}
@@ -4800,6 +4816,7 @@ async def produccion_crear(request: Request, con=Depends(db)):
     ids = []
     for pieza, cantidad, costo, barn, desc in lineas:
         sku = next((s_ for (nom, s_, _) in PIEZAS_PRODUCCION if nom == pieza), None) or ITEMS_A_INVENTARIO.get(pieza)
+        if sku == "INS-PEGA": sku = sku_pega(con, pieza, quien)
         pid_prod = con.execute("SELECT id FROM productos WHERE sku=?", (sku,)).fetchone()[0] if sku else None
         cur = con.execute("""INSERT INTO produccion (producto_id, pieza, cantidad, fecha_pedido, fecha_esperada, responsable, costo, nota, usuario_id, barnizado, descripcion, tipo_pedido, fecha_pago)
                              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
