@@ -74,6 +74,7 @@
       o.className = 'ctl-op' + (it.valor === actual ? ' sel' : '') + (it.des ? ' des' : '');
       o.setAttribute('role', 'option');
       const t = document.createElement('span'); t.textContent = it.texto; o.appendChild(t);
+      if (it.color) { const c = document.createElement('span'); c.className = 'pl-' + it.color; c.textContent = 'plato ' + it.color; c.style.marginLeft = '8px'; t.appendChild(c); }   // Slow Chow: el color se ve, no solo se lee
       if (it.sub) { const s = document.createElement('small'); s.textContent = it.sub; o.appendChild(s); }
       if (!it.des) o.addEventListener('mousedown', e => { e.preventDefault(); cerrar(); alElegir(it); });
       o.addEventListener('mousemove', () => enfocar(o));
@@ -111,7 +112,7 @@
     const abrir = () => {
       if (esDe(sel)) { cerrar(); return; }
       const ops = [...sel.options].filter(o => !o.hidden);
-      lista(sel, ops.map(o => ({ valor: o.value, texto: o.textContent.trim() || '—', des: o.disabled })),
+      lista(sel, ops.map(o => ({ valor: o.value, texto: (o.dataset.color ? o.textContent.replace(/\s*·\s*plato\s+\S+\s*$/, '') : o.textContent).trim() || '—', des: o.disabled, color: o.dataset.color })),
         it => { if (sel.value !== it.valor) { sel.value = it.valor; avisar(sel); } sel.focus(); }, sel.value, null, ops.length > 12);
     };
     sel.addEventListener('mousedown', e => { if (sel.disabled) return; e.preventDefault(); sel.focus(); abrir(); });
