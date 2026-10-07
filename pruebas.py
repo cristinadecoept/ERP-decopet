@@ -237,6 +237,14 @@ def _():
     n = A.navegacion("", "Francisco Solano, Oficina", "Caracas")
     assert "destination=Francisco%20Solano" in n["maps"] and n["waze"].startswith("https://waze.com/ul?q="), n
 
+@prueba("El aviso del despachador lleva a dónde va, el link del mapa y le pide confirmar la dirección")
+def _():
+    t = A.texto_aviso("Oreana", "Ingrid", "1× Comedor", False, "La Urbina", "https://www.google.com/maps?q=10.4877,-66.8043&z=17", "Caracas")
+    assert "Voy a: La Urbina" in t and "📍 https://www.google.com/maps?q=10.4877,-66.8043" in t and "¿Me confirmas que es tu dirección?" in t, t
+    assert "❤" not in t and "💚" in t, "en Decopet el corazón es verde"
+    t = A.texto_aviso("Pedro", "Ingrid", "1× Rampa", True)
+    assert "¿Me pasas tu dirección y tu ubicación" in t and "Mañana te llevo" in t, t
+
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():
     con = base_limpia()

@@ -425,20 +425,39 @@ def falta_ubicacion(con):
     return out
 
 
-def texto_aviso(cliente, despachador, lleva, manana=False):
-    """El aviso que el despachador le manda al cliente antes de llevarle el pedido (Cristina, 6 oct: con 💚🐶👋🏻👀🙌🏻; en Decopet el corazón siempre es verde, nunca rojo)."""
+def link_ubicacion(maps, direccion=None, ciudad=None):
+    """El link que se le manda al cliente para que vea en el mapa a dónde va el despachador (un punto, no una ruta)."""
+    from urllib.parse import unquote
+    m = re.search(r"(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)", unquote(maps or ""))
+    if m: return f"https://www.google.com/maps?q={m.group(1)},{m.group(2)}"
+    if maps: return maps if maps.startswith("http") else "https://" + maps
+    if direccion: return "https://www.google.com/maps/search/?api=1&query=" + quote(", ".join(x for x in (direccion, ciudad or "Caracas") if x))
+    return ""
+
+
+def texto_aviso(cliente, despachador, lleva, manana=False, direccion=None, maps=None, ciudad=None):
+    """El aviso que el despachador le manda al cliente antes de llevarle el pedido (Cristina, 6 oct: con 💚🐶👋🏻👀🙌🏻; en Decopet
+    el corazón siempre es verde, nunca rojo). Lleva a dónde va y el link del mapa, y le pide confirmar que es su dirección."""
     que = re.sub(r"[⟪⟫]", "", str(lleva or "")).strip()
-    hola = f"¡Hola{' ' + cliente if cliente else ''}! 👋🏻 Soy {despachador} de Decopet 💚 "
-    return hola + (f"Mañana te llevo tu pedido: {que} 🐶 Te aviso cuando esté en camino 🙌🏻" if manana
-                   else f"Estoy por llevarte tu pedido: {que} 🐶 Te aviso cuando esté cerca 👀")
+    lin = [f"¡Hola{' ' + cliente if cliente else ''}! 👋🏻 Soy {despachador} de Decopet 💚",
+           (f"Mañana te llevo tu pedido: {que} 🐶" if manana else f"Estoy por llevarte tu pedido: {que} 🐶")]
+    link = link_ubicacion(maps, direccion, ciudad)
+    if direccion or link:
+        lin.append(f"Voy a: {direccion}" if direccion else "Voy a esta ubicación:")
+        if link: lin.append(f"📍 {link}")
+        lin.append("¿Me confirmas que es tu dirección? 🙏🏻")
+    else:
+        lin.append("¿Me pasas tu dirección y tu ubicación por aquí? 📍")
+    lin.append("Te aviso cuando esté en camino 🙌🏻" if manana else "Te aviso cuando esté cerca 👀")
+    return "\n".join(lin)
 
 
-def wa_aviso(tel, cliente, despachador, lleva, manana=False):
+def wa_aviso(tel, cliente, despachador, lleva, manana=False, direccion=None, maps=None, ciudad=None):
     """WhatsApp del cliente con el aviso ya escrito, para que el despachador solo le dé a enviar. Al tocarlo además se
     copia (ver mis_entregas.html): WhatsApp Web daña los emojis que llegan por enlace y así se pueden pegar bien."""
     base = wa(tel)
     if not base: return ""
-    return "https://api.whatsapp.com/send?phone=" + base.rsplit("/", 1)[1] + "&text=" + quote(texto_aviso(cliente, despachador, lleva, manana))
+    return "https://api.whatsapp.com/send?phone=" + base.rsplit("/", 1)[1] + "&text=" + quote(texto_aviso(cliente, despachador, lleva, manana, direccion, maps, ciudad))
 
 
 tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa=wa)
