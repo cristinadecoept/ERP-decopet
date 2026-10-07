@@ -372,10 +372,12 @@ def wa_aviso(tel, cliente, despachador, lleva, manana=False):
     base = wa(tel)
     if not base: return ""
     que = re.sub(r"[⟪⟫]", "", str(lleva or "")).strip()
-    hola = f"¡Hola{' ' + cliente if cliente else ''}! 👋 Soy {despachador} de Decopet. "
-    txt = hola + (f"Mañana te llevo tu pedido: {que}. Te aviso cuando esté en camino 🐾" if manana
-                  else f"Estoy por llevarte tu pedido: {que}. Te aviso cuando esté cerca 🐾")
-    return base + "?text=" + quote(txt)
+    # sin emojis: WhatsApp Web los daña cuando llegan por enlace (salen como "�")
+    hola = f"¡Hola{' ' + cliente if cliente else ''}! Soy {despachador} de Decopet. "
+    txt = hola + (f"Mañana te llevo tu pedido: {que}. Te aviso cuando esté en camino." if manana
+                  else f"Estoy por llevarte tu pedido: {que}. Te aviso cuando esté cerca.")
+    # wa.me pierde los emojis al redirigir (salen como "�"); el enlace directo de WhatsApp los respeta
+    return "https://api.whatsapp.com/send?phone=" + base.rsplit("/", 1)[1] + "&text=" + quote(txt)
 tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa=wa)
 tpl.env.globals["wa_aviso"] = wa_aviso
 # ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
