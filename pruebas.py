@@ -247,6 +247,17 @@ def _():
     t = A.texto_aviso("Pedro", "Ingrid", "1× Rampa", True)
     assert "¿Me pasas tu dirección y tu ubicación" in t and "Mañana te llevo" in t, t
 
+@prueba("La ubicación guardada en la dirección habitual del cliente se usa en su pedido, solo si va a esa misma dirección")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Marisol','Marisol')")
+    con.execute("INSERT INTO direcciones (cliente_id,direccion,maps,principal) VALUES (1,'Caricuao UD-4 Terraza C','https://www.google.com/maps?q=10.43,-66.98',1)")
+    con.commit()
+    assert A.ubicacion_de(con, 1, "Caricuao UD-4 Terraza C", None) == "https://www.google.com/maps?q=10.43,-66.98"
+    assert A.ubicacion_de(con, 1, "", None) == "https://www.google.com/maps?q=10.43,-66.98", "sin dirección en el pedido, la habitual"
+    assert A.ubicacion_de(con, 1, "Los Palos Grandes, Torre X", None) is None, "otra dirección: no se usa la ubicación de la habitual"
+    assert A.ubicacion_de(con, 1, "Caricuao", "https://maps.app.goo.gl/abc") == "https://maps.app.goo.gl/abc", "la del pedido manda"
+
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():
     con = base_limpia()

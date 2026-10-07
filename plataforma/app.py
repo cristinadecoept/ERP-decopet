@@ -412,12 +412,11 @@ def falta_ubicacion(con):
     """Deliverys por entregar sin link de ubicación (ni en el pedido ni en la dirección del cliente): sale en Inicio
     para pedirle la ubicación al cliente antes de que el despachador salga (Cristina, 6 oct)."""
     out = []
-    for o in con.execute("""SELECT o.id, o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(c.telefono),'') telefono
+    for o in con.execute("""SELECT o.id, o.numero, o.cliente_id, o.direccion, o.maps, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(c.telefono),'') telefono
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera') AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
-                              AND COALESCE(NULLIF(TRIM(o.maps),''), (SELECT NULLIF(TRIM(d.maps),'') FROM direcciones d WHERE d.cliente_id=o.cliente_id
-                                                                     ORDER BY d.principal DESC, d.id LIMIT 1)) IS NULL
                             ORDER BY COALESCE(o.fecha_prometida, o.creado_en), o.id"""):
+        if ubicacion_de(con, o["cliente_id"], o["direccion"], o["maps"]): continue
         msj = (f"¡Hola{' ' + o['quien'] if o['quien'] else ''}! 👋🏻 Te escribimos de Decopet 💚 Para llevarte tu pedido, "
                f"¿nos compartes tu ubicación por aquí? 📍 Así el despachador llega directo 🙌🏻")
         out.append({"id": o["id"], "numero": o["numero"], "quien": o["quien"], "msj": msj,
@@ -1493,7 +1492,12 @@ def resumen_despacho(o, con_plata=True):
     if o["tipo_entrega"] == "distribuidor": L.append(f"🏪 Retira en {o['distribuidor'] or 'distribuidor'} ({o['ciudad'] or ''})")
     elif o["tipo_entrega"] != "pickup" and o["direccion"]:
         L.append(f"📍 {o['zona'] + ', ' if o['zona'] else ''}{o['direccion']}" + (f" — recibe {o['receptor_nombre']}" + (f" {o['receptor_telefono']}" if o["receptor_telefono"] else "") if o["receptor_nombre"] else ""))
-        if o["maps"]: L.append(f"🗺 {o['maps']}")
+        mp = o["maps"]
+        if not _sirve(mp) and o.get("cliente_id"):   # la ubicación guardada en la ficha del cliente para esa dirección
+            c = sqlite3.connect(DB); c.row_factory = sqlite3.Row
+            try: mp = ubicacion_de(c, o["cliente_id"], o["direccion"], mp)
+            finally: c.close()
+        if mp: L.append(f"🗺 {mp}")
     if not con_plata:   # para quien no ve dinero: qué hacer, sin montos (el despachador ve el suyo en su pantalla)
         if o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado"): L.append("💵 Falta pagar")
         else: L.append("✅ Pagado, no cobrar nada")
@@ -1934,6 +1938,22 @@ def actualizar_porche_cliente(con, oid):
 
 def _falta(msg):
     return HTMLResponse(f"<p style='font-family:sans-serif;padding:30px'>{msg} Vuelve atrás y agrégalo.</p>", 400)
+
+
+def ubicacion_de(con, cid, direccion, maps):
+    """El link de ubicación de una entrega: el del pedido; si no trae, el que está guardado en la ficha del cliente para
+    ESA misma dirección (Cristina, 6 oct: la ubicación se guarda en la dirección habitual del cliente y sirve para todos
+    sus pedidos). Si el pedido va a otra dirección, no se usa la ubicación de la habitual."""
+    if _sirve(maps): return maps
+    filas = con.execute("""SELECT direccion, maps FROM direcciones WHERE cliente_id=? AND NULLIF(TRIM(maps),'') IS NOT NULL
+                           ORDER BY principal DESC, id""", (cid,)).fetchall()
+    if not filas: return None
+    if not _sirve(direccion): return filas[0]["maps"]
+    norm = lambda t: re.sub(r"\W+", "", (t or "").lower())
+    for f in filas:
+        a, b = norm(f["direccion"]), norm(direccion)
+        if a and b and (a == b or a in b or b in a): return f["maps"]
+    return None
 
 
 def _sirve(v):
@@ -6084,9 +6104,8 @@ def ruta_despachador(con, nombre, hoy):
         d = dict(o)
         if not _sirve(d["direccion"]) or not d["maps"]:      # la orden hereda la dirección del cliente si no trae una
             dd = con.execute("SELECT direccion, maps FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id LIMIT 1", (d["cid"],)).fetchone()
-            if dd:
-                if not _sirve(d["direccion"]): d["direccion"] = dd["direccion"]
-                if not d["maps"] and not _sirve(o["direccion"]): d["maps"] = dd["maps"]
+            if dd and not _sirve(d["direccion"]): d["direccion"] = dd["direccion"]
+            d["maps"] = ubicacion_de(con, d["cid"], o["direccion"], d["maps"])
         pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (d["id"],)).fetchone()[0]
         falta = round((d["total"] or 0) - pagado, 2)
         # solo lo que el despachador tiene que cobrar en la puerta; lo demás no es asunto suyo
