@@ -5739,7 +5739,15 @@ def mis_entregas(request: Request, con=Depends(db)):
             v["paquetes"].append(o)
     # "Lo que has entregado" es solo lo que ya hizo: lo pendiente o en ruta está en "Lo que te toca hoy"
     hist_todo = [h for h in hist_todo if h["estado"] not in ("pendiente", "en_ruta")]
-    return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta,
+    # lo que le toca mañana, para que se organice (Cristina, 6 oct): solo para mirar, se marca el día que toca
+    clave_r = lambda f: (f.get("kind"), f.get("id") or f.get("rid"))
+    de_hoy = {clave_r(f) for f in ruta}
+    manana = (hoy + datetime.timedelta(days=1)).isoformat()
+    ruta_manana = [f for f in ruta_despachador(con, nombre, manana) if clave_r(f) not in de_hoy]
+    # los viajes a la agencia también van el día que tocan: el de mañana no es de hoy (el atrasado sí sigue en hoy)
+    viajes_manana = [v for v in viajes_pend if (v["fecha"] or "")[:10] == manana]
+    viajes_pend = [v for v in viajes_pend if (v["fecha"] or "")[:10] <= hoy.isoformat()]
+    return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta, ruta_manana=ruta_manana, viajes_manana=viajes_manana,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(), viajes_pend=viajes_pend, tarifas_dil=tarifas_diligencia(con),
                   ganado_mes=round(sum(h["pago"] for h in hist if h["estado"] == "entregada" and (h["fecha"] or "")[:7] == mes), 2),

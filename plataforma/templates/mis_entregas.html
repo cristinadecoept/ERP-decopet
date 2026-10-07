@@ -76,6 +76,15 @@
 </tr>{% endfor %}
 {% if ruta_cobrar is defined and ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td><b>{{ ruta_cobrar|usd }}</b></td><td colspan="2"></td></tr>{% endif %}</table>
 {% else %}<div class="vacio">Hoy no tienes entregas asignadas.</div>{% endif %}</div>
+{% if ruta_manana or viajes_manana %}<h3 class="sub-tabla" style="margin-top:18px">Mañana{% if ruta_manana %} <span class="mini">· {{ ruta_manana|length }} entrega{{ 's' if ruta_manana|length != 1 }}</span>{% endif %}</h3>
+{% for v in viajes_manana %}<div class="tarjeta" style="margin-bottom:10px;padding:12px 16px"><b>Llevar a {{ v.agencia or 'la agencia' }}</b> <span class="mini">· {{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }}{% if v.cuales %} · {{ v.cuales }}{% endif %}</span></div>{% endfor %}
+{% endif %}{% if ruta_manana %}<div class="tabla"><table data-cols="Quién:22|Dirección:30|Qué lleva:28|Falta pagar:20" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th></tr>
+{% for f in ruta_manana %}<tr>
+ <td class="me-quien"><b>{{ f.quien }}</b>{% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b></div>{% endif %}</td>
+ <td class="me-dir" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}{% else %}<span class="mini">—</span>{% endif %}</td>
+ <td class="mini me-lleva" data-t="Qué lleva">{{ f.que_lleva|platos }}</td>
+ <td style="white-space:nowrap" data-t="Falta pagar">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% if f.cobrar_forma %}<div class="mini">por {{ f.cobrar_forma }}</div>{% endif %}{% else %}<span class="ln-pagado">Nada · ya pagó</span>{% endif %}</td>
+</tr>{% endfor %}</table></div>{% endif %}
 
 <div class="g2" style="align-items:start;margin-top:16px">
  <div class="tarjeta"><h3>Lo que has entregado</h3>
