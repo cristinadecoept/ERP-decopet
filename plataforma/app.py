@@ -1536,7 +1536,9 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
 def orden_panel(request: Request, oid: int, con=Depends(db)):
     o = cargar_orden(con, oid)
     if not o: return HTMLResponse("<p>No existe.</p>")
-    return render(request, "_orden_panel.html", o=o)
+    vendibles = con.execute("""SELECT id, nombre, precio FROM productos WHERE activo=1 AND tipo NOT IN ('opcion','insumo') AND COALESCE(sku,'') NOT LIKE 'PACK%'
+                               ORDER BY categoria, nombre""").fetchall()
+    return render(request, "_orden_panel.html", o=o, vendibles=vendibles)
 
 
 def registrar(con, oid, uid, accion, detalle=None, motivo=None):
@@ -1684,6 +1686,71 @@ def contra_entrega(request: Request, oid: int, con=Depends(db)):
     if "contra_entrega" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE ordenes SET estado_pago='contra_entrega' WHERE id=? AND estado_pago IN ('sin_pago','rechazado','por_confirmar')", (oid,))
     registrar(con, oid, uid_de(request), "estado", "Autorizado que pague al recibir → Confirmada"); con.commit(); return volver(oid, request)
+
+
+@app.post("/ordenes/{oid}/editar")
+async def editar_orden(request: Request, oid: int, con=Depends(db)):
+    """Editar lo que se vendió (Cristina, 7 oct: 'editar una orden debería ser muchísimo más fácil'): cantidad y precio de
+    cada producto, quitar o agregar productos, descuento y delivery. Recalcula IVA (Cashea / factura), total y si está
+    pagada, y rehace las salidas de inventario de la orden. Los packs, los repuestos prepagados y los cobros agregados
+    después no se tocan aquí (tienen su propio manejo)."""
+    if "confirmar_pago" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    f = await request.form(); uid = uid_de(request)
+    o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if not o or o["estado"] == "cancelada": return volver(oid, request)
+    dia_o = (o["creado_en"] or "")[:10]
+    lineas = con.execute("""SELECT l.*, p.sku, p.costo costo_p,
+                            EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id) prepagada
+                            FROM orden_lineas l LEFT JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? ORDER BY l.id""", (oid,)).fetchall()
+    fija = lambda l: bool(l["extra_en"]) or (l["sku"] or "").startswith("PACK") or l["prepagada"] or not l["producto_id"]
+    cambios = []
+    for l in lineas:
+        if fija(l): continue
+        if f.get(f"quitar_{l['id']}"):
+            con.execute("DELETE FROM orden_lineas WHERE id=?", (l["id"],)); cambios.append(f"quitó {l['cantidad']:g}× {l['nombre']}"); continue
+        c = cifra(f.get(f"cant_{l['id']}")) if (f.get(f"cant_{l['id']}") or "").strip() else l["cantidad"]
+        pu = cifra(f.get(f"precio_{l['id']}")) if (f.get(f"precio_{l['id']}") or "").strip() else l["precio"]
+        if c <= 0:
+            con.execute("DELETE FROM orden_lineas WHERE id=?", (l["id"],)); cambios.append(f"quitó {l['cantidad']:g}× {l['nombre']}"); continue
+        if abs(c - (l["cantidad"] or 0)) > 1e-9 or abs(pu - (l["precio"] or 0)) > 1e-9:
+            con.execute("UPDATE orden_lineas SET cantidad=?, precio=?, total=? WHERE id=?", (c, pu, round(pu * c + (l["extras"] or 0), 2), l["id"]))
+            cambios.append(f"{l['nombre']}: {l['cantidad']:g}× {fmt_usd(l['precio'] or 0)} → {c:g}× {fmt_usd(pu)}")
+    for pid_n, cant_n in zip(f.getlist("nuevo_producto"), f.getlist("nuevo_cant")):
+        if not pid_n: continue
+        p = con.execute("SELECT * FROM productos WHERE id=? AND tipo NOT IN ('opcion','insumo')", (pid_n,)).fetchone()
+        if not p or (p["sku"] or "").startswith("PACK"): continue
+        c = cifra(cant_n) or 1
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,?,?,?,?)",
+                    (oid, p["id"], p["nombre"], c, p["precio"], p["costo"], round(precio_linea(p, c), 2)))
+        cambios.append(f"agregó {c:g}× {p['nombre']}")
+    lineas = con.execute("SELECT l.*, p.costo costo_p FROM orden_lineas l LEFT JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?", (oid,)).fetchall()
+    normales = [l for l in lineas if not l["extra_en"]]
+    if not normales: con.rollback(); return volver(oid, request)   # una orden sin productos: para eso está Cancelar
+    extras = [l for l in lineas if l["extra_en"]]
+    del_extra = sum(l["total"] or 0 for l in extras if (l["nombre"] or "").strip().lower() == "delivery")
+    descuento = cifra(f.get("descuento")) if (f.get("descuento") or "").strip() else (o["descuento"] or 0)
+    delivery_b = cifra(f.get("delivery")) if (f.get("delivery") or "").strip() else round((o["delivery"] or 0) - del_extra, 2)
+    sub_n = round(sum(l["total"] or 0 for l in normales), 2)
+    con_iva = (o["iva"] or 0) > 0 or o["canal"] == "cashea" or o["requiere_factura"]
+    iva = round((sub_n - descuento) * 0.16, 2) if con_iva else 0
+    subtotal = round(sub_n + sum(l["total"] or 0 for l in extras), 2)
+    total = round(subtotal - descuento + iva + delivery_b, 2)
+    for n, a, b in (("descuento", o["descuento"] or 0, descuento), ("delivery", round((o["delivery"] or 0) - del_extra, 2), delivery_b), ("total", o["total"] or 0, total)):
+        if abs((a or 0) - (b or 0)) > 0.009: cambios.append(f"{n}: {fmt_usd(a)} → {fmt_usd(b)}")
+    con.execute("""UPDATE ordenes SET subtotal=?, descuento=?, iva=?, delivery=?, total=?, costo_productos=?, comision=? WHERE id=?""",
+                (subtotal, descuento, iva, round(delivery_b + del_extra, 2), total,
+                 round(sum((l["costo_p"] if l["costo_p"] is not None else (l["costo"] or 0)) * (l["cantidad"] or 0) for l in normales), 2),
+                 round(total * 0.06, 2) if o["canal"] == "cashea" else (o["comision"] or 0), oid))
+    # el inventario: se rehacen las salidas de esta orden con lo que quedó
+    con.execute("DELETE FROM mov_inventario WHERE orden_id=? AND tipo='salida'", (oid,))
+    descontar_inventario(con, oid, uid)
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+    if o["estado_pago"] not in ("por_cobrar", "reembolsada", "por_confirmar", "contra_entrega") or pagado >= total - 0.01:
+        con.execute("UPDATE ordenes SET estado_pago=? WHERE id=? AND estado_pago NOT IN ('por_cobrar','reembolsada')", (estado_pago_de(pagado, total), oid))
+    fijar_pago_despachador(con, oid)
+    if pagado > total + 0.009: cambios.append(f"ojo: ya había pagado {fmt_usd(pagado)}, {fmt_usd(pagado - total)} de más (devolver o dejar a favor)")
+    if cambios: registrar(con, oid, uid, "editada", "Orden editada · " + "; ".join(cambios))
+    con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/pago/{pid}/corregir")

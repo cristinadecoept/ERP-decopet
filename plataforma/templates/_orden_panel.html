@@ -63,7 +63,24 @@
 {% if o.iva %}<div class="tot"><span>IVA 16% <span class="mini">({{ 'Cashea' if o.canal=='cashea' else 'factura' }})</span></span><span>{{ o.iva|usd }}</span></div>{% endif %}
 <div class="tot"><span>Delivery / envío{% if o.promo_envio %} <span class="mini">({{ o.promo_envio }})</span>{% elif o.tipo_entrega=='nacional' %} <span class="mini">(cobro en destino)</span>{% endif %}</span>{% set del_ya = o.lineas|selectattr('extra_en')|selectattr('nombre','equalto','Delivery')|map(attribute='total')|sum %}<span>{{ (o.delivery - del_ya)|usd }}</span></div>
 <div class="tot g"><span>Total</span><span>{{ o.total|usd }}</span></div>
-{% if 'confirmar_pago' in puede and o.estado!='cancelada' %}<details class="cobro cobro-izq" style="margin-top:8px"><summary class="no-link" style="font-size:12px">+ Agregar un cobro a esta orden</summary>
+{% if 'confirmar_pago' in puede and o.estado!='cancelada' %}<details class="ed-orden" style="margin-top:10px"><summary class="btn sec chico" style="list-style:none">✎ Editar productos y montos</summary>
+<form method="post" action="/ordenes/{{ o.id }}/editar?estado={{ fp.get('estado','todas') }}" class="ed-orden-f">
+ <table class="lineas"><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Precio c/u</th><th></th></tr>
+ {% for l in o.lineas if not l.extra_en %}{% set fija = l.pack_id or not l.producto_id %}<tr>
+  <td>{{ l.nombre }}{% if fija %}<div class="mini">{{ 'pack: se maneja aparte' if l.pack_id else 'no se edita aquí' }}</div>{% endif %}</td>
+  {% if fija %}<td class="num">{{ l.cantidad|int }}</td><td class="num">{{ l.precio|usd }}</td><td></td>
+  {% else %}<td class="num"><input name="cant_{{ l.id }}" inputmode="decimal" value="{{ '%g'|format(l.cantidad) }}" style="width:56px;text-align:right"></td>
+  <td class="num"><input name="precio_{{ l.id }}" inputmode="decimal" value="{{ '%g'|format(l.precio or 0) }}" style="width:76px;text-align:right"></td>
+  <td><label class="chk" title="Quitar este producto"><input type="checkbox" name="quitar_{{ l.id }}" value="1"> <span class="mini">quitar</span></label></td>{% endif %}
+ </tr>{% endfor %}
+ </table>
+ <div style="display:flex;gap:6px;align-items:center;margin-top:8px"><select name="nuevo_producto" style="flex:1;min-width:0"><option value="">+ Agregar producto…</option>{% for p in vendibles %}<option value="{{ p.id }}">{{ p.nombre }} · {{ '$%g'|format(p.precio or 0) }}</option>{% endfor %}</select>
+  <input name="nuevo_cant" inputmode="decimal" value="1" style="width:56px;text-align:right" title="Cantidad"></div>
+ <div class="g2" style="margin-top:6px"><div><label>Descuento USD</label><input name="descuento" inputmode="decimal" value="{{ '%g'|format(o.descuento or 0) }}"></div>
+ <div><label>Delivery USD</label><input name="delivery" inputmode="decimal" value="{{ '%g'|format(o.delivery - (o.lineas|selectattr('extra_en')|selectattr('nombre','equalto','Delivery')|map(attribute='total')|sum)) }}"></div></div>
+ {% if o.iva %}<div class="mini" style="margin-top:4px">El IVA de 16% se recalcula solo.</div>{% endif %}
+ <p style="margin:8px 0 0"><button class="btn chico">Guardar cambios</button></p></form></details>
+<details class="cobro cobro-izq" style="margin-top:8px"><summary class="no-link" style="font-size:12px">+ Agregar un cobro a esta orden</summary>
 <form method="post" action="/ordenes/{{ o.id }}/cobro-extra?estado={{ fp.get('estado','todas') }}" class="cobro-f" style="min-width:230px">
 <label style="margin-top:0">¿Qué le agregó?</label><select name="concepto" onchange="this.form.querySelector('[name=concepto_otro]').hidden=(this.value!='Otro')">{% for x in CONCEPTOS_EXTRA %}<option>{{ x }}</option>{% endfor %}</select>
 <input name="concepto_otro" placeholder="escríbelo" hidden style="margin-top:6px">

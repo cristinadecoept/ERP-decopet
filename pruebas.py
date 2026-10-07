@@ -1174,6 +1174,26 @@ def _():
         assert con.execute("SELECT estado_pago FROM ordenes WHERE id=9002").fetchone()[0] == "sin_pago"
         con.close()
 
+@prueba("Editar una orden: cambiar cantidad, agregar un producto y el descuento recalcula total, IVA e inventario")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT * FROM productos WHERE tipo='producto' AND COALESCE(sku,'') NOT LIKE 'PACK%' AND categoria NOT IN ('porche','repuesto') AND precio>0 ORDER BY id LIMIT 1").fetchone()
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (9003,'Bettina','Bettina')")
+        con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,canal,subtotal,descuento,iva,delivery,total,creado_en) VALUES (9003,'#99003',9003,'pendiente','sin_pago','cashea',?,0,?,5,?,'2026-10-07 10:00')",
+                    (2 * p["precio"], round(2 * p["precio"] * 0.16, 2), round(2 * p["precio"] * 1.16 + 5, 2)))
+        lid = con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (9003,?,?,2,?,0,?)", (p["id"], p["nombre"], p["precio"], 2 * p["precio"])).lastrowid
+        con.commit(); A.descontar_inventario(con, 9003, 1); con.commit()
+        stock = lambda: con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?", (p["id"],)).fetchone()[0]
+        s0 = stock()
+        c.post("/ordenes/9003/editar", data={f"cant_{lid}": "1", f"precio_{lid}": str(p["precio"]), "descuento": "10", "delivery": "5", "nuevo_producto": str(p["id"]), "nuevo_cant": "1"})
+        o = con.execute("SELECT subtotal, iva, total FROM ordenes WHERE id=9003").fetchone()
+        sub = 2 * p["precio"]   # 1 que quedó + 1 agregado
+        assert (o["subtotal"], o["iva"], o["total"]) == (sub, round((sub - 10) * 0.16, 2), round(sub - 10 + round((sub - 10) * 0.16, 2) + 5, 2)), dict(o)
+        assert stock() == s0, "2 → 1 + 1 nuevo: el inventario queda igual"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")
