@@ -23,7 +23,7 @@
  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b>Llevar a {{ v.agencia or 'la agencia' }}{% if v.oficina %} {{ v.oficina }}{% endif %}</b> <span class="mini">· {{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }} · {{ v.monto|usd }}</span></div>
   <button type="button" class="btn sec chico" onclick="copiarAg(this)">Copiar datos para la agencia</button>
   {% if not es_manana %}<form method="post" action="/viajes/{{ v.id }}/llevado"><input type="hidden" name="volver" value="/mis-entregas"><button class="btn chico">Ya los llevé</button></form>{% endif %}</div>
- <div class="ag-paqs">{% for o in v.paquetes %}<div class="ag-paq" data-copia="{{ (o.recibe or o.nombre) }} · C.I. {{ o.cedula or 'FALTA' }} · Tel. {{ o.recibe_tel or o.telefono or 'FALTA' }} · {{ o.direccion or o.ciudad or '' }} · {{ o.lleva|striptags }}{{ ' · cobro a destino' if o.modalidad_envio == 'cobro_destino' }} ({{ o.numero }})">
+ <div class="ag-paqs">{% for o in v.paquetes %}<div class="ag-paq" data-copia="{{ ['👤 ' ~ (o.recibe or o.nombre), '🪪 C.I. ' ~ (o.cedula or 'FALTA'), '📞 Tel. ' ~ (o.recibe_tel or o.telefono or 'FALTA'), '📍 ' ~ (o.direccion or o.ciudad or 'FALTA la oficina'), '📦 ' ~ (o.lleva|striptags)] | join('\n') }}{{ '\n💵 Cobro a destino' if o.modalidad_envio == 'cobro_destino' }}">
   <div class="ag-cab"><b>{{ o.recibe or o.nombre }}</b><span class="mini">{{ o.numero }}{% if o.recibe %} · cliente: {{ o.nombre }}{% endif %}</span>{% if o.modalidad_envio == 'cobro_destino' %}<span class="est pendiente" style="margin-left:auto">Cobro a destino</span>{% endif %}</div>
   <dl class="ag-datos">
    <dt>Cédula</dt><dd>{% if o.cedula %}{{ o.cedula }}{% else %}<span class="op-punto">Falta · pídela antes de ir</span>{% endif %}</dd>
@@ -32,7 +32,7 @@
    <dt>Lleva</dt><dd>{{ o.lleva|platos }}</dd>
   </dl></div>{% endfor %}</div></div>{% endmacro %}
 {% for v in viajes_pend %}{{ tarjeta_viaje(v) }}{% endfor %}
-<script>function copiarAg(b){const t=[...b.closest('.viaje-ag').querySelectorAll('[data-copia]')].map(r=>r.dataset.copia).join('\n');navigator.clipboard.writeText(t).then(()=>{const o=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=o,1500)});}</script>
+<script>function copiarAg(b){const t=[...b.closest('.viaje-ag').querySelectorAll('[data-copia]')].map(r=>r.dataset.copia).join('\n\n');navigator.clipboard.writeText(t).then(()=>{const o=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=o,1500)});}</script>
 <div class="tabla">
 {% if ruta %}<table data-cols="Quién:15|Dirección:17|Qué lleva:13|Falta pagar:10|Status:14|Marcar como:31" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th><th>Status</th><th style="text-align:center">Marcar como</th></tr>
 {% for f in ruta %}<tr>
