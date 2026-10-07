@@ -4615,7 +4615,7 @@ PIEZAS_PRODUCCION = [
     ("Comedor Mini", "COM-10", True), ("Comedor Pequeño", "COM-15", True), ("Comedor Mediano", "COM-20", True),
     ("El Bar Grande", "BAR-25", True), ("El Bar Gigante", "BAR-30", True),
     # Walter entrega el Slow Chow sin plato; al confirmar que llegó, el taller dice cuántos van azules y cuántos rosados
-    ("Slow Chow Mini", "SLOW-10", True), ("Slow Chow Pequeño", "SLOW-15", True), ("Slow Chow Mediano", "SLOW-20", True), ("Slow Chow Gigante", "SLOW-30", True),
+    ("Slow Chow Pequeño 10 cm", "SLOW-10", True), ("Slow Chow Mediano 15 cm", "SLOW-15", True), ("Slow Chow Grande 25 cm", "SLOW-20", True), ("Slow Chow Gigante 30 cm", "SLOW-30", True),
     ("Rampa Nueva", "RAMPA-N", True), ("Rampa Para Perros Mini", "RAMPA-MINI", True),
     ("Muestra / prototipo", None, False),   # lo que hace David cuando se prueba un producto nuevo; lleva descripción y precio a mano
 ]
