@@ -1276,6 +1276,24 @@ def _():
         assert "madera rajada" not in c.get("/inventario/casos").text, "el despachador no entra"
         con.close()
 
+@prueba("Inventario: el taller avisa que algo se está agotando; a Cristina le llega en Inicio una sola vez hasta que lo resuelva")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT id, nombre FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()
+        sesion_de(c, "taller")
+        assert "Se está agotando" in c.get("/inventario").text
+        c.post(f"/inventario/{p['id']}/agotando", data={"color": ""}); c.post(f"/inventario/{p['id']}/agotando", data={"color": ""})
+        avisos = con.execute("SELECT * FROM notas_taller WHERE agotando_id=?", (p["id"],)).fetchall()
+        assert len(avisos) == 1 and "Prueba taller: se está agotando " + p["nombre"] in avisos[0]["texto"], [dict(a) for a in avisos]
+        assert "avisado: se está agotando" in c.get("/inventario").text
+        sesion_de(c, "admin")
+        assert "se está agotando " + p["nombre"] in c.get("/inicio").text
+        c.post(f"/taller/nota/{avisos[0]['id']}/resolver", data={"volver": "/inicio"})
+        sesion_de(c, "logistica")
+        assert "avisado: se está agotando" not in c.get("/inventario").text, "ya resuelto: se puede volver a avisar"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

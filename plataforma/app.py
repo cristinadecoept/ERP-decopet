@@ -664,6 +664,7 @@ COLUMNAS = (
     ("movimientos", "notas", "TEXT"), ("movimientos", "subcategoria", "TEXT"),
     ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"),
     ("notas_taller", "produccion_id", "INTEGER"), ("notas_taller", "danado_id", "INTEGER"),
+    ("notas_taller", "agotando_id", "INTEGER"), ("notas_taller", "agotando_color", "TEXT"),
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
     ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"), ("pagos_despachador", "confirmado_en", "TEXT"),
@@ -4103,7 +4104,26 @@ def inventario(request: Request, q: str = "", con=Depends(db)):
     danados = danados_pendientes(con)
     for p in prods:   # cuántos de esa fila están dañados (con su color, si lleva)
         p["danados"] = sum(d["cantidad"] for d in danados if d["producto_id"] == p["id"] and (not p.get("color") or d["color"] == p.get("color")))
+    avisados = {(r[0], r[1] or None) for r in con.execute("SELECT agotando_id, agotando_color FROM notas_taller WHERE resuelto=0 AND agotando_id IS NOT NULL")}
+    for p in prods: p["avisado"] = (p["id"], p.get("color") or None) in avisados
     return render(request, "inventario.html", seccion="inventario", q=q, productos=prods, movs=movs, danados=danados)
+
+
+@app.post("/inventario/{pid}/agotando")
+def inventario_agotando(request: Request, pid: int, color: str = Form(""), con=Depends(db)):
+    """El taller le avisa a Cristina que algo se está acabando. Le llega a Inicio hasta que lo marque resuelto."""
+    if rol_de(request) not in ("admin", "logistica", "taller"): return RedirectResponse("/inventario", status_code=303)
+    p = con.execute("SELECT id, nombre, unidad, tipo FROM productos WHERE id=?", (pid,)).fetchone()
+    color = (color or "").lower() if (color or "").lower() in PLATO_DE_COLOR else None
+    ya = con.execute("SELECT 1 FROM notas_taller WHERE resuelto=0 AND agotando_id=? AND COALESCE(agotando_color,'')=?", (pid, color or "")).fetchone()
+    if p and not ya:
+        quedan = con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?" + (" AND color=?" if color else ""), (pid, color) if color else (pid,)).fetchone()[0]
+        quien = (quien_es(request) or {}).get("nombre") or "El taller"
+        texto = f"{quien}: se está agotando {p['nombre']}" + (f" plato {color}" if color else "") + f" (quedan {fmt_cant(quedan, p['unidad'] if p['tipo'] == 'insumo' and p['unidad'] not in (None, 'unidad') else None)})"
+        con.execute("INSERT INTO notas_taller (fecha, texto, usuario_id, agotando_id, agotando_color) VALUES (?,?,?,?,?)",
+                    (datetime.date.today().isoformat(), texto, uid_de(request), pid, color))
+        con.commit()
+    return RedirectResponse("/inventario", status_code=303)
 
 
 @app.get("/inventario/casos", response_class=HTMLResponse)
