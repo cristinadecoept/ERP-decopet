@@ -1194,6 +1194,19 @@ def _():
         assert stock() == s0, "2 → 1 + 1 nuevo: el inventario queda igual"
         con.close()
 
+@prueba("Cliente nuevo sin perro anotado: aviso en Inicio; 'Cliente no quiso' lo quita")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB)
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono,creado_en) VALUES (9004,'Mariel Mora','Mariel','0412-1112233',datetime('now','localtime'))")
+        con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total,creado_en) VALUES (9004,'#99004',9004,'pendiente',98,datetime('now','localtime'))")
+        con.commit()
+        assert "Registraste a Mariel Mora" in c.get("/inicio").text
+        c.post("/clientes/9004/sin-mascota")
+        assert "Registraste a Mariel Mora" not in c.get("/inicio").text
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

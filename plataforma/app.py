@@ -690,7 +690,8 @@ COLUMNAS = (
     ("productos", "canales", "TEXT"), ("productos", "proveedor", "TEXT"), ("productos", "unidad", "TEXT"),
     ("pagos", "en_cashflow", "INTEGER NOT NULL DEFAULT 0"),   # ya lo pasó Cristina al libro a mano
     ("viajes_agencia", "llevado_en", "TEXT"),
-    ("viajes_agencia", "oficina", "TEXT"),   # a qué oficina de esa agencia lo lleva (Tealca: Los Palos Grandes $5 o Catia $10)
+    ("viajes_agencia", "oficina", "TEXT"),
+    ("clientes", "sin_mascota_ok", "TEXT"),   # el cliente no quiso dar los datos de su perro: ya no se le recuerda en Inicio (fecha)   # a qué oficina de esa agencia lo lleva (Tealca: Los Palos Grandes $5 o Catia $10)
     ("registro_ventas", "fecha_original", "TEXT"), ("registro_ventas", "inicial", "REAL"), ("registro_ventas", "cuota1", "REAL"),   # el Excel tal cual
     ("registro_ventas", "cuota2", "REAL"), ("registro_ventas", "cuota3", "REAL"), ("registro_ventas", "orden_excel", "TEXT"),   # vacío = asignado; con fecha = ya los llevó a la agencia (recién ahí se le debe)
     ("usuarios", "usuario", "TEXT"), ("usuarios", "clave_hash", "TEXT"), ("usuarios", "creado_en", "TEXT"),
@@ -1134,6 +1135,16 @@ def inicio(request: Request, con=Depends(db)):
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
     c["faltan_agencia"] = faltan_datos_agencia(con)
     c["falta_ubicacion"] = falta_ubicacion(con)
+    # clientes nuevos (desde que arrancó el registro) que compraron y no tienen ningún perro anotado (Cristina, 7 oct)
+    desde_r = (con.execute("SELECT valor FROM config WHERE clave='registro_desde'").fetchone() or ["2026-10-03"])[0]
+    c["sin_mascota"] = [dict(r) for r in con.execute("""SELECT c.id, c.nombre, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.telefono FROM clientes c
+                        WHERE substr(c.creado_en,1,10) >= ? AND c.sin_mascota_ok IS NULL
+                          AND NOT EXISTS (SELECT 1 FROM mascotas m WHERE m.cliente_id=c.id)
+                          AND EXISTS (SELECT 1 FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada')
+                        ORDER BY c.creado_en DESC LIMIT 20""", (desde_r,))]
+    for x in c["sin_mascota"]:   # el mismo mensaje con que Cristina pide los datos del perro
+        x["msj"] = f"¡Hola {x['quien']}! 👋🏻 Para nuestra base de datos, ¿crees que nos puedes pasar porfa el nombre, raza y cumpleaños de tu perro? 🐶💚"
+        x["wa"] = (wa_api(x["telefono"]) + "&text=" + quote(x["msj"])) if wa_api(x["telefono"]) else ""
     vh = ventas_por_dia(con, h, h).get(h, (0, 0)); v = {"venta": vh[0], "n": vh[1]}
     v["extras"] = sum(1 for x in entradas_ordenes(con, h, h) if x["tipo"] != "pedido")   # cobros sueltos que entraron hoy (delivery de un pack, un saldo…)
     v["por_cobrar"] = por_cobrar_de_hoy(con, h)
@@ -1686,6 +1697,14 @@ def contra_entrega(request: Request, oid: int, con=Depends(db)):
     if "contra_entrega" not in PERMISOS[rol]: return volver(oid, request)
     con.execute("UPDATE ordenes SET estado_pago='contra_entrega' WHERE id=? AND estado_pago IN ('sin_pago','rechazado','por_confirmar')", (oid,))
     registrar(con, oid, uid_de(request), "estado", "Autorizado que pague al recibir → Confirmada"); con.commit(); return volver(oid, request)
+
+
+@app.post("/clientes/{cid}/sin-mascota")
+def cliente_sin_mascota(request: Request, cid: int, con=Depends(db)):
+    """'El cliente no quiso' dar los datos de su perro: deja de salir el aviso en Inicio."""
+    if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/inicio", status_code=303)
+    con.execute("UPDATE clientes SET sin_mascota_ok=date('now','localtime') WHERE id=?", (cid,)); con.commit()
+    return RedirectResponse("/inicio", status_code=303)
 
 
 @app.post("/ordenes/{oid}/editar")

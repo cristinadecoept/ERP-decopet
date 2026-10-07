@@ -28,7 +28,7 @@
  <div class="ult-est">{% if rol=='admin' %}<span class="pago {{ uo.estado_pago }}">{{ P_LABEL.get(uo.estado_pago, uo.estado_pago) }}</span>{% endif %}<span class="est {{ uo.estado }}">{{ E_LABEL.get(uo.estado, uo.estado) }}</span></div>
 </div>{% endif %}
 <div class="tarjeta"><div class="hogar-g"><div>
-<h4 class="sub-t">Perros</h4>
+<h4 class="sub-t" id="perros">Perros</h4>
 
 {% for m in perros %}<div class="ver-ln perro-ver"><div><b>{{ m.nombre }}</b><div class="mini">{{ m.raza if m.raza and m.raza!="Pendiente" else "raza sin dato" }}{% if m.edad is not none %} · {{ m.edad }} año{{ "s" if m.edad!=1 }}{% endif %}{% if m.fecha_nacimiento %} · 🎂 {{ m.fecha_nacimiento[8:10] }}/{{ m.fecha_nacimiento[5:7] }}{% elif m.md %} · 🎂 {{ m.md[3:5] }}/{{ m.md[:2] }}{% endif %}{% if m.cumple and m.faltan==0 %} · <b style="color:var(--naranja)">¡hoy cumple!</b>{% endif %}</div>{% if m.notas %}<div class="mini">{{ m.notas }}</div>{% endif %}</div><button type="button" class="link-ed" onclick="abrirEd(this)">Editar</button></div><div class="ed-caja" hidden><form method="post" action="/clientes/{{ c.id }}/perro" class="perro-f"><input type="hidden" name="id" value="{{ m.id }}">
 <div class="perro-g3"><div><label>Nombre</label><input name="nombre" value="{{ m.nombre }}" required></div><div><label>Raza{% if m.raza=='Pendiente' %} <span class="sin-nombre" style="font-size:10.5px">preguntar</span>{% endif %}</label><input name="raza" value="{{ m.raza or '' }}" list="razas"></div><div><label>Cumpleaños{% if m.edad is not none %} <span class="mini">· {{ m.edad }} año{{ 's' if m.edad!=1 }}</span>{% endif %}{% if m.revisar %} <span class="sin-nombre" style="font-size:10.5px">por revisar</span>{% endif %}</label><input name="cumple" value="{% if m.fecha_nacimiento %}{{ m.fecha_nacimiento[8:10] }}/{{ m.fecha_nacimiento[5:7] }}/{{ m.fecha_nacimiento[:4] }}{% elif m.md %}{{ m.md[3:5] }}/{{ m.md[:2] }}{% endif %}" placeholder="21/09/2024 o 21/09"></div></div>
@@ -181,6 +181,7 @@ document.querySelectorAll('form').forEach(f=>{
 function verTab(k){document.querySelectorAll('.tab-b').forEach(b=>b.classList.toggle('act',b.dataset.tab===k));
   document.querySelectorAll('.tab-p').forEach(p=>p.hidden=p.dataset.p!==k);
   const t=document.querySelector('.perfil-tabs'); if(t&&location.hash!=='#'+k){history.replaceState(null,'','#'+k);} }
+if(location.hash==='#perros') setTimeout(()=>document.getElementById('perros')?.scrollIntoView({block:'start'}),50);   // desde el aviso de Inicio: directo a agregar el perro
 { const h=location.hash.slice(1); const b=document.querySelector('.tab-b[data-tab="'+h+'"]')||document.querySelector('.tab-b'); if(b) verTab(b.dataset.tab); }
 if(location.hash==='#incid') document.querySelector('.perfil-tabs')?.scrollIntoView();
 </script>
