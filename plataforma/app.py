@@ -4152,6 +4152,10 @@ def descontar_inventario(con, oid, uid):
     hoy = datetime.date.today().isoformat()
     for l in con.execute("SELECT l.*, p.sku, p.nombre, p.categoria FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?", (oid,)).fetchall():
         cant = int(l["cantidad"])
+        if (l["sku"] or "") in ("MALLA", "MALLA-G"):   # la malla suelta sale de las que el taller dejó listas, de su tamaño
+            m = con.execute("SELECT id FROM productos WHERE sku=?", ("INS-MALLA-G" if l["sku"] == "MALLA-G" else "INS-MALLA-M",)).fetchone()
+            if m: con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, orden_id, nota, usuario_id) VALUES (?,?,?,?,?,?,?)", (m["id"], hoy, "salida", -cant, oid, f"{cant}× {l['nombre']}", uid))
+            continue
         armado = l["categoria"] in ("porche", "repuesto")   # se arma el mismo día: no tiene stock propio
         # …salvo que el taller haya adelantado trabajo: si hay porches ya armados, la venta sale de ahí
         listos = con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?", (l["producto_id"],)).fetchone()[0] if armado else 0
@@ -4166,9 +4170,10 @@ def descontar_inventario(con, oid, uid):
             if resto <= 0: break
             con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, orden_id, nota, usuario_id) VALUES (?,?,?,?,?,?,?)",
                         (r["insumo_id"], hoy, "salida", -int(r["cantidad"] * resto), oid, f"para {resto}× {l['nombre']}", uid))
-        if l["malla"]:
-            m = con.execute("SELECT id FROM productos WHERE sku='INS-MALLA'").fetchone()
-            if m: con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, orden_id, nota, usuario_id) VALUES (?,?,?,?,?,?,?)", (m["id"], hoy, "salida", -cant, oid, "malla agregada al porche", uid))
+        if l["malla"]:   # la malla que el taller deja lista, del tamaño del porche (Grande → grande; lo demás → mediana)
+            sku_m = "INS-MALLA-G" if (l["sku"] or "").upper().endswith("-G") else "INS-MALLA-M"
+            m = con.execute("SELECT id FROM productos WHERE sku=?", (sku_m,)).fetchone()
+            if m: con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, orden_id, nota, usuario_id) VALUES (?,?,?,?,?,?,?)", (m["id"], hoy, "salida", -cant, oid, f"malla para {cant}× {l['nombre']}", uid))
 
 
 @app.get("/galeria", response_class=HTMLResponse)

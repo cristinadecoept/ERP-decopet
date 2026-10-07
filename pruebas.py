@@ -454,6 +454,25 @@ def _():
     assert A.fmt_cant(37.8, "litro") == "37,8 litros" and A.fmt_cant(1, "rollo") == "1 rollo"
 
 
+@prueba("La malla sale del inventario según el tamaño del porche: Grande → malla grande; Mediano → malla mediana")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO productos (id,sku,nombre,categoria,tipo,activo) VALUES (81,'PRO-M','El Porche Versión PRO Mediano','porche','producto',1),(82,'BAS-G','Porche Básico Grande','porche','producto',1)")
+    con.execute("INSERT INTO productos (id,sku,nombre,tipo,unidad,activo) VALUES (91,'INS-MALLA-M','Malla mediana','insumo','unidad',1),(92,'INS-MALLA-G','Malla grande','insumo','unidad',1)")
+    con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad) VALUES (91,'2026-10-07','entrada',5),(92,'2026-10-07','entrada',5)")
+    con.execute("INSERT INTO ordenes (id,numero,estado,estado_pago,subtotal,total) VALUES (1,'#1','pendiente','sin_pago',0,0)")
+    con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total,malla) VALUES (1,81,'El Porche Versión PRO Mediano',1,83,0,83,1),(1,82,'Porche Básico Grande',2,40,0,80,1)")
+    A.descontar_inventario(con, 1, None)
+    stock = lambda i: con.execute("SELECT SUM(cantidad) FROM mov_inventario WHERE producto_id=?", (i,)).fetchone()[0]
+    assert (stock(91), stock(92)) == (4, 3), (stock(91), stock(92))
+    # la malla de seguridad suelta también sale de las listas, de su tamaño
+    con.execute("INSERT INTO productos (id,sku,nombre,categoria,tipo,activo) VALUES (83,'MALLA','Malla de seguridad Mediana','porche','producto',1),(84,'MALLA-G','Malla de seguridad Grande','porche','producto',1)")
+    con.execute("INSERT INTO ordenes (id,numero,estado,estado_pago,subtotal,total) VALUES (2,'#2','pendiente','sin_pago',0,0)")
+    con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (2,84,'Malla de seguridad Grande',1,20,0,20)")
+    A.descontar_inventario(con, 2, None)
+    assert (stock(91), stock(92)) == (4, 2), (stock(91), stock(92))
+
+
 @prueba("Sin nadie conectado (ERP recién instalado) se puede guardar y queda a nombre de un usuario")
 def _():
     class R:   # una petición sin sesión
