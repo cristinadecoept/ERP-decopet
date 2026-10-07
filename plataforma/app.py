@@ -6738,7 +6738,9 @@ def taller_hoy(request: Request, con=Depends(db)):
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
                               AND o.estado='pendiente' AND o.origen_excel=0   -- en ruta = ya salió del taller
                               AND """ + HAY_QUE_ENTREGAR() + """
-                              AND COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) <= ?""", (hoy,)):
+                              -- con viaje a la agencia asignado, manda el día del viaje (el pedido puede decir hoy y el viaje ser mañana)
+                              AND COALESCE((SELECT v.fecha FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL),
+                                           o.fecha_prometida, substr(o.creado_en,1,10)) <= ?""", (hoy,)):
         # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
         a_agencia = o["tipo_entrega"] == "nacional"
         # un envío nacional sin despachador no es "sin despachador": va a una agencia (MRW, Tealca…) y falta quién lo lleve hasta allá
