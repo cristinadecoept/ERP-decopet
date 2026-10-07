@@ -1157,6 +1157,23 @@ def _():
         assert con.execute("SELECT total FROM ordenes WHERE id=9001").fetchone()[0] == 101, "lo pagado no se quita"
         con.close()
 
+@prueba("Corregir un pago mal anotado: cambia el monto y la orden queda pagada; borrar un pago la deja por pagar")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (9002,'Marelbis','Marelbis')")
+        con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,total,creado_en) VALUES (9002,'#99002',9002,'pendiente','abonada',220.76,220.76,'2026-10-07 10:00')")
+        pid = con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (9002,'Zelle Decopet',216.06,216.06,'USD','2026-10-07 11:39','confirmado')").lastrowid
+        con.commit()
+        c.post(f"/ordenes/9002/pago/{pid}/corregir", data={"monto_usd": "220.76", "forma": "Zelle Decopet", "fecha": "2026-10-07"})
+        assert con.execute("SELECT monto_usd FROM pagos WHERE id=?", (pid,)).fetchone()[0] == 220.76
+        assert con.execute("SELECT estado_pago FROM ordenes WHERE id=9002").fetchone()[0] == "pagada"
+        c.post(f"/ordenes/9002/pago/{pid}/corregir", data={"borrar": "1"})
+        assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=9002").fetchone()[0] == 0
+        assert con.execute("SELECT estado_pago FROM ordenes WHERE id=9002").fetchone()[0] == "sin_pago"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

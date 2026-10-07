@@ -79,7 +79,15 @@
 <div class="dato"><b>Forma de pago</b><span>{{ o.forma_pago_prevista or (o.pagos[0].forma if o.pagos else '—') }}{% if o.estado_pago=='contra_entrega' %} <span class="pago contra_entrega">CONTRA ENTREGA</span>{% endif %}</span></div>
 <div class="dato"><b>Fecha de pago</b><span>{% if o.fecha_pago %}{{ o.fecha_pago|fecha }}{% elif o.estado_pago=='contra_entrega' %}<span class="mini">se pone sola cuando pague</span>{% else %}<span class="mini">todavía no ha pagado</span>{% endif %}</span></div>
 {% if o.pagos %}{% for p in o.pagos %}<div class="dato" style="margin-bottom:6px"><b>{{ p.forma }}</b><span>{{ p.monto_usd|usd }}{% if 'ver_dinero' in puede %}{% if p.moneda=='VES' %} <span class="mini">(Bs {{ '{:,.0f}'.format(p.monto_real or 0) }} a {{ p.tasa }})</span>{% endif %}{% if p.cuenta %} → {{ p.cuenta }}{% endif %}{% if p.referencia %} · ref {{ p.referencia }}{% endif %}{% endif %}
- <div class="mini">{% if p.estado=='confirmado' %}✓ confirmado por {{ p.confirmado_por_nombre or '—' }} {{ p.confirmado_en|fecha(true) }}{% elif p.estado=='rechazado' %}✗ rechazado{% else %}⏳ por revisar{% if p.motivo_revision %} · <b>{{ p.motivo_revision }}</b>{% endif %}{% endif %}</div></span></div>{% endfor %}
+ <div class="mini">{% if p.estado=='confirmado' %}✓ confirmado por {{ p.confirmado_por_nombre or '—' }} {{ p.confirmado_en|fecha(true) }}{% elif p.estado=='rechazado' %}✗ rechazado{% else %}⏳ por revisar{% if p.motivo_revision %} · <b>{{ p.motivo_revision }}</b>{% endif %}{% endif %}
+ {% if 'confirmar_pago' in puede %}<details class="cobro cobro-izq" style="display:inline-block;margin-left:6px"><summary class="no-link" style="font-size:12px">Corregir</summary>
+ <form method="post" action="/ordenes/{{ o.id }}/pago/{{ p.id }}/corregir?estado={{ fp.get('estado','todas') }}" class="cobro-f" style="min-width:230px">
+  <label style="margin-top:0">Monto USD</label><input name="monto_usd" inputmode="decimal" value="{{ '%g'|format(p.monto_usd or 0) }}" required>
+  <label>Forma de pago</label><select name="forma">{% for x in FORMAS_COBRO %}<option value="{{ x }}" {{ 'selected' if x == p.forma }}>{{ x|caja }}</option>{% endfor %}{% if p.forma and p.forma not in FORMAS_COBRO %}<option value="{{ p.forma }}" selected>{{ p.forma }}</option>{% endif %}</select>
+  <label>¿Qué día lo pagó?</label><input type="date" name="fecha" value="{{ (p.fecha or '')[:10] }}">
+  <label>Referencia <span class="mini">(opcional)</span></label><input name="referencia" value="{{ p.referencia or '' }}">
+  <p style="margin:8px 0 0;display:flex;gap:8px;flex-wrap:wrap"><button class="btn chico">Guardar</button><button class="btn sec chico" name="borrar" value="1" formnovalidate onclick="return confirm('¿Borrar este pago de {{ (p.monto_usd or 0)|usd|striptags }}? Úsalo solo si se anotó por error.')" style="color:#b3321b">Borrar pago</button></p>
+ </form></details>{% endif %}</div></span></div>{% endfor %}
 {% else %}<div class="mini">Sin pagos registrados.</div>{% endif %}
 {% if o.estado_pago=='abonada' %}<div class="nota-log">Abonó {{ o.pagado|usd }} · debe {{ (o.total-o.pagado)|usd }}{% if o.saldo_concepto %} — {{ o.saldo_concepto }}{% endif %}</div>
 {% elif o.estado_pago in ['sin_pago','rechazado'] %}<div class="nota-log">Por cobrar {{ o.total|usd }}{% if o.saldo_concepto %} — {{ o.saldo_concepto }}{% endif %}</div>{% endif %}

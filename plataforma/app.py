@@ -1686,6 +1686,39 @@ def contra_entrega(request: Request, oid: int, con=Depends(db)):
     registrar(con, oid, uid_de(request), "estado", "Autorizado que pague al recibir → Confirmada"); con.commit(); return volver(oid, request)
 
 
+@app.post("/ordenes/{oid}/pago/{pid}/corregir")
+async def corregir_pago(request: Request, oid: int, pid: int, con=Depends(db)):
+    """Corregir un pago mal anotado: monto, forma, fecha o referencia; o borrarlo si fue un error (Cristina, 7 oct:
+    'necesito corregir el monto pagado y no sé cómo'). La orden recalcula si está pagada, abonada o por pagar."""
+    if "confirmar_pago" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    f = await request.form()
+    p = con.execute("SELECT * FROM pagos WHERE id=? AND orden_id=?", (pid, oid)).fetchone()
+    if not p: return volver(oid, request)
+    if f.get("borrar"):
+        con.execute("DELETE FROM pagos WHERE id=?", (pid,))
+        registrar(con, oid, uid_de(request), "pago", f"Se borró el pago {p['forma'] or ''} {fmt_usd(p['monto_usd'] or 0)} (estaba mal anotado)")
+    else:
+        monto = cifra(f.get("monto_usd")) if (f.get("monto_usd") or "").strip() else p["monto_usd"]
+        forma = (f.get("forma") or p["forma"] or "").strip() or None
+        fecha = (f.get("fecha") or "").strip() or (p["fecha"] or "")[:10]
+        ref = (f.get("referencia") or "").strip() or None
+        en_bs = es_bolivares(forma)
+        tasa = p["tasa"] or (tasa_hoy(con)["valor"] if en_bs else None)
+        real = round(monto * tasa, 2) if en_bs and tasa else monto
+        hora = (p["fecha"] or "")[10:] if (p["fecha"] or "")[:10] == fecha else ""
+        con.execute("""UPDATE pagos SET monto_usd=?, monto_real=?, moneda=?, tasa=?, forma=?, cuenta=?, fecha=?, referencia=? WHERE id=?""",
+                    (monto, real, "VES" if en_bs else "USD", tasa if en_bs else None, forma, caja_de(forma) or p["cuenta"], fecha + hora, ref, pid))
+        cambios = [f"{n}: {a} → {b}" for n, a, b in (("monto", fmt_usd(p["monto_usd"] or 0), fmt_usd(monto)), ("forma", p["forma"], forma),
+                                                     ("fecha", (p["fecha"] or "")[:10], fecha), ("referencia", p["referencia"] or "—", ref or "—")) if str(a) != str(b)]
+        if cambios: registrar(con, oid, uid_de(request), "pago", "Pago corregido · " + "; ".join(cambios))
+    o = con.execute("SELECT total, estado_pago FROM ordenes WHERE id=?", (oid,)).fetchone()
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+    if o["estado_pago"] not in ("por_cobrar", "reembolsada", "por_confirmar", "contra_entrega") or pagado >= (o["total"] or 0) - 0.01:
+        con.execute("UPDATE ordenes SET estado_pago=? WHERE id=? AND estado_pago NOT IN ('por_cobrar','reembolsada')", (estado_pago_de(pagado, o["total"] or 0), oid))
+    con.execute("UPDATE ordenes SET fecha_pago=NULL WHERE id=?", (oid,)); fijar_fecha_pago(con, oid)
+    con.commit(); return volver(oid, request)
+
+
 @app.post("/ordenes/{oid}/pago")
 async def registrar_pago(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request); f = await request.form()
