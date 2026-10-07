@@ -36,8 +36,8 @@
 <div class="tabla">
 {% if ruta %}<table data-cols="Quién:15|Dirección:17|Qué lleva:13|Falta pagar:10|Status:14|Marcar como:31" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th><th>Status</th><th style="text-align:center">Marcar como</th></tr>
 {% for f in ruta %}<tr>
- <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva) }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
-  {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva) }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% endif %}</div>{% endif %}</td>
+ <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva) }}" data-msj="{{ texto_aviso(f.quien, quien, f.que_lleva) }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
+  {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva) }}" data-msj="{{ texto_aviso(f.recibe, quien, f.que_lleva) }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% endif %}</div>{% endif %}</td>
  <td class="me-dir" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}{% else %}<span class="mini">—</span>{% endif %}</td>
  <td class="mini me-lleva" data-t="Qué lleva">{{ f.que_lleva|platos }}{% for t in f.indicaciones %}<div class="op-nota">📌 {{ t }}</div>{% endfor %}{% for av in f.avisos or [] %}<div class="op-nota" style="background:#fbe9e5;color:#b3321b">⚠️ Le avisaste a Cristina: {{ av.tipo }}{% if av.descripcion %} · “{{ av.descripcion }}”{% endif %}</div>{% endfor %}</td>
  <td style="white-space:nowrap" data-t="Falta pagar">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% else %}<span class="ln-pagado">Nada · ya pagó</span>{% endif %}</td>
@@ -81,8 +81,8 @@
 {% for v in viajes_manana %}{{ tarjeta_viaje(v, True) }}{% endfor %}
 {% endif %}{% if ruta_manana %}<div class="tabla"><table data-cols="Quién:22|Dirección:30|Qué lleva:28|Falta pagar:20" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th></tr>
 {% for f in ruta_manana %}<tr>
- <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva, True) }}" target="_blank" rel="noreferrer">{{ f.telefono }} · WhatsApp ↗</a></div>{% endif %}
-  {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva, True) }}" target="_blank" rel="noreferrer">{{ f.recibe_tel }} ↗</a>{% endif %}</div>{% endif %}</td>
+ <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva, True) }}" data-msj="{{ texto_aviso(f.quien, quien, f.que_lleva, True) }}" target="_blank" rel="noreferrer">{{ f.telefono }} · WhatsApp ↗</a></div>{% endif %}
+  {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva, True) }}" data-msj="{{ texto_aviso(f.recibe, quien, f.que_lleva, True) }}" target="_blank" rel="noreferrer">{{ f.recibe_tel }} ↗</a>{% endif %}</div>{% endif %}</td>
  <td class="me-dir" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% if f.maps %}<div class="mini"><a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a></div>{% endif %}{% else %}<span class="mini">—</span>{% endif %}</td>
  <td class="mini me-lleva" data-t="Qué lleva">{{ f.que_lleva|platos }}</td>
  <td style="white-space:nowrap" data-t="Falta pagar">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% if f.cobrar_forma %}<div class="mini">por {{ f.cobrar_forma }}</div>{% endif %}{% else %}<span class="ln-pagado">Nada · ya pagó</span>{% endif %}</td>
@@ -110,4 +110,5 @@
      <p style="margin:8px 0 0"><button class="btn chico">Avisar a Cristina</button></p></form></details></td></tr>{% endfor %}</table>
   {% else %}<div class="vacio">No tienes pagos por confirmar.</div>{% endif %}</div></div>
 </div>
+<script>document.querySelectorAll('a[data-msj]').forEach(a=>a.addEventListener('click',()=>{try{navigator.clipboard.writeText(a.dataset.msj)}catch(e){}}));</script>
 {% endblock %}

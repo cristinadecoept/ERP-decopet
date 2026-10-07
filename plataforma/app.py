@@ -367,19 +367,25 @@ def wa(tel):
     if s.strip().startswith("+"): return "https://wa.me/" + d
     if d.startswith("58"): return "https://wa.me/" + d
     return "https://wa.me/58" + d.lstrip("0")
+def texto_aviso(cliente, despachador, lleva, manana=False):
+    """El aviso que el despachador le manda al cliente antes de llevarle el pedido (Cristina, 6 oct: con 💚🐶👋🏻👀🙌🏻; en Decopet el corazón siempre es verde, nunca rojo)."""
+    que = re.sub(r"[⟪⟫]", "", str(lleva or "")).strip()
+    hola = f"¡Hola{' ' + cliente if cliente else ''}! 👋🏻 Soy {despachador} de Decopet 💚 "
+    return hola + (f"Mañana te llevo tu pedido: {que} 🐶 Te aviso cuando esté en camino 🙌🏻" if manana
+                   else f"Estoy por llevarte tu pedido: {que} 🐶 Te aviso cuando esté cerca 👀")
+
+
 def wa_aviso(tel, cliente, despachador, lleva, manana=False):
-    """WhatsApp del cliente con el aviso ya escrito, para que el despachador solo le dé a enviar (Cristina, 6 oct)."""
+    """WhatsApp del cliente con el aviso ya escrito, para que el despachador solo le dé a enviar. Al tocarlo además se
+    copia (ver mis_entregas.html): WhatsApp Web daña los emojis que llegan por enlace y así se pueden pegar bien."""
     base = wa(tel)
     if not base: return ""
-    que = re.sub(r"[⟪⟫]", "", str(lleva or "")).strip()
-    # solo emojis "clásicos" (✨ ❤ ☀ ✅): los nuevos (👋 🐾) WhatsApp Web los daña cuando llegan por enlace (salen como "�")
-    hola = f"¡Hola{' ' + cliente if cliente else ''}! Soy {despachador} de Decopet. "
-    txt = hola + (f"Mañana te llevo tu pedido: {que}. Te aviso cuando esté en camino ✨" if manana
-                  else f"Estoy por llevarte tu pedido: {que}. Te aviso cuando esté cerca ✨")
-    # wa.me pierde los emojis al redirigir (salen como "�"); el enlace directo de WhatsApp los respeta
-    return "https://api.whatsapp.com/send?phone=" + base.rsplit("/", 1)[1] + "&text=" + quote(txt)
+    return "https://api.whatsapp.com/send?phone=" + base.rsplit("/", 1)[1] + "&text=" + quote(texto_aviso(cliente, despachador, lleva, manana))
+
+
 tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa=wa)
 tpl.env.globals["wa_aviso"] = wa_aviso
+tpl.env.globals["texto_aviso"] = texto_aviso
 # ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
 tpl.env.tests["lower_empieza"] = lambda caja, dijo: bool(dijo) and (caja or "").lower().startswith((dijo or "").lower())
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
