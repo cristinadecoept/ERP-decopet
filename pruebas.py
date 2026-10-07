@@ -216,6 +216,18 @@ def _():
     assert f8 == [("2026-10-08", "Delivery", 20, "Pago Móvil VES")], f8
     assert A.ventas_por_dia(con, "2026-10-08", "2026-10-08") == {"2026-10-08": (20, 0)}
 
+@prueba("Envío nacional sin cédula ni correo: aviso en Inicio con el mensaje para pedírselos al cliente")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (1,'Hebert Watts','Hebert','0412-6004639')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,tipo_entrega,agencia,ciudad,total) VALUES (1,'#1',1,'pendiente','nacional','Tealca','Tealca Paramillo',98)")
+    con.commit()
+    f = A.faltan_datos_agencia(con)
+    assert [(x["numero"], x["faltan"]) for x in f] == [("#1", "la cédula y el correo")], f
+    assert "nos faltan tu cédula y tu correo" in f[0]["msj"] and f[0]["wa"].startswith("https://api.whatsapp.com/send?phone=584126004639"), f[0]
+    con.execute("UPDATE clientes SET cedula='27050661', correo='h@x.com' WHERE id=1"); con.commit()
+    assert A.faltan_datos_agencia(con) == []
+
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():
     con = base_limpia()

@@ -367,6 +367,32 @@ def wa(tel):
     if s.strip().startswith("+"): return "https://wa.me/" + d
     if d.startswith("58"): return "https://wa.me/" + d
     return "https://wa.me/58" + d.lstrip("0")
+def faltan_datos_agencia(con):
+    """Envíos nacionales por despachar a los que les falta un dato que la agencia va a pedir (Cristina, 6 oct):
+    oficina, cédula, teléfono o correo. Salen en Inicio para escribirle al cliente antes de que el despachador vaya."""
+    out = []
+    for o in con.execute("""SELECT o.id, o.numero, o.agencia, NULLIF(TRIM(o.direccion),'') direccion, NULLIF(TRIM(o.ciudad),'') ciudad,
+                            NULLIF(TRIM(o.receptor_telefono),'') recibe_tel, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien,
+                            NULLIF(TRIM(c.telefono),'') telefono, NULLIF(TRIM(c.cedula),'') cedula, NULLIF(TRIM(c.correo),'') correo
+                            FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
+                            WHERE o.tipo_entrega='nacional' AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
+                            ORDER BY COALESCE(o.fecha_prometida, o.creado_en), o.id"""):
+        faltan = [n for n, ok in (("la oficina", o["direccion"] or o["ciudad"]), ("la cédula", o["cedula"]),
+                                  ("el teléfono", o["recibe_tel"] or o["telefono"]), ("el correo", o["correo"])) if not ok]
+        if not faltan: continue
+        lista = faltan[0] if len(faltan) == 1 else ", ".join(faltan[:-1]) + " y " + faltan[-1]
+        ag = o["agencia"] or "la agencia"
+        pide = lista.replace("la oficina", f"la oficina de {ag} donde lo vas a retirar").replace("la cédula", "tu cédula") \
+                    .replace("el teléfono", "un teléfono de contacto").replace("el correo", "tu correo")
+        msj = (f"¡Hola{' ' + o['quien'] if o['quien'] else ''}! 👋🏻 Te escribimos de Decopet 💚 Para enviarte tu pedido por {ag} "
+               + (f"nos falta {pide}: la agencia lo pide para el envío. ¿Nos lo pasas? 🙌🏻" if len(faltan) == 1 else
+                  f"nos faltan {pide}: la agencia los pide para el envío. ¿Nos los pasas? 🙌🏻"))
+        tel = o["telefono"]
+        out.append({"id": o["id"], "numero": o["numero"], "quien": o["quien"], "agencia": ag, "faltan": lista, "msj": msj,
+                    "wa": ("https://api.whatsapp.com/send?phone=" + wa(tel).rsplit("/", 1)[1] + "&text=" + quote(msj)) if wa(tel) else ""})
+    return out
+
+
 def texto_aviso(cliente, despachador, lleva, manana=False):
     """El aviso que el despachador le manda al cliente antes de llevarle el pedido (Cristina, 6 oct: con 💚🐶👋🏻👀🙌🏻; en Decopet el corazón siempre es verde, nunca rojo)."""
     que = re.sub(r"[⟪⟫]", "", str(lleva or "")).strip()
@@ -1047,6 +1073,7 @@ def inicio(request: Request, con=Depends(db)):
                    "tot_rep": len(rep_l) + len(rep_h), "tot_cumples": len(cumples_l) + len(cumples_hechos), "tot_cobro": len(cobro_l) + len(cobro_h),
                    "hechos_rep": len(rep_h), "hechos_cumples": len(cumples_hechos), "hechos_cobro": len(cobro_h)}
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
+    c["faltan_agencia"] = faltan_datos_agencia(con)
     vh = ventas_por_dia(con, h, h).get(h, (0, 0)); v = {"venta": vh[0], "n": vh[1]}
     v["extras"] = sum(1 for x in entradas_ordenes(con, h, h) if x["tipo"] != "pedido")   # cobros sueltos que entraron hoy (delivery de un pack, un saldo…)
     v["por_cobrar"] = por_cobrar_de_hoy(con, h)
