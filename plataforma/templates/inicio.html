@@ -48,7 +48,7 @@
   {% else %}<div class="mini" style="margin-top:14px">Nada programado para hoy todavía.</div>{% endif %}
  </a>
  {% if rol=='admin' %}<div class="tile hoy-hero">
-  <div class="hoy-hero-cab"><div><b>{{ v.venta|usd }}</b><span>Ventas de hoy</span></div><i>{{ v.n }} {{ 'orden' if v.n == 1 else 'órdenes' }}{% if v.extras %} + {{ v.extras }} cobro{{ 's' if v.extras!=1 }} suelto{{ 's' if v.extras!=1 }}{% endif %} · <span class="hg-leyenda"></span>promedio del mes {{ prom|usd }} por día</i></div>
+  <div class="hoy-hero-cab"><div><b>{{ v.venta|usd }}</b><span>Ventas de hoy</span></div><i>{{ v.n }} {{ 'orden' if v.n == 1 else 'órdenes' }}{% if v.extras %} + {{ v.extras }} cobro{{ 's' if v.extras!=1 }} suelto{{ 's' if v.extras!=1 }}{% endif %}{% if v.por_cobrar %} · <a href="/ordenes?vista=por_cobrar_clientes" class="hg-cobrar">{{ v.por_cobrar|usd }} por cobrar</a>{% endif %} · <span class="hg-leyenda"></span>promedio del mes {{ prom|usd }} por día</i></div>
   {% set mx = ([prom] + serie|map(attribute=1)|list)|max %}{% set mx = mx if mx else 1 %}{% set B = 140 %}{% set H = 108 %}
   <svg viewBox="0 0 420 160" class="cf-svg hoy-graf" role="img" aria-label="Ventas de los últimos 14 días">
    <line x1="0" x2="420" y1="{{ B }}" y2="{{ B }}" class="hg-base"/>

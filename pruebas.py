@@ -141,6 +141,7 @@ def _():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,creado_en) VALUES (1,'#1',1,'entregada','pagada',72,'2026-09-07 10:00')")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Efectivo USD',72,72,'USD','2026-09-07','confirmado')")   # lo que pagó al comprar el pack
     con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,0)")
     con.commit()
     A.entregar_pack(con, 1, 1, "2026-10-05", "1", "delivery", "Juan", "5", "", pago=None)   # quedó pendiente
@@ -173,6 +174,47 @@ def _():
     o = con.execute("SELECT total, delivery, estado_pago FROM ordenes WHERE id=1").fetchone()
     assert (o["total"], o["delivery"], o["estado_pago"]) == (110, 12, "abonada"), dict(o)
     assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=1").fetchone()[0] == 1, "no debe registrar un pago que no entró"
+
+@prueba("Un delivery agregado que todavía no se paga no es venta; cuando lo paga, entra ese día")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Marisol','Marisol')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,subtotal,creado_en) VALUES (1,'#1',1,'pendiente','pagada',98,98,'2026-10-05 10:00')")
+    con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total) VALUES (1,'Rampa Nueva',1,98,0,98)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'BNC Cashea',98,98,'USD','2026-10-05','confirmado')")
+    con.commit()
+    A.cobro_extra(con, 1, "Delivery", 12, "Pago Móvil VES", "2026-10-06", 1, pago=None); con.commit()
+    assert [f["producto"] for f in A._historial_rows(con, "2026", "", "")] == ["Rampa Nueva"], "sin pagar no sale en el registro"
+    assert A.ventas_por_dia(con, "2026-10-06", "2026-10-06") == {}, A.ventas_por_dia(con, "2026-10-06", "2026-10-06")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Pago Móvil VES',12,12,'USD','2026-10-08','confirmado')"); con.commit()
+    filas = A._historial_rows(con, "2026", "", "")
+    assert [(f["fecha"], f["producto"], f["linea"]) for f in filas][0] == ("2026-10-08", "Delivery", 12), filas
+    assert A.ventas_por_dia(con, "2026-10-08", "2026-10-08") == {"2026-10-08": (12, 0)}
+
+@prueba("Registro y Ventas de hoy = lo que entró: descuento, delivery que se paga después y pedido sin pagar")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Oreana','Oreana'),(2,'Mariel','Mariel'),(3,'Pedro','Pedro')")
+    # Oreana: comedor 60 + delivery 5 con 5 de descuento → pagó 60
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,descuento,delivery,total,creado_en) VALUES (1,'#10',1,'pendiente','pagada',60,5,5,60,'2026-10-06 10:00')")
+    con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total) VALUES (1,'Comedor Pequeno',1,60,0,60)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Pago Móvil VES',60,60,'USD','2026-10-06 10:00','confirmado')")
+    # Mariel: porche 93 + IVA 14.88 + delivery 20 → hoy pagó 107.88; el delivery lo paga el 08
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,iva,delivery,total,creado_en) VALUES (2,'#11',2,'pendiente','abonada',93,14.88,20,127.88,'2026-10-06 11:00')")
+    con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total) VALUES (2,'El Porche Versión PRO Grande',1,93,0,93)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (2,'BNC Cashea',107.88,107.88,'USD','2026-10-06 11:00','confirmado')")
+    # Pedro: pidió hoy y todavía no paga nada
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,total,creado_en) VALUES (3,'#12',3,'pendiente','sin_pago',98,98,'2026-10-06 12:00')")
+    con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total) VALUES (3,'Rampa Nueva',1,98,0,98)")
+    con.commit()
+    filas = A._historial_rows(con, "2026", "10", "")
+    assert sorted((f["cliente"], f["linea"]) for f in filas) == [("Mariel", 107.88), ("Oreana", 60)], [(f["cliente"], f["linea"]) for f in filas]
+    assert A.ventas_por_dia(con, "2026-10-06", "2026-10-06") == {"2026-10-06": (167.88, 2)}
+    assert A.por_cobrar_de_hoy(con, "2026-10-06") == 118, A.por_cobrar_de_hoy(con, "2026-10-06")   # 20 de Mariel + 98 de Pedro
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (2,'Pago Móvil VES',20,20,'USD','2026-10-08','confirmado')"); con.commit()
+    f8 = [(f["fecha"], f["producto"], f["linea"], f["forma"]) for f in A._historial_rows(con, "2026", "10", "") if f["fecha"] == "2026-10-08"]
+    assert f8 == [("2026-10-08", "Delivery", 20, "Pago Móvil VES")], f8
+    assert A.ventas_por_dia(con, "2026-10-08", "2026-10-08") == {"2026-10-08": (20, 0)}
 
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():

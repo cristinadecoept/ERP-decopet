@@ -143,17 +143,112 @@ def forma_por_cobrar(con, oid):
 
 
 def ventas_por_dia(con, desde, hasta):
-    """Ventas de cada día: los pedidos creados ese día (sin lo que se les agregó después) más los cobros extra
-    que entraron ese día (el delivery de un retiro, por ejemplo). Solo pedidos: las entradas del Cash flow no cuentan."""
+    """Ventas de cada día = lo que los clientes PAGARON ese día (Cristina, 6 oct): un pedido cuenta el día que se paga, y lo
+    que se paga después (el delivery de un retiro de pack, un saldo) cuenta el día que entra. Lo que no se ha pagado no es venta.
+    n = cuántos pedidos se pagaron ese día. Las entradas del Cash flow no cuentan: solo pedidos."""
     out = {}
-    for d, m, n in con.execute("""SELECT substr(o.creado_en,1,10) d,
-                                  SUM(o.total - COALESCE((SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en IS NOT NULL),0)), COUNT(*)
-                                  FROM ordenes o WHERE o.estado!='cancelada' AND substr(o.creado_en,1,10) BETWEEN ? AND ? GROUP BY 1""", (desde, hasta)):
-        out[d] = [m or 0, n]
-    for d, m in con.execute("""SELECT l.extra_en, SUM(l.total) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
-                               WHERE l.extra_en BETWEEN ? AND ? AND o.estado!='cancelada' GROUP BY 1""", (desde, hasta)):
-        out.setdefault(d, [0, 0])[0] += m or 0
-    return {d: (round(m, 2), n) for d, (m, n) in out.items()}
+    for r in entradas_ordenes(con, desde, hasta):
+        x = out.setdefault(r["fecha"], [0, set()])
+        x[0] += r["linea"] or 0
+        if r["tipo"] == "pedido": x[1].add(r["oid"])
+    return {d: (round(m, 2), len(n)) for d, (m, n) in out.items()}
+
+
+def entradas_ordenes(con, desde="0000", hasta="9999", oids=None):
+    """Lo que entró por cada orden, en filas como las del Registro de ventas, cada una el día en que se pagó:
+    · 'pedido': lo que se compró, el día del primer pago, por lo que se pagó ese día (el delivery adentro si va con la misma forma)
+    · 'saldo':  lo que faltaba del pedido y se pagó otro día (casi siempre el delivery)
+    · 'extra':  lo que se le agregó después (delivery de un retiro de pack…), el día que quedó pagado
+    Lo que todavía no se pagó no sale."""
+    if oids is None:
+        oids = [r[0] for r in con.execute("""SELECT DISTINCT o.id FROM ordenes o JOIN pagos p ON p.orden_id=o.id
+                                             WHERE o.estado!='cancelada' AND p.estado='confirmado' AND substr(p.fecha,1,10) BETWEEN ? AND ?""",
+                                          (desde, hasta))]
+    filas = []
+    for oid in oids:
+        filas += [f for f in _entradas_de(con, oid) if desde <= f["fecha"] <= hasta]
+    return filas
+
+
+def _entradas_de(con, oid):
+    o = con.execute("SELECT o.*, c.nombre cliente FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?", (oid,)).fetchone()
+    if not o or o["estado"] == "cancelada": return []
+    pagos = con.execute("""SELECT id, substr(fecha,1,10) dia, monto_usd, forma FROM pagos WHERE orden_id=? AND estado='confirmado'
+                           AND fecha IS NOT NULL AND fecha!='' ORDER BY fecha, id""", (oid,)).fetchall()
+    if not pagos: return []
+    dia_o = (o["creado_en"] or "")[:10]
+    lineas = con.execute("SELECT * FROM orden_lineas WHERE orden_id=? ORDER BY id", (oid,)).fetchall()
+    ivaf = 1 + o["iva"] / o["subtotal"] if (o["iva"] or 0) > 0 and (o["subtotal"] or 0) > 0 else 1
+    despues = [l for l in lineas if l["extra_en"] and l["extra_en"] != dia_o]          # se agregó otro día
+    es_deliv = lambda l: "delivery" in (l["nombre"] or "").lower()
+    base = round((o["total"] or 0) - sum(l["total"] or 0 for l in despues), 2)        # el pedido tal como se vendió ese día
+    comun = dict(oid=oid, numero=o["numero"], cliente=o["cliente"], origen="orden", fecha_original=None, dia_orden=dia_o)
+    filas_p = []
+    for l in lineas:
+        if l["extra_en"] and l["extra_en"] != dia_o: continue
+        if l["extra_en"] and es_deliv(l): continue                                      # delivery adelantado el mismo día: va con el delivery
+        filas_p.append(dict(comun, producto=l["nombre"], precio=l["precio"], cantidad=0 if es_deliv(l) else l["cantidad"],
+                            linea=round((l["total"] or 0) * (1 if l["extra_en"] else ivaf), 2), color=l["color"], malla=l["malla"],
+                            personalizacion=l["personalizacion"], lid=l["id"], tipo="pedido"))
+    deliv = round(base - sum(f["linea"] for f in filas_p), 2)                          # delivery neto (con descuentos ya restados)
+    por_dia = {}
+    for p in pagos: por_dia.setdefault(p["dia"], []).append(p)
+    dias = sorted(por_dia)
+    out = []
+    # el día del primer pago: el pedido, por lo que se pagó ese día
+    d1 = dias[0]; pag1 = round(sum(p["monto_usd"] or 0 for p in por_dia[d1]), 2)
+    falta = round(max(base - pag1, 0), 2)
+    sobra = round(max(pag1 - base, 0), 2)
+    formas1 = list(dict.fromkeys(p["forma"] for p in por_dia[d1] if p["forma"]))
+    forma1 = formas1[0] if formas1 else (o["forma_pago_prevista"] or None)
+    del_pagado = round(deliv - falta, 2)
+    for f in filas_p: f.update(fecha=d1, forma=forma1)
+    if del_pagado < 0 and filas_p:                                                       # pagó menos que los productos: se muestra lo que entró
+        quita = -del_pagado
+        for f in reversed(filas_p):
+            q = min(quita, f["linea"]); f["linea"] = round(f["linea"] - q, 2); quita = round(quita - q, 2)
+            if quita <= 0: break
+        del_pagado = 0
+    if filas_p:
+        out += filas_p
+        if del_pagado > 0.009:
+            if len(formas1) <= 1: filas_p[-1]["linea"] = round(filas_p[-1]["linea"] + del_pagado, 2)   # misma forma: dentro del producto
+            else: out.append(dict(filas_p[-1], producto="Delivery", precio=del_pagado, cantidad=0, linea=del_pagado, forma=formas1[-1],
+                                  color=None, malla=0, personalizacion=None, lid=filas_p[-1]["lid"] + 0.5))
+    elif base > 0.009 and pag1 - sobra > 0.009:
+        out.append(dict(comun, producto="Delivery", precio=pag1 - sobra, cantidad=0, linea=round(pag1 - sobra, 2), forma=forma1,
+                        color=None, malla=0, personalizacion=None, lid=0, tipo="pedido", fecha=d1))
+    # los días siguientes (y lo que sobró del primero): primero lo que faltaba del pedido, después lo que se agregó
+    pend = [[l, l["total"] or 0] for l in sorted(despues, key=lambda l: (l["extra_en"], l["id"]))]
+    for dia in dias:
+        monto = sobra if dia == d1 else round(sum(p["monto_usd"] or 0 for p in por_dia[dia]), 2)
+        forma = (por_dia[dia][-1]["forma"] or None)
+        pid = por_dia[dia][-1]["id"]
+        if falta > 0.009 and monto > 0.009 and dia != d1:
+            a_ = round(min(monto, falta), 2)
+            out.append(dict(comun, producto="Delivery" if falta <= max(deliv, 0) + 0.01 else "Saldo del pedido", precio=a_, cantidad=0,
+                            linea=a_, forma=forma, color=None, malla=0, personalizacion=None, lid=5000000 + pid, tipo="saldo", fecha=dia))
+            falta = round(falta - a_, 2); monto = round(monto - a_, 2)
+        for x in pend:
+            if monto <= 0.009: break
+            l = x[0]
+            if x[1] <= 0.009 or l["extra_en"] > dia: continue
+            a_ = round(min(monto, x[1]), 2); x[1] = round(x[1] - a_, 2); monto = round(monto - a_, 2)
+            if x[1] <= 0.009:   # quedó pagado completo: entra ese día
+                out.append(dict(comun, producto=l["nombre"], precio=l["total"], cantidad=0 if es_deliv(l) else l["cantidad"], linea=l["total"],
+                                forma=l["forma_pago"] or forma, color=l["color"], malla=l["malla"], personalizacion=l["personalizacion"],
+                                lid=l["id"], tipo="extra", fecha=dia))
+    return out
+
+
+def por_cobrar_de_hoy(con, h):
+    """Lo que los pedidos de hoy (y lo que se les agregó hoy) todavía deben: se muestra aparte, no es venta hasta que entre."""
+    r = con.execute("""SELECT COALESCE(SUM(o.total - (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado')),0)
+                       FROM ordenes o WHERE o.estado!='cancelada' AND o.estado_pago NOT IN ('por_cobrar','reembolsada')
+                         AND (substr(o.creado_en,1,10)=? OR EXISTS (SELECT 1 FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en=?))
+                         AND o.total - (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') > 0.009""",
+                    (h, h)).fetchone()[0]
+    return round(r or 0, 2)
 
 
 def fijar_fecha_pago(con, oid):
@@ -933,8 +1028,8 @@ def inicio(request: Request, con=Depends(db)):
                    "hechos_rep": len(rep_h), "hechos_cumples": len(cumples_hechos), "hechos_cobro": len(cobro_h)}
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
     vh = ventas_por_dia(con, h, h).get(h, (0, 0)); v = {"venta": vh[0], "n": vh[1]}
-    v["extras"] = con.execute("""SELECT COUNT(*) FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
-                                 WHERE l.extra_en=? AND o.estado!='cancelada' AND substr(o.creado_en,1,10)!=l.extra_en""", (h,)).fetchone()[0]   # cobros sueltos de hoy (delivery de un pack…)
+    v["extras"] = sum(1 for x in entradas_ordenes(con, h, h) if x["tipo"] != "pedido")   # cobros sueltos que entraron hoy (delivery de un pack, un saldo…)
+    v["por_cobrar"] = por_cobrar_de_hoy(con, h)
     dias_mes = max(1, hoy.day - 1)
     prom = sum(m for d, (m, n) in ventas_por_dia(con, mes + "-01", h).items() if d < h) / dias_mes
     disponible = sum(x["saldo"] for x in saldos(con) if x["activa"]) if rol == "admin" else 0   # todas las cajas, igual que en Cash flow
@@ -3522,66 +3617,43 @@ EN_REGISTRO = """((o.origen_excel=0 AND o.estado!='cancelada'   -- entra al crea
                   OR COALESCE(o.en_registro,0)=1)"""
 
 def _historial_rows(con, anio, mes, q):
-    """Registro de ventas = histórico del Excel + órdenes de la plataforma (y las de Airtable que Cristina cruce).
-    Reglas de Cristina: el delivery va dentro de la facturación del producto si se pagó con la misma forma; solo va en línea aparte
-    si se pagó con otra forma de pago. Dentro del mismo día, el orden es el de llegada (como en su Excel)."""
+    """Registro de ventas = histórico del Excel + lo que entró por las órdenes del ERP (Cristina, 6 oct: solo lo pagado,
+    cada cosa el día que se pagó; el delivery de un retiro de pack que se paga después es una venta de ese día).
+    El delivery va dentro de la facturación del producto si se pagó con la misma forma; si no, en línea aparte.
+    Dentro del mismo día, el orden es el de llegada (como en su Excel)."""
     args = []; cond = ""
     if anio: cond += " AND substr(fecha,1,4)=?"; args.append(anio)
     if mes: cond += " AND substr(fecha,6,2)=?"; args.append(f"{int(mes):02d}")
-    if q: cond += " AND (cliente LIKE ? OR producto LIKE ? OR numero LIKE ?)"; args += [f"%{q}%"] * 3
-    sql = f"""SELECT * FROM (
-        SELECT NULL oid, '' numero, fecha, cliente, producto, precio, cantidad, facturacion linea, forma_pago forma, NULL color, 0 malla, NULL personalizacion, 'excel' origen, fila_excel llegada, 0 lid, fecha_original, NULL dia_orden
-          FROM registro_ventas
-        UNION ALL
-        SELECT o.id oid, o.numero, COALESCE(l.extra_en, substr(o.creado_en,1,10)) fecha, c.nombre cliente, l.nombre producto, l.precio,
-               CASE WHEN l.extra_en IS NOT NULL AND l.nombre LIKE '%elivery%' THEN 0 ELSE l.cantidad END cantidad,   -- un delivery no es una unidad (en su Excel va con 0)
-               ROUND(l.total * (CASE WHEN COALESCE(o.iva,0) > 0 AND o.subtotal > 0 AND l.extra_en IS NULL THEN 1 + o.iva / o.subtotal ELSE 1 END), 2) linea,   -- con IVA, como en el Excel (Cashea)
-               CASE WHEN l.extra_en IS NOT NULL THEN COALESCE(l.forma_pago,   -- un extra que quedó pendiente: la forma con que se cobró después
-                        (SELECT p.forma FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado' AND p.fecha>=l.extra_en ORDER BY p.fecha, p.id LIMIT 1))
-                    ELSE COALESCE(NULLIF(o.forma_pago_prevista,''),   -- si al crear el pedido no se eligió, la forma con que pagó
-                        (SELECT p.forma FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado' ORDER BY p.fecha, p.id LIMIT 1)) END forma, l.color, l.malla, l.personalizacion, 'orden' origen,
-               1000000 + COALESCE(CASE WHEN l.extra_en IS NOT NULL THEN   -- un cobro extra va junto a las órdenes del día en que entró, no con su orden vieja
-                   (SELECT MAX(CAST(substr(o2.numero,2) AS INTEGER)) FROM ordenes o2 WHERE substr(o2.creado_en,1,10) <= l.extra_en) END,
-                   CAST(substr(o.numero,2) AS INTEGER)) llegada, l.id lid, NULL fecha_original, substr(o.creado_en,1,10) dia_orden
-          FROM ordenes o JOIN clientes c ON c.id=o.cliente_id JOIN orden_lineas l ON l.orden_id=o.id
-         WHERE {EN_REGISTRO}
-            OR (l.extra_en IS NOT NULL AND o.estado!='cancelada'   -- un cobro extra (delivery de un retiro de pack…) cuenta el día que entra, aunque la orden sea de antes
-                AND l.extra_en >= COALESCE((SELECT valor FROM config WHERE clave='registro_desde'), '2026-10-03'))
-      ) WHERE 1=1 {cond} ORDER BY llegada DESC, lid DESC"""   # el orden del Excel fila por fila, al revés: lo último registrado primero (las órdenes del ERP van después de la última fila)
-    out = []
-    for r in con.execute(sql, args):
-        d = dict(r)
+    if q: cond += " AND (cliente LIKE ? OR producto LIKE ?)"; args += [f"%{q}%"] * 2
+    out = [dict(r) for r in con.execute(f"""SELECT NULL oid, '' numero, fecha, cliente, producto, precio, cantidad, facturacion linea, forma_pago forma,
+                                            NULL color, 0 malla, NULL personalizacion, 'excel' origen, fila_excel llegada, 0 lid, fecha_original, NULL dia_orden
+                                            FROM registro_ventas WHERE 1=1 {cond}""", args)]
+    # las órdenes del ERP: las que entran al registro (creadas desde el 3 oct) completas; de las de antes (ya están en el Excel),
+    # solo lo que se les agregó y se cobró desde esa fecha
+    desde_r = (con.execute("SELECT valor FROM config WHERE clave='registro_desde'").fetchone() or ["2026-10-03"])[0]
+    del_registro = {r[0] for r in con.execute("SELECT o.id FROM ordenes o WHERE " + EN_REGISTRO)}
+    con_extras = {r[0] for r in con.execute("SELECT DISTINCT orden_id FROM orden_lineas WHERE extra_en >= ?", (desde_r,))}
+    lo = f"{anio}-{int(mes):02d}-01" if anio and mes else (f"{anio}-01-01" if anio else "0000")
+    hi = f"{anio}-{int(mes):02d}-31" if anio and mes else (f"{anio}-12-31" if anio else "9999")
+    qq = (q or "").lower()
+    numeros = {}
+    def llegada(fecha):   # va con las órdenes creadas hasta ese día, como venían llegando
+        if fecha not in numeros:
+            numeros[fecha] = con.execute("SELECT MAX(CAST(substr(numero,2) AS INTEGER)) FROM ordenes WHERE substr(creado_en,1,10)<=?", (fecha,)).fetchone()[0] or 0
+        return 1000000 + numeros[fecha]
+    for f in entradas_ordenes(con, lo, hi, oids=sorted(del_registro | con_extras)):
+        if f["oid"] not in del_registro and not (f["tipo"] == "extra" and f["fecha"] >= desde_r): continue
+        if mes and not anio and f["fecha"][5:7] != f"{int(mes):02d}": continue
+        if qq and qq not in (f["cliente"] or "").lower() and qq not in (f["producto"] or "").lower() and qq not in (f["numero"] or "").lower(): continue
+        f["llegada"] = 1000000 + int((f["numero"] or "#0")[1:] or 0) if f["tipo"] == "pedido" and f["fecha"] == f["dia_orden"] else llegada(f["fecha"])
+        out.append(f)
+    for d in out:
         try:
-            f = datetime.date.fromisoformat(d["fecha"]); d["semana"] = (f.day - 1) // 7 + 1; d["mes"] = MESES_N[f.month - 1].capitalize()   # semana del mes, como en su Excel
+            fe = datetime.date.fromisoformat(d["fecha"]); d["semana"] = (fe.day - 1) // 7 + 1; d["mes"] = MESES_N[fe.month - 1].capitalize()   # semana del mes, como en su Excel
         except Exception:
             d["semana"] = ""; d["mes"] = ""
-        out.append(d)
-    # delivery de las órdenes: dentro del producto (misma forma de pago) o línea aparte (otra forma)
-    # lo que se cobró de delivery después de la compra ya sale en su propia línea, el día que entró
-    deliv = {r["id"]: dict(r) for r in con.execute("""SELECT o.id, o.delivery - COALESCE((SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en IS NOT NULL AND l.nombre='Delivery'),0) delivery, o.forma_pago_prevista forma,
-                 (SELECT GROUP_CONCAT(DISTINCT p.forma) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') formas
-                 FROM ordenes o WHERE COALESCE(o.delivery,0)>0 AND """ + EN_REGISTRO + """""")}
-    # el delivery que se pagó el mismo día del pedido (también el adelantado de las próximas entregas de un pack) es parte de esa venta:
-    # no va en fila propia sino junto al delivery de la orden. Solo un cobro de OTRO día (un retiro después) sale aparte.
-    es_deliv_mismo = lambda d: d["origen"] == "orden" and "delivery" in (d["producto"] or "").lower() and d["fecha"] == d["dia_orden"]
-    con_producto = {d["oid"] for d in out if d["origen"] == "orden" and "delivery" not in (d["producto"] or "").lower()}
-    suma = {}
-    for d in out:
-        if es_deliv_mismo(d) and d["oid"] in con_producto: suma[d["oid"]] = round(suma.get(d["oid"], 0) + (d["linea"] or 0), 2)
-    out = [d for d in out if not (es_deliv_mismo(d) and d["oid"] in con_producto)]
-    res = []; ya = set()
-    for d in out:
-        res.append(d)
-        oid = d["oid"]
-        monto = (deliv[oid]["delivery"] if oid in deliv else 0) + suma.get(oid, 0)
-        if monto > 0 and oid not in ya and d["origen"] == "orden" and "delivery" not in (d["producto"] or "").lower():
-            ya.add(oid)
-            formas = [x for x in (con.execute("SELECT GROUP_CONCAT(DISTINCT forma) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0] or "").split(",") if x]
-            if len(formas) <= 1:   # una sola forma de pago: el delivery va dentro de la facturación
-                d["linea"] = round((d["linea"] or 0) + monto, 2)
-            else:   # varias formas: línea aparte con la última forma
-                res.append(dict(d, producto="Delivery", precio=monto, cantidad=0, linea=monto, forma=formas[-1], color=None, malla=0, personalizacion=None))
-    return res
+    out.sort(key=lambda d: (d["llegada"] or 0, d["lid"] or 0), reverse=True)   # lo último registrado primero (las órdenes del ERP van después de la última fila del Excel)
+    return out
 
 
 @app.get("/historial", response_class=HTMLResponse)

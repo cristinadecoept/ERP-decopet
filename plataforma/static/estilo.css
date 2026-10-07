@@ -1577,3 +1577,4 @@ input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:non
 .hoy-graf .hoy:hover .hg-barra{opacity:1}
 .hoy-graf .hg-valor{font-size:11px;font-weight:600;fill:var(--tinta)}
 .hoy-graf .hg-hoy-t{font-weight:600;fill:var(--tinta)}
+.hg-cobrar{color:#b45a1c;font-weight:600;text-decoration:none}.hg-cobrar:hover{text-decoration:underline}
