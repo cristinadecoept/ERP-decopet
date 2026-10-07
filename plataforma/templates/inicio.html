@@ -6,6 +6,7 @@
 {% set pend = [] %}
 {% if rol=='admin' and c.por_revisar %}{% set _ = pend.append(('/ordenes?estado=por_revisar', c.por_revisar ~ ' pago' ~ ('s' if c.por_revisar!=1) ~ ' por revisar', 'revisar', 'nar')) %}{% endif %}
 {% if 'ver_cobros' in puede and c.con_saldo %}{% set _ = pend.append(('/operaciones?cola=con_saldo', c.con_saldo ~ ' orden' ~ ('es' if c.con_saldo!=1) ~ ' con saldo pendiente · ' ~ (c.saldo_total|usd), 'cobrar', 'nar')) %}{% endif %}
+{% if rol in ['admin','logistica'] %}{% for x in c.falta_ubicacion %}{% set _ = pend.append(('__agencia__' ~ x.id, 'Delivery ' ~ x.numero ~ ' · ' ~ x.quien ~ ': falta la ubicación (link de Maps)', x, 'nar')) %}{% endfor %}{% endif %}
 {% if rol in ['admin','logistica'] %}{% for x in c.faltan_agencia %}{% set _ = pend.append(('__agencia__' ~ x.id, 'Envío nacional ' ~ x.numero ~ ' · ' ~ x.quien ~ ': falta ' ~ x.faltan ~ ' para ' ~ x.agencia, x, 'nar')) %}{% endfor %}{% endif %}
 {% for d in c.prov_deben %}{% set _ = pend.append(('__devuelve__' ~ d.id, (d.responsable or 'El proveedor') ~ (' no te entregó ' ~ d.faltaron ~ ' ' ~ d.pieza if d.faltaron else '') ~ ' · te debe ' ~ ('$%.2f'|format(d.debe)), '%.2f'|format(d.debe), 'nar')) %}{% endfor %}
 {% for pv in c.toca_pagar_prov %}{% set _ = pend.append(('/produccion?tipo=' ~ pv.tipo,'Hoy toca pagar ' ~ pv.pieza ~ ' a ' ~ (pv.responsable or 'proveedor') ~ ' · ' ~ (pv.debe|usd), 'pagar', 'nar')) %}{% endfor %}

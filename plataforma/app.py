@@ -393,6 +393,38 @@ def faltan_datos_agencia(con):
     return out
 
 
+def navegacion(maps, direccion=None, ciudad=None):
+    """Botones 'Cómo llegar' del despachador: Google Maps y Waze ya navegando. Si el link trae coordenadas se usan
+    (q=10.45,-66.81 · @10.45,-66.81); si no, Google abre el mismo link y Waze busca la dirección escrita."""
+    from urllib.parse import unquote
+    m = re.search(r"(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)", unquote(maps or ""))
+    if m:
+        ll = f"{m.group(1)},{m.group(2)}"
+        return {"maps": f"https://www.google.com/maps/dir/?api=1&destination={ll}&travelmode=driving",
+                "waze": f"https://waze.com/ul?ll={ll}&navigate=yes"}
+    texto = ", ".join(x for x in (direccion, ciudad or "Caracas") if x)
+    g = (maps if (maps or "").startswith("http") else ("https://" + maps if maps else "")) or \
+        (f"https://www.google.com/maps/dir/?api=1&destination={quote(texto)}" if direccion else "")
+    return {"maps": g, "waze": f"https://waze.com/ul?q={quote(texto)}&navigate=yes" if direccion else ""}
+
+
+def falta_ubicacion(con):
+    """Deliverys por entregar sin link de ubicación (ni en el pedido ni en la dirección del cliente): sale en Inicio
+    para pedirle la ubicación al cliente antes de que el despachador salga (Cristina, 6 oct)."""
+    out = []
+    for o in con.execute("""SELECT o.id, o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(c.telefono),'') telefono
+                            FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
+                            WHERE o.tipo_entrega IN ('delivery','delivery_fuera') AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
+                              AND COALESCE(NULLIF(TRIM(o.maps),''), (SELECT NULLIF(TRIM(d.maps),'') FROM direcciones d WHERE d.cliente_id=o.cliente_id
+                                                                     ORDER BY d.principal DESC, d.id LIMIT 1)) IS NULL
+                            ORDER BY COALESCE(o.fecha_prometida, o.creado_en), o.id"""):
+        msj = (f"¡Hola{' ' + o['quien'] if o['quien'] else ''}! 👋🏻 Te escribimos de Decopet 💚 Para llevarte tu pedido, "
+               f"¿nos compartes tu ubicación por aquí? 📍 Así el despachador llega directo 🙌🏻")
+        out.append({"id": o["id"], "numero": o["numero"], "quien": o["quien"], "msj": msj,
+                    "wa": ("https://api.whatsapp.com/send?phone=" + wa(o["telefono"]).rsplit("/", 1)[1] + "&text=" + quote(msj)) if wa(o["telefono"]) else ""})
+    return out
+
+
 def texto_aviso(cliente, despachador, lleva, manana=False):
     """El aviso que el despachador le manda al cliente antes de llevarle el pedido (Cristina, 6 oct: con 💚🐶👋🏻👀🙌🏻; en Decopet el corazón siempre es verde, nunca rojo)."""
     que = re.sub(r"[⟪⟫]", "", str(lleva or "")).strip()
@@ -412,6 +444,7 @@ def wa_aviso(tel, cliente, despachador, lleva, manana=False):
 tpl.env.filters.update(usd=usd_html, fecha=fmt_fecha, hace=hace, dia=fmt_dia, wa=wa)
 tpl.env.globals["wa_aviso"] = wa_aviso
 tpl.env.globals["texto_aviso"] = texto_aviso
+tpl.env.globals["navegacion"] = navegacion
 # ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
 tpl.env.tests["lower_empieza"] = lambda caja, dijo: bool(dijo) and (caja or "").lower().startswith((dijo or "").lower())
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
@@ -1074,6 +1107,7 @@ def inicio(request: Request, con=Depends(db)):
                    "hechos_rep": len(rep_h), "hechos_cumples": len(cumples_hechos), "hechos_cobro": len(cobro_h)}
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
     c["faltan_agencia"] = faltan_datos_agencia(con)
+    c["falta_ubicacion"] = falta_ubicacion(con)
     vh = ventas_por_dia(con, h, h).get(h, (0, 0)); v = {"venta": vh[0], "n": vh[1]}
     v["extras"] = sum(1 for x in entradas_ordenes(con, h, h) if x["tipo"] != "pedido")   # cobros sueltos que entraron hoy (delivery de un pack, un saldo…)
     v["por_cobrar"] = por_cobrar_de_hoy(con, h)

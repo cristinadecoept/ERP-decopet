@@ -228,6 +228,15 @@ def _():
     con.execute("UPDATE clientes SET cedula='27050661', correo='h@x.com' WHERE id=1"); con.commit()
     assert A.faltan_datos_agencia(con) == []
 
+@prueba("Cómo llegar: con coordenadas abre Maps y Waze navegando; sin link, busca la dirección escrita")
+def _():
+    n = A.navegacion("https://maps.google.com/maps?q=10.4884247%2C-66.8123", "x")
+    assert n["maps"].endswith("destination=10.4884247,-66.8123&travelmode=driving") and "ll=10.4884247,-66.8123&navigate=yes" in n["waze"], n
+    n = A.navegacion("https://www.google.com/maps/search/Torre%20Xpress/@10.45553223,-66.81810304,17z?hl=en", "x")
+    assert "destination=10.45553223,-66.81810304" in n["maps"], n
+    n = A.navegacion("", "Francisco Solano, Oficina", "Caracas")
+    assert "destination=Francisco%20Solano" in n["maps"] and n["waze"].startswith("https://waze.com/ul?q="), n
+
 @prueba("Al despachador se le paga el delivery, y no se guarda una copia vieja")
 def _():
     con = base_limpia()
