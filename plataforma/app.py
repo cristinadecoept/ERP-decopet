@@ -5761,7 +5761,7 @@ def mis_entregas(request: Request, con=Depends(db)):
     for v in viajes_pend:
         v["paquetes"] = []
         for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
-                                c.nombre, c.cedula, c.telefono FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
+                                c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
             o = dict(o)
             if (o["recibe"] or "").startswith("otra persona"): o["recibe"] = None   # texto genérico de la migración, no es un nombre
             o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]

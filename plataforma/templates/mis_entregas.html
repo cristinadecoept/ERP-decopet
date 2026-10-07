@@ -23,12 +23,13 @@
  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b>Llevar a {{ v.agencia or 'la agencia' }}{% if v.oficina %} {{ v.oficina }}{% endif %}</b> <span class="mini">· {{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }} · {{ v.monto|usd }}</span></div>
   <button type="button" class="btn sec chico" onclick="copiarAg(this)">Copiar datos para la agencia</button>
   {% if not es_manana %}<form method="post" action="/viajes/{{ v.id }}/llevado"><input type="hidden" name="volver" value="/mis-entregas"><button class="btn chico">Ya los llevé</button></form>{% endif %}</div>
- <div class="ag-paqs">{% for o in v.paquetes %}<div class="ag-paq" data-copia="{{ ['👤 ' ~ (o.recibe or o.nombre), '🪪 C.I. ' ~ (o.cedula or 'FALTA'), '📞 Tel. ' ~ (o.recibe_tel or o.telefono or 'FALTA'), '📍 ' ~ (o.direccion or o.ciudad or 'FALTA la oficina'), '📦 ' ~ (o.lleva|striptags)] | join('\n') }}{{ '\n💵 Cobro a destino' if o.modalidad_envio == 'cobro_destino' }}">
+ <div class="ag-paqs">{% for o in v.paquetes %}<div class="ag-paq" data-copia="{{ ['📦 ' ~ (o.lleva|striptags), '👤 ' ~ (o.recibe or o.nombre), '📞 Tel. ' ~ (o.recibe_tel or o.telefono or 'FALTA'), '📧 ' ~ (o.correo or 'FALTA el correo'), '🪪 C.I. ' ~ (o.cedula or 'FALTA'), '📍 ' ~ (o.direccion or o.ciudad or 'FALTA la oficina')] | join('\n') }}{{ '\n💵 Cobro a destino' if o.modalidad_envio == 'cobro_destino' }}">
   <div class="ag-cab"><b>{{ o.recibe or o.nombre }}</b><span class="mini">{{ o.numero }}{% if o.recibe %} · cliente: {{ o.nombre }}{% endif %}</span>{% if o.modalidad_envio == 'cobro_destino' %}<span class="est pendiente" style="margin-left:auto">Cobro a destino</span>{% endif %}</div>
   <dl class="ag-datos">
    <dt>Cédula</dt><dd>{% if o.cedula %}{{ o.cedula }}{% else %}<span class="op-punto">Falta · pídela antes de ir</span>{% endif %}</dd>
-   <dt>Teléfono</dt><dd>{{ o.recibe_tel or o.telefono or '—' }}</dd>
-   <dt>Oficina</dt><dd>{{ o.direccion or o.ciudad or '—' }}</dd>
+   <dt>Teléfono</dt><dd>{% if o.recibe_tel or o.telefono %}{{ o.recibe_tel or o.telefono }}{% else %}<span class="op-punto">Falta · pídelo antes de ir</span>{% endif %}</dd>
+   <dt>Correo</dt><dd>{% if o.correo %}{{ o.correo }}{% else %}<span class="op-punto">Falta · pídelo antes de ir</span>{% endif %}</dd>
+   <dt>Oficina</dt><dd>{% if o.direccion or o.ciudad %}{{ o.direccion or o.ciudad }}{% else %}<span class="op-punto">Falta · pídela antes de ir</span>{% endif %}</dd>
    <dt>Lleva</dt><dd>{{ o.lleva|platos }}</dd>
   </dl></div>{% endfor %}</div></div>{% endmacro %}
 {% for v in viajes_pend %}{{ tarjeta_viaje(v) }}{% endfor %}
