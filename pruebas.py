@@ -1336,6 +1336,31 @@ def _():
         assert dirs.get("Res. Los Pinos, apto 4B", (None,))[0] == "Chacao", dirs
         con.close()
 
+@prueba("Los paneles que se abren varias veces (nueva orden, orden) no declaran 'let'/'const' sueltos: al reabrir rompen todo el panel")
+def _():
+    for nombre in ("_orden_nueva.html", "_orden_panel.html"):
+        txt = (A.BASE / "templates" / nombre).read_text()
+        malas = [l[:60] for l in txt.splitlines() if re.match(r"(<script>)?(let|const) [A-Za-z_$]", l)]
+        assert not malas, (nombre, malas)
+
+@prueba("Cuando el taller confirma que llegó un pedido, a Cristina le sale en Inicio quién lo confirmó y cuánto llegó")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO proveedores (id,nombre) VALUES (31,'Yovanny Sánchez')")
+        con.execute("INSERT INTO proveedor_items (proveedor_id,item,precio,unidad) VALUES (31,'Grama',3,'saco')")
+        pid = con.execute("INSERT INTO produccion (cantidad,recibido,fecha_pedido,responsable,costo,estado,pieza,tipo_pedido) VALUES (15,0,'2026-10-03','Yovanny Sánchez',45,'en_proceso','Grama','proveedor')").lastrowid
+        con.commit()
+        sesion_de(c, "taller")
+        c.post(f"/taller/llegada/{pid}", data={"cantidad": "10"})
+        sesion_de(c, "admin")
+        h = c.get("/inicio").text
+        assert "Prueba taller acaba de confirmar que llegaron 10 sacos de Grama de Yovanny Sánchez (faltan 5 sacos)" in h, re.findall(r"acaba de confirmar[^<]*", h)
+        nid = con.execute("SELECT id FROM notas_taller WHERE llegada=1").fetchone()["id"]
+        c.post(f"/taller/nota/{nid}/visto", data={"volver": "/inicio"})
+        assert "acaba de confirmar" not in c.get("/inicio").text, "con Visto se quita"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

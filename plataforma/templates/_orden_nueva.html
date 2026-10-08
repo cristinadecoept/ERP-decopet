@@ -141,7 +141,7 @@ function setCanal(c){document.getElementById('canal').value=c;document.querySele
  const sinPerso=!['whatsapp','instagram','presencial','web'].includes(c);document.querySelectorAll('.perso-lin').forEach(w=>{w.hidden=sinPerso;if(sinPerso){const cb=w.querySelector('input[type=checkbox]');if(cb.checked){cb.checked=false;togPersoLin(cb);}}});   // solo se personaliza por WhatsApp, Instagram, presencial y página web
  calc();}
 document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.dataset.lock){e.preventDefault();e.target.checked=true;}});
-let ZONAS=null;   // Caracas o fuera de Caracas: la lista muestra solo las zonas de ese delivery
+var ZONAS=null;   // Caracas o fuera de Caracas: la lista muestra solo las zonas de ese delivery
 var ZONA_HAB='';   // la zona de la dirección habitual del cliente: si la hay, la zona de delivery sale elegida sola
 function zonaHabitual(){const sel=document.getElementById('zona-sel'),te=document.getElementById('te').value;if(!sel)return;
  const usa=!!ZONA_HAB&&document.getElementById('dir-modo').value==='hab'&&(te==='delivery'||te==='delivery_fuera');
@@ -152,7 +152,7 @@ function zonaHabitual(){const sel=document.getElementById('zona-sel'),te=documen
  sel.value=ZONA_HAB;document.getElementById('deliv').value=z.dataset.t;calc();
  document.getElementById('zona-auto-txt').innerText=z.textContent;zonaVer(true);}
 var ZONA_SUG='';   // la zona que se sacó de lo escrito en la dirección nueva (se ve y se puede cambiar)
-const sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+var sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
 function zonaDeTexto(t){const sel=document.getElementById('zona-sel');if(!sel)return null;const x=sinAcento(t);if(!x)return null;
  const ops=[...sel.options].slice(1),igual=ops.find(o=>sinAcento(o.value)===x);if(igual)return igual;
  let hits=ops.filter(o=>new RegExp('(^|[^a-z])'+sinAcento(o.value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'($|[^a-z])').test(x));

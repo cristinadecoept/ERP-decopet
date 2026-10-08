@@ -665,7 +665,7 @@ COLUMNAS = (
     ("tarifas", "fuera_caracas", "INTEGER NOT NULL DEFAULT 0"),
     ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"), ("danados", "visto", "INTEGER NOT NULL DEFAULT 0"),
     ("notas_taller", "produccion_id", "INTEGER"), ("notas_taller", "danado_id", "INTEGER"),
-    ("notas_taller", "agotando_id", "INTEGER"), ("notas_taller", "agotando_color", "TEXT"),
+    ("notas_taller", "agotando_id", "INTEGER"), ("notas_taller", "llegada", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "agotando_color", "TEXT"),
     ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
     ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"), ("pagos_despachador", "confirmado_en", "TEXT"),
@@ -1222,7 +1222,7 @@ def inicio(request: Request, con=Depends(db)):
                              AND EXISTS (SELECT 1 FROM receta r WHERE r.producto_id=p.id) ORDER BY p.orden""").fetchall()
     armados = [dict(a) | {"corto": a["nombre"].replace("El Porche Versión PRO ", "")} for a in armados]
     n_armados = sum(a["listos"] for a in armados)
-    avisos_taller = con.execute("SELECT * FROM notas_taller WHERE (resuelto=0 OR danado_id IS NOT NULL) AND visto=0 ORDER BY id DESC LIMIT 5").fetchall() if rol == "admin" else []
+    avisos_taller = con.execute("SELECT * FROM notas_taller WHERE (resuelto=0 OR danado_id IS NOT NULL OR llegada=1) AND visto=0 ORDER BY id DESC LIMIT 5").fetchall() if rol == "admin" else []
     c["avisos_pendientes"] = con.execute("SELECT COUNT(*) FROM notas_taller WHERE resuelto=0").fetchone()[0] if rol == "admin" else 0
     cuentas_act = con.execute("SELECT id, codigo, nombre FROM cuentas WHERE activa=1 ORDER BY orden").fetchall() if rol == "admin" else []
     hoy_lista = sorted([o for o in activas if (o["fecha_prometida"] or h) <= h], key=lambda o: (o["coordinada"], o["tipo_entrega"] or ""))[:6]
@@ -7095,6 +7095,11 @@ def taller_llegada(request: Request, pid: int, cantidad: str = Form("0"), azul: 
         total = (r["recibido"] or 0) + n
         con.execute("UPDATE produccion SET recibido=?, estado=?, recibido_en=? WHERE id=?",
                     (total, "recibido" if total >= r["cantidad"] else "en_proceso", hoy if total >= r["cantidad"] else None, pid))
+        # Cristina se entera en Inicio de que llegó, quién lo confirmó y cuánto
+        quien = (quien_es(request) or {}).get("nombre") or "El taller"
+        texto = f"{quien} acaba de confirmar que llegaron {fmt_cant(n, unidad_pedido(con, r))} de {r['pieza']}" + (f" de {r['responsable']}" if r["responsable"] else "")
+        if total < (r["cantidad"] or 0): texto += f" (faltan {fmt_cant(r['cantidad'] - total, unidad_pedido(con, r))})"
+        con.execute("INSERT INTO notas_taller (fecha, texto, usuario_id, produccion_id, resuelto, resuelto_en, llegada) VALUES (?,?,?,?,1,?,1)", (hoy, texto, uid, pid, hoy))
         if nota.strip():   # si algo vino mal, que Cristina se entere sin que se lo cuenten
             con.execute("INSERT INTO notas_taller (fecha, texto, usuario_id, produccion_id) VALUES (?,?,?,?)",
                         (hoy, f"Llegada de {r['responsable'] or 'un pedido'}: {nota.strip()}", uid, pid))
