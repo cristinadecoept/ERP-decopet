@@ -1310,6 +1310,24 @@ def _():
         assert 'value="Los Teques" data-t="15.0" data-f="1"' in h and 'value="Chacao" data-t="5.0" data-f="0"' in h, "la lista sabe cuál es de afuera"
         con.close()
 
+@prueba("Cliente nuevo con delivery: la zona elegida queda en su dirección habitual y la próxima orden ya la trae")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR IGNORE INTO tarifas (zona, tarifa) VALUES ('Chacao', 5)"); con.commit()
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        sesion_de(c, "admin")
+        r = c.post("/ordenes/nueva", data={"cliente_nombre_pila": "Zoe", "cliente_apellido": "Prueba", "cliente_telefono": "04141234567", "cliente_correo": "zoe@ejemplo.com",
+               "cliente_direccion": "Res. Los Pinos, apto 4B", "cliente_ciudad": "Caracas", "canal": "whatsapp", "producto_id": str(p), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+               "tipo_entrega": "delivery", "dir_modo": "hab", "zona_tarifa": "Chacao", "delivery": "5", "fecha_pago": "2026-10-08"})
+        cid = con.execute("SELECT id FROM clientes WHERE nombre_pila='Zoe'").fetchone()
+        assert cid, ("se creó el cliente", r.status_code, re.sub(r"<[^>]+>", " ", r.text)[:300])
+        d = con.execute("SELECT direccion, zona FROM direcciones WHERE cliente_id=?", (cid["id"],)).fetchone()
+        assert d and d["zona"] == "Chacao", dict(d) if d else None
+        h = c.get("/ordenes/nueva/panel").text
+        assert 'data-zona="Chacao"' in h, "la próxima orden ya sabe su zona"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

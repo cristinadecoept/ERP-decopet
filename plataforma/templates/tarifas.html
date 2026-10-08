@@ -1,19 +1,19 @@
 {% extends "base.html" %}{% block titulo %}Tarifas de delivery · Decopet{% endblock %}{% block cuerpo %}
 <div class="fila-titulo"><div><h1>Tarifas de delivery</h1></div></div>
 
-<div class="tabla" style="max-width:820px"><table class="tarjetas-movil" data-cols="Zona:28|Delivery al:17|Fuera de Caracas:14|Notas:28|:13"><tr><th>Zona</th><th class="num">Delivery al cliente</th><th>Fuera de Caracas</th><th>Notas</th>{% if rol=='admin' %}<th></th>{% endif %}</tr>
+<div class="tabla" style="max-width:820px"><table class="tarjetas-movil" data-cols="Zona:24|Delivery:12|:19|Notas:25|:20"><tr><th>Zona</th><th class="num">Delivery</th><th></th><th>Notas</th>{% if rol=='admin' %}<th></th>{% endif %}</tr>
 {% for z in tarifas %}<tr>{% if rol=='admin' %}<form method="post" action="/tarifas/guardar" id="t-{{ z.id }}"><input type="hidden" name="id" value="{{ z.id }}"></form>
  <td data-t="Zona"><input name="zona" form="t-{{ z.id }}" value="{{ z.zona }}" required></td>
  <td data-t="Delivery" class="num" style="width:120px"><input name="tarifa" form="t-{{ z.id }}" type="number" step="0.5" value="{{ '%g'|format(z.tarifa) }}" style="text-align:right"></td>
- <td data-t="Fuera de Caracas"><input type="checkbox" name="fuera" value="1" form="t-{{ z.id }}" style="width:auto" {{ 'checked' if z.fuera_caracas }}></td>
+ <td data-t=""><label class="pill-fuera"><input type="checkbox" name="fuera" value="1" form="t-{{ z.id }}" {{ 'checked' if z.fuera_caracas }}><span>Fuera de Caracas</span></label></td>
  <td data-t="Notas"><input name="notas" form="t-{{ z.id }}" value="{{ z.notas or '' }}" placeholder="referencias, quién suele ir…"></td>
  <td class="acciones-movil" style="white-space:nowrap;text-align:right"><button class="btn chico" form="t-{{ z.id }}">Guardar</button> <button class="btn pel chico" form="t-{{ z.id }}" name="borrar" value="1" onclick="return confirm('¿Borrar esta zona?')">Borrar</button></td>
-{% else %}<td data-t="Zona"><b>{{ z.zona }}</b></td><td data-t="Delivery" class="num">${{ '%g'|format(z.tarifa) }}</td><td data-t="Fuera de Caracas">{{ 'Sí' if z.fuera_caracas else '' }}</td><td data-t="Notas" class="mini">{{ z.notas or '' }}</td>{% endif %}</tr>
+{% else %}<td data-t="Zona"><b>{{ z.zona }}</b></td><td data-t="Delivery" class="num">${{ '%g'|format(z.tarifa) }}</td><td data-t="">{% if z.fuera_caracas %}<span class="pill-fuera"><span>Fuera de Caracas</span></span>{% endif %}</td><td data-t="Notas" class="mini">{{ z.notas or '' }}</td>{% endif %}</tr>
 {% else %}<tr><td colspan="5" class="vacio">Todavía no hay zonas. Agrega la primera abajo (por ejemplo: Chacao · $5, Los Teques · $10).</td></tr>{% endfor %}
 {% if rol=='admin' %}<tr style="background:var(--fondo)"><form method="post" action="/tarifas/guardar" id="t-nueva"></form>
  <td data-t="Zona"><input name="zona" form="t-nueva" placeholder="Nueva zona" required></td>
  <td data-t="Delivery" class="num"><input name="tarifa" form="t-nueva" type="number" step="0.5" placeholder="$" style="text-align:right"></td>
- <td data-t="Fuera de Caracas"><input type="checkbox" name="fuera" value="1" form="t-nueva" style="width:auto"></td>
+ <td data-t=""><label class="pill-fuera"><input type="checkbox" name="fuera" value="1" form="t-nueva"><span>Fuera de Caracas</span></label></td>
  <td data-t="Notas"><input name="notas" form="t-nueva" placeholder="notas"></td>
  <td class="acciones-movil" style="text-align:right"><button class="btn chico" form="t-nueva">+ Agregar</button></td></tr>{% endif %}
 </table></div>

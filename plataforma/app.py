@@ -1546,6 +1546,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
     productos = con.execute("SELECT * FROM productos WHERE activo=1 AND tipo='producto' ORDER BY orden").fetchall()
     opciones = {r["sku"]: r for r in con.execute("SELECT * FROM productos WHERE tipo='opcion'")}
     clientes = con.execute("""SELECT c.*, (SELECT direccion || COALESCE(' · ' || zona,'') FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
+                                     (SELECT zona FROM direcciones d WHERE d.cliente_id=c.id ORDER BY principal DESC, id LIMIT 1) dir_zona,
                               (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
                               (SELECT ROUND(COALESCE(SUM(k.monto),0),2) FROM credito_cliente k WHERE k.cliente_id=c.id) credito,
                               (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
@@ -2145,7 +2146,8 @@ async def crear_orden(request: Request, con=Depends(db)):
         cid = cur.lastrowid
         guardar_mascotas(con, cid, f, prefijo="cliente_mascota_")
         if (f.get("cliente_direccion") or "").strip():   # dirección habitual del cliente nuevo
-            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), *normalizar_ciudad(f.get("cliente_ciudad")), (f.get("cliente_maps") or "").strip() or None))
+            zona_hab = (f.get("zona_tarifa") or "").strip() if f.get("tipo_entrega") in ("delivery", "delivery_fuera") and f.get("dir_modo", "hab") == "hab" else ""
+            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), zona_hab or None, *normalizar_ciudad(f.get("cliente_ciudad")), (f.get("cliente_maps") or "").strip() or None))
     if cid and not cliente_recien_creado:   # cliente que ya existía al que le faltaban datos: se completan desde la orden
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
         for campo, dato in (("telefono", normalizar_telefono(f.get("cl_add_telefono"))), ("correo", (f.get("cl_add_correo") or "").strip()), ("cedula", (f.get("cl_add_cedula") or "").strip().upper())):
@@ -2169,6 +2171,8 @@ async def crear_orden(request: Request, con=Depends(db)):
         def __getitem__(s, k): return s.e[k] if k in s.e else s.b[k]
     if cid and f.get("dir_modo", "hab") == "hab" and f.get("tipo_entrega") not in ("pickup", "distribuidor"):
         d = con.execute("SELECT * FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id LIMIT 1", (cid,)).fetchone()
+        if d and not (d["zona"] or "").strip() and (f.get("zona_tarifa") or "").strip() and f.get("tipo_entrega") in ("delivery", "delivery_fuera"):
+            con.execute("UPDATE direcciones SET zona=? WHERE id=?", (f.get("zona_tarifa").strip(), d["id"]))   # la próxima vez ya sale elegida
         if d: f = _Form(f, {"direccion": d["direccion"], "zona": f.get("zona_tarifa") or d["zona"] or "", "ciudad": d["ciudad"] or f.get("ciudad") or "Caracas", "maps": d["maps"] or ""})
     if f.get("zona_tarifa") and not (f.get("zona") or "").strip(): f = _Form(f, {"zona": f.get("zona_tarifa")})
     elif cid and f.get("dir_modo") == "nueva" and (f.get("direccion") or "").strip():
