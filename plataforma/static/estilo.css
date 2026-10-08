@@ -1591,3 +1591,4 @@ input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:non
 .pill-fuera input:checked+span,span.pill-fuera span{display:inline}
 html.oscuro .pill-fuera span{background:rgba(225,120,46,.16);border-color:rgba(225,120,46,.4);color:#f5b47f}
 .ahora-ln:has(details[open]){position:relative;z-index:30}
+.tabla:has(details[open]){overflow:visible}   /* un menú abierto en la última fila no queda cortado por la tabla */
