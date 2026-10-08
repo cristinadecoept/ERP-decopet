@@ -1297,6 +1297,19 @@ def _():
         assert "avisado: se está agotando" not in c.get("/inventario").text, "ya resuelto: se puede volver a avisar"
         con.close()
 
+@prueba("Tarifas: cada zona sabe si es fuera de Caracas y la nueva orden lo trae para filtrar la lista")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        sesion_de(c, "admin")
+        c.post("/tarifas/guardar", data={"zona": "Los Teques", "tarifa": "15", "fuera": "1"})
+        c.post("/tarifas/guardar", data={"zona": "Chacao", "tarifa": "5"})
+        f = {r["zona"]: r["fuera_caracas"] for r in con.execute("SELECT zona, fuera_caracas FROM tarifas WHERE zona IN ('Los Teques','Chacao')")}
+        assert f == {"Los Teques": 1, "Chacao": 0}, f
+        h = c.get("/ordenes/nueva/panel").text
+        assert 'value="Los Teques" data-t="15.0" data-f="1"' in h and 'value="Chacao" data-t="5.0" data-f="0"' in h, "la lista sabe cuál es de afuera"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

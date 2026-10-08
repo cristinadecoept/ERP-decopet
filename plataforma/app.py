@@ -662,6 +662,7 @@ COLUMNAS = (
     ("mov_inventario", "color", "TEXT"),
     ("movimientos", "categoria", "TEXT"), ("movimientos", "comprobante", "TEXT"),
     ("movimientos", "notas", "TEXT"), ("movimientos", "subcategoria", "TEXT"),
+    ("tarifas", "fuera_caracas", "INTEGER NOT NULL DEFAULT 0"),
     ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"), ("danados", "visto", "INTEGER NOT NULL DEFAULT 0"),
     ("notas_taller", "produccion_id", "INTEGER"), ("notas_taller", "danado_id", "INTEGER"),
     ("notas_taller", "agotando_id", "INTEGER"), ("notas_taller", "agotando_color", "TEXT"),
@@ -1550,7 +1551,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
                               (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
                               FROM clientes c ORDER BY nombre""").fetchall()
     pre = con.execute("SELECT nombre FROM clientes WHERE id=?", (cliente,)).fetchone() if cliente else None
-    return render(request, "_orden_nueva.html", productos=productos, opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", tarifas=con.execute("SELECT zona, tarifa FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
+    return render(request, "_orden_nueva.html", productos=productos, opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", tarifas=con.execute("SELECT zona, tarifa, fuera_caracas FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
 
 
 @app.get("/ordenes/{oid}/panel", response_class=HTMLResponse)
@@ -6728,12 +6729,13 @@ def tarifas(request: Request, q: str = "", con=Depends(db)):
 
 
 @app.post("/tarifas/guardar")
-def tarifas_guardar(request: Request, id: int = Form(0), zona: str = Form(...), tarifa: str = Form("0"), pago: str = Form(""), notas: str = Form(""), borrar: str = Form(""), con=Depends(db)):
+def tarifas_guardar(request: Request, id: int = Form(0), zona: str = Form(...), tarifa: str = Form("0"), pago: str = Form(""), notas: str = Form(""), borrar: str = Form(""),
+                    fuera: str = Form(""), con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/tarifas", status_code=303)
     monto = float((tarifa or "0").replace(",", ".") or 0); pago_d = float(pago.replace(",", ".")) if pago.strip() else None
     if borrar and id: con.execute("DELETE FROM tarifas WHERE id=?", (id,))
-    elif id: con.execute("UPDATE tarifas SET zona=?, tarifa=?, pago_despachador=?, notas=? WHERE id=?", (zona.strip(), monto, pago_d, notas.strip() or None, id))
-    elif zona.strip(): con.execute("INSERT OR IGNORE INTO tarifas (zona, tarifa, pago_despachador, notas) VALUES (?,?,?,?)", (zona.strip(), monto, pago_d, notas.strip() or None))
+    elif id: con.execute("UPDATE tarifas SET zona=?, tarifa=?, pago_despachador=?, notas=?, fuera_caracas=? WHERE id=?", (zona.strip(), monto, pago_d, notas.strip() or None, 1 if fuera == "1" else 0, id))
+    elif zona.strip(): con.execute("INSERT OR IGNORE INTO tarifas (zona, tarifa, pago_despachador, notas, fuera_caracas) VALUES (?,?,?,?,?)", (zona.strip(), monto, pago_d, notas.strip() or None, 1 if fuera == "1" else 0))
     con.commit(); return RedirectResponse("/tarifas", status_code=303)
 
 

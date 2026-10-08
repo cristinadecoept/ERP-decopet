@@ -44,7 +44,7 @@
 <div class="nota-log" id="nada-hoy" hidden style="margin-top:0">Hoy no se entrega nada. La entrega es opcional: si la llenas (delivery, despachador), queda guardada para cuando el cliente active su repuesto.</div>
 <div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
 <div id="ent-detalle" hidden>
-<div class="g2" id="cobro-deliv" hidden>{% if tarifas %}<div><label>Zona de delivery</label><select id="zona-sel" name="zona_tarifa" onchange="const o=this.selectedOptions[0];if(o&&o.dataset.t){document.getElementById('deliv').value=o.dataset.t;calc();}"><option value="">— elegir zona —</option>{% for z in tarifas %}<option value="{{ z.zona }}" data-t="{{ z.tarifa }}">{{ z.zona }} · ${{ '%g'|format(z.tarifa) }}</option>{% endfor %}</select></div>{% endif %}<div><label>Delivery USD</label><input type="number" step="0.01" name="delivery" id="deliv" value="0" oninput="calc()"></div></div>
+<div class="g2" id="cobro-deliv" hidden>{% if tarifas %}<div><label>Zona de delivery</label><select id="zona-sel" name="zona_tarifa" onchange="const o=this.selectedOptions[0];if(o&&o.dataset.t){document.getElementById('deliv').value=o.dataset.t;calc();}"><option value="">— elegir zona —</option>{% for z in tarifas %}<option value="{{ z.zona }}" data-t="{{ z.tarifa }}" data-f="{{ z.fuera_caracas or 0 }}">{{ z.zona }} · ${{ '%g'|format(z.tarifa) }}</option>{% endfor %}</select></div>{% endif %}<div><label>Delivery USD</label><input type="number" step="0.01" name="delivery" id="deliv" value="0" oninput="calc()"></div></div>
 <div id="pack-dv" hidden style="margin-top:10px"><label>¿Cuántos deliveries del pack paga hoy?</label><div class="mini" style="margin:-2px 0 6px">Los que no pague hoy los paga al recibir cada entrega.</div><select id="pack-dv-sel" onchange="packDelivSet()"></select><div class="mini" id="pack-dv-txt"></div></div>
 <div class="g2" id="desp-w" hidden style="margin-top:10px"><div><label>Despachador</label><select name="despachador" id="desp-sel" onchange="document.getElementById('desp-otro').hidden=this.value!=='__otro__'"><option value="">— por asignar —</option>{% for d in DESPACHADORES %}<option>{{ d }}</option>{% endfor %}<option value="__otro__">Otro…</option></select></div><div id="desp-otro" hidden><label>Nombre</label><input name="despachador_otro" placeholder="nombre"></div></div>
 <div id="ag-w" hidden style="margin-top:10px"><label>Agencia</label><select name="agencia" style="max-width:260px"><option value="">— elegir —</option>{% for a in AGENCIAS %}<option>{{ a }}</option>{% endfor %}</select></div>
@@ -142,6 +142,10 @@ function setCanal(c){document.getElementById('canal').value=c;document.querySele
  const sinPerso=!['whatsapp','instagram','presencial','web'].includes(c);document.querySelectorAll('.perso-lin').forEach(w=>{w.hidden=sinPerso;if(sinPerso){const cb=w.querySelector('input[type=checkbox]');if(cb.checked){cb.checked=false;togPersoLin(cb);}}});   // solo se personaliza por WhatsApp, Instagram, presencial y página web
  calc();}
 document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.dataset.lock){e.preventDefault();e.target.checked=true;}});
+let ZONAS=null;   // Caracas o fuera de Caracas: la lista muestra solo las zonas de ese delivery
+function zonasDe(fuera){const sel=document.getElementById('zona-sel');if(!sel)return;if(!ZONAS)ZONAS=[...sel.options].slice(1).map(o=>o.cloneNode(true));
+ const v=sel.value;sel.length=1;ZONAS.filter(o=>(o.dataset.f==='1')===fuera).forEach(o=>sel.add(o.cloneNode(true)));
+ if([...sel.options].some(o=>o.value===v&&v))sel.value=v;else if(v){sel.value='';document.getElementById('deliv').value=0;calc();}}
 function setEntrega(k){
  if(document.getElementById('te').value===k){   // tocar la que ya está marcada la desmarca
   document.getElementById('te').value='';document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.remove('act');});
@@ -149,7 +153,7 @@ function setEntrega(k){
  document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
  document.getElementById('ent-detalle').hidden=false;const nac=k==='nacional';document.getElementById('nac-extra').hidden=!nac;
  document.getElementById('dir-bloque').hidden=(k==='pickup'||k==='distribuidor'||k==='nacional');document.getElementById('oficina-w').hidden=!nac;document.getElementById('rec-extra').hidden=!nac;document.getElementById('rec-titulo').innerText=(k==='pickup'||k==='distribuidor')?'¿Quién retira?':'¿Quién recibe?';document.getElementById('nota-desp-w').hidden=(k==='pickup'||k==='distribuidor');document.getElementById('nota-desp-txt').innerText=nac?'Notas para la agencia':'Nota para el despachador';document.getElementById('desp-w').hidden=!(k==='delivery'||k==='delivery_fuera');
- const cd=(k==='delivery'||k==='delivery_fuera');document.getElementById('cobro-deliv').hidden=!cd;
+ const cd=(k==='delivery'||k==='delivery_fuera');document.getElementById('cobro-deliv').hidden=!cd;if(cd)zonasDe(k==='delivery_fuera');
  if(!cd&&+document.getElementById('deliv').value){document.getElementById('deliv').value=0;calc();}document.getElementById('ag-w').hidden=!nac;
  document.getElementById('ced-nota').innerText=nac?'(la pide la agencia)':'(factura o envío nacional)';faltanDatos();
  if(k==='delivery'&&+document.getElementById('deliv').value===0){document.getElementById('deliv').value=5;calc();}packDeliv();}
