@@ -149,7 +149,7 @@ function setCanal(c){document.getElementById('canal').value=c;document.querySele
 document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.dataset.lock){e.preventDefault();e.target.checked=true;}});
 var ZONAS=null;   // Caracas o fuera de Caracas: la lista muestra solo las zonas de ese delivery
 var ZONA_HAB='',PRECIO_AUTO=false;   // PRECIO_AUTO: el precio lo puso la zona guardada del cliente (si cambia el cliente, se quita)
-function precioAuto(){if(PRECIO_AUTO){document.getElementById('deliv').value='';PRECIO_AUTO=false;document.getElementById('deliv-z').textContent='';calc();}}
+function precioAuto(){if(PRECIO_AUTO){document.getElementById('deliv').value='';PRECIO_AUTO=false;document.getElementById('deliv-z').textContent='';const zs=document.getElementById('zona-sel');if(zs)zs.value='';calc();}}
 function ponerPrecio(o){document.getElementById('deliv').value=o.dataset.t;document.getElementById('deliv-z').textContent='· '+o.value;PRECIO_AUTO=true;calc();}
 var sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bdel\b/g,'de').replace(/\s+/g,' ').trim();   // "lomas del avila" = "Lomas de Avila"
 function zonaDeTexto(t){const x=sinAcento(t);if(!x)return null;if(!ZONAS)ZONAS=[...document.getElementById('zona-sel').options].slice(1).map(o=>o.cloneNode(true));   // la zona de Tarifas que nombra lo escrito (una sola)
@@ -164,10 +164,13 @@ function zonaHabitual(){const sel=document.getElementById('zona-sel'),te=documen
  const fuera=z.dataset.f==='1';if((te==='delivery_fuera')!==fuera){setEntrega(fuera?'delivery_fuera':'delivery');return;}   // la zona dice si es de Caracas o de afuera
  sel.value=ZONA_HAB;ponerPrecio(z);
  document.getElementById('zona-auto-txt').innerText=z.textContent;zonaVer(true);}
-function dirNueva(){const a=document.getElementById('zona-auto'),sel=document.getElementById('zona-sel');   // otra dirección: su precio se pone aparte
+function dirNueva(){const a=document.getElementById('zona-auto'),sel=document.getElementById('zona-sel');   // otra dirección: su zona y su precio salen de lo escrito
  if(document.getElementById('dir-modo').value==='nueva'){if(a&&!a.hidden){zonaVer(false);sel.value='';}
-  if(PRECIO_AUTO||!document.getElementById('deliv').value){precioAuto();const o=zonaDeTexto(document.getElementById('dir').value);
-   if(o){const te=document.getElementById('te').value,f=o.dataset.f==='1';if((te==='delivery_fuera')!==f)setEntrega(f?'delivery_fuera':'delivery');ponerPrecio(o);}}}
+  const o=zonaDeTexto(document.getElementById('dir').value),manual=!PRECIO_AUTO&&document.getElementById('deliv').value;
+  if(!manual)precioAuto();
+  if(o){const te=document.getElementById('te').value,f=o.dataset.f==='1';if((te==='delivery_fuera')!==f)setEntrega(f?'delivery_fuera':'delivery');
+   if(!manual)ponerPrecio(o);if(sel&&[...sel.options].some(x=>x.value===o.value))sel.value=o.value;}   // el pedido se guarda con esa zona
+  else if(sel)sel.value='';}
  else{precioAuto();zonaHabitual();}}
 function zonaVer(auto){const a=document.getElementById('zona-auto'),sel=document.getElementById('zona-sel');if(!a)return;a.hidden=!auto;sel.hidden=auto;}
 function zonasDe(fuera){const sel=document.getElementById('zona-sel');if(!sel)return;if(!ZONAS)ZONAS=[...sel.options].slice(1).map(o=>o.cloneNode(true));
@@ -223,7 +226,9 @@ function faltanDatos(){   // un cliente que ya existe puede no tener correo, tel
  w.hidden=!(ft||fc||fd);}
 function validar(){const fp=document.getElementById('f-pago');
  if(!fp.disabled&&!fp.value){alert('Falta la fecha de pago. Solo se puede dejar vacía si lo paga en efectivo al recibir.');fp.focus();return false;}
- if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if([...document.querySelectorAll('#lin .no-opt-g input[name=color]')].some(i=>!i.value)){alert('Elige el color del plato (azul o rosado) del Slow Chow.');return false;}if([...document.querySelectorAll('#lin select[name=pack_inicio]')].some(i=>i.value==='')){alert('Elige cuántos repuestos del pack se lleva hoy.');return false;}if(!document.getElementById('te').value&&!nadaHoy()){alert('Elige el tipo de entrega.');return false;}{const te=document.getElementById('te').value;if((te==='delivery'||te==='delivery_fuera')&&document.getElementById('deliv').value.trim()===''){alert('Pon el precio del delivery.');document.getElementById('deliv').focus();return false;}}
+ if(!document.getElementById('cl-id').value&&!document.getElementById('cl-nombre').value.trim()){alert('Elige un cliente o crea uno nuevo.');return false;}if(!document.querySelector('#lin .no-linea')){alert('Agrega al menos un producto.');return false;}if([...document.querySelectorAll('#lin .no-opt-g input[name=color]')].some(i=>!i.value)){alert('Elige el color del plato (azul o rosado) del Slow Chow.');return false;}if([...document.querySelectorAll('#lin select[name=pack_inicio]')].some(i=>i.value==='')){alert('Elige cuántos repuestos del pack se lleva hoy.');return false;}if(!document.getElementById('te').value&&!nadaHoy()){alert('Elige el tipo de entrega.');return false;}{const te=document.getElementById('te').value;if((te==='delivery'||te==='delivery_fuera')&&document.getElementById('deliv').value.trim()===''){alert('Pon el precio del delivery.');document.getElementById('deliv').focus();return false;}}{const te=document.getElementById('te').value,zs=document.getElementById('zona-sel'),gps=document.querySelector('#dir-nueva-x [name=maps]');
+ if((te==='delivery'||te==='delivery_fuera')&&document.getElementById('dir-modo').value==='nueva'&&!(zs&&zs.value)&&!(gps&&gps.value.trim())){
+  alert('En la dirección nueva escribe la zona (ej. "Oficina de su hermano, Chacao") o pega el GPS, para que el despachador sepa a dónde ir.');document.getElementById('dir').focus();return false;}}
  const val=n=>((document.querySelector('[name='+n+']')||{}).value||'').trim(),nuevo=!document.getElementById('cl-id').value,nac=document.getElementById('te').value==='nacional';
  const pedir=(id,n,msg)=>{const w=document.getElementById(id);if(!w.hidden&&!val(n)){alert(msg);w.querySelector('input').focus();return false;}return true;};
  if(nuevo){if(!val('cliente_telefono')){alert('El teléfono del cliente es obligatorio.');return false;}

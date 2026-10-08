@@ -1331,6 +1331,8 @@ def _():
         r = c.post("/ordenes/nueva", data={"cliente_id": str(cid["id"]), "canal": "whatsapp", "producto_id": str(p), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
                "tipo_entrega": "delivery", "dir_modo": "nueva", "direccion": "Oficina, Torre B piso 3", "maps": "https://maps.app.goo.gl/abc",
                "zona_tarifa": "Manzanares", "delivery": "5", "fecha_pago": "2026-10-08"})
+        o2 = con.execute("SELECT zona, direccion FROM ordenes WHERE cliente_id=? ORDER BY id DESC LIMIT 1", (cid["id"],)).fetchone()
+        assert (o2["zona"], o2["direccion"]) == ("Manzanares", "Oficina, Torre B piso 3"), dict(o2)
         dirs = {x["direccion"]: (x["zona"], x["maps"], x["principal"]) for x in con.execute("SELECT * FROM direcciones WHERE cliente_id=?", (cid["id"],))}
         assert dirs.get("Oficina, Torre B piso 3") == ("Manzanares", "https://maps.app.goo.gl/abc", 0), dirs
         assert dirs.get("Res. Los Pinos, apto 4B", (None,))[0] == "Chacao", dirs
@@ -1406,6 +1408,14 @@ def _():
         assert not [e for e in A.efectivo_por_registrar(con) if e["numero"] == "#81"], "no se pide registrar a mano lo que ya entró solo"
         assert "tuyos en efectivo" not in c.get("/inicio").text
         con.close()
+
+@prueba("Un pedido a otra dirección no muestra la zona de la dirección habitual")
+def _():
+    hab = {"direccion": "Res. Los Pinos, Prados del Este", "zona": "Prados del Este", "ciudad": "Caracas", "maps": "https://maps.app.goo.gl/x"}
+    o = A.completar_direccion({"tipo_entrega": "delivery", "direccion": "Las mercedes", "zona": None, "ciudad": None, "maps": None}, hab)
+    assert o["zona"] is None and o["maps"] is None and o["ciudad"] == "Caracas", o
+    o = A.completar_direccion({"tipo_entrega": "delivery", "direccion": None, "zona": None, "ciudad": None, "maps": None}, hab)
+    assert o["zona"] == "Prados del Este" and o["maps"], o
 
 print("\nRECONSTRUIR DESDE CERO")
 

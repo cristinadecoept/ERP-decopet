@@ -1316,9 +1316,9 @@ def completar_direccion(o, principal):
     norm = lambda x: " ".join((x or "").lower().split())
     propia, hab = norm(o.get("direccion")), norm(principal["direccion"])
     if not propia and principal["direccion"]: o["direccion"] = principal["direccion"]
-    for k in ("zona", "ciudad"):
-        if not (o.get(k) or "").strip() and principal[k]: o[k] = principal[k]
     misma = (not propia) or propia == hab or propia in hab or hab in propia
+    for k in ("zona", "ciudad"):   # la zona de la habitual solo vale si el pedido va a la habitual
+        if not (o.get(k) or "").strip() and principal[k] and (misma or k == "ciudad"): o[k] = principal[k]
     if not (o.get("maps") or "").strip() and principal["maps"] and misma: o["maps"] = principal["maps"]
     return o
 
