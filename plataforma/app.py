@@ -6243,7 +6243,8 @@ def mis_entregas(request: Request, con=Depends(db)):
     # los viajes a la agencia también van el día que tocan: el de mañana no es de hoy (el atrasado sí sigue en hoy)
     viajes_manana = [v for v in viajes_pend if (v["fecha"] or "")[:10] == manana]
     viajes_pend = [v for v in viajes_pend if (v["fecha"] or "")[:10] <= hoy.isoformat()]
-    return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, ruta=ruta, ruta_manana=ruta_manana, viajes_manana=viajes_manana,
+    en_caja = round(sum(p["monto_usd"] or 0 for p in efectivo_que_tiene(con, nombre)), 2) if nombre else 0   # efectivo de Decopet que tiene y debe entregar
+    return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, en_caja=en_caja, ruta=ruta, ruta_manana=ruta_manana, viajes_manana=viajes_manana,
                   ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(), viajes_pend=viajes_pend, tarifas_dil=tarifas_diligencia(con),
                   ganado_mes=round(sum(h["pago"] for h in hist if h["estado"] == "entregada" and (h["fecha"] or "")[:7] == mes), 2),

@@ -1400,6 +1400,11 @@ def _():
         assert not [e for e in A.efectivo_por_registrar(con) if e["numero"] == "#81"], "mientras lo tiene ella, no está por registrar"
         assert "Ingrid Prueba" in c.get("/cashflow").text, "al pasar el mouse por la caja de efectivo se ve quién lo tiene"
         h = c.get(f"/despachadores/{did}").text
+        sesion_de(c, "despachador")
+        con.execute("UPDATE usuarios SET despachador='Ingrid Prueba' WHERE usuario='prueba-despachador'"); con.commit()
+        c.cookies.set("ver_desp", "Ingrid Prueba")
+        assert "En caja" in c.get("/mis-entregas").text, "el despachador ve el efectivo tuyo que tiene"
+        sesion_de(c, "admin"); h = c.get(f"/despachadores/{did}").text
         assert "efectivo que cobró" in h and ">Caja<" in h, (re.findall(r"<title>[^<]*", h), len(h))
         # te entrega el efectivo aparte: entra a la caja de efectivo (al despachador se le paga por otro lado)
         c.post(f"/despachadores/{did}/efectivo")
