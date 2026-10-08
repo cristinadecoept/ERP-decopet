@@ -2500,7 +2500,7 @@ def caja_de(forma):
 FORMA_CUENTA = {}   # forma de pago → nombre de caja. Ahora son lo mismo; el dict queda para los nombres viejos.
 NOMBRES_VIEJOS = {"Pago Móvil": "Pago Móvil VES", "BNC": "BNC Cashea", "Zelle Decopet": "Zelle",
                   "Efectivo USD": "Efectivo USD Caracas", "Efectivo Bs": "Efectivo USD Caracas",
-                  "Efectivo EUR": "Efectivo Euros", "Binance USDT": "Binance USDT Investment",
+                  "Efectivo EUR": "Efectivo Euros", "Binance USDT Investment": "Binance USDT",
                   "PayPal": "Wise", "Transferencia USD/EUR": "Amerant", "Saldo a favor": "Cuentas Por Cobrar"}
 
 
