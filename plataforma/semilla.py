@@ -91,7 +91,7 @@ FRANJAS = ["10 am – 1 pm", "1 – 4 pm", "4 – 7 pm", "mañana", "tarde"]
 DESPACHADORES = ["Juan", "Ingrid", "Juan", "Juan", "Carlos (moto)"]
 AGENCIAS = ["Tealca", "MRW", "Zoom"]
 FORMAS = {"whatsapp": ["Pago Móvil", "Pago Móvil", "Zelle", "Efectivo USD", "Binance USDT", "Efectivo USD", "Efectivo Bs"], "cashea": ["BNC"], "shopify": ["Zelle"], "duwu": ["Transferencia (Duwu)"]}
-CUENTAS = {"Pago Móvil": "Pago Móvil BVC", "Zelle": "Zelle Decopet", "Efectivo USD": "Caja despachador", "Efectivo Bs": "Caja despachador (Bs)", "Efectivo EUR": "Caja EUR", "Binance USDT": "Caja USDT", "BNC": "BNC (Bs)", "Transferencia (Duwu)": "Pago Móvil BVC", "PayPal": "PayPal"}
+CUENTAS = {"Pago Móvil": "Pago Móvil BVC", "Zelle": "Zelle", "Efectivo USD": "Caja despachador", "Efectivo Bs": "Caja despachador (Bs)", "Efectivo EUR": "Caja EUR", "Binance USDT": "Caja USDT", "BNC": "BNC (Bs)", "Transferencia (Duwu)": "Pago Móvil BVC", "PayPal": "PayPal"}
 TASA = 152.4  # se reemplaza por la tasa real si se pudo leer del BCV
 
 
@@ -106,7 +106,7 @@ def main():
     con.executescript((BASE / "modelo.sql").read_text())
     con.executemany("INSERT INTO usuarios (id,nombre,rol) VALUES (?,?,?)", [(1, "Cristina", "admin"), (2, "Vale (logística)", "logistica"), (3, "Tina", "sistema")])
     # Plantilla de cajas de Cristina (códigos y nombres de su cash flow; saldos en cero)
-    CAJAS = [("001", "Caja", "USD", "operativa", 0), ("002", "Juan Despachos", "USD", "operativa", 0), ("003", "Zelle Decopet", "USD", "operativa", 0), ("004", "Binance Cripto Investment", "USDT", "inversion", 0),
+    CAJAS = [("001", "Caja", "USD", "operativa", 0), ("002", "Juan Despachos", "USD", "operativa", 0), ("003", "Zelle", "USD", "operativa", 0), ("004", "Binance Cripto Investment", "USDT", "inversion", 0),
              ("005", "Caja USDT", "USDT", "operativa", 0), ("006", "Pago Movil BVC", "VES", "operativa", 0), ("007", "Folionet Stock Investment", "USD", "inversion", 0), ("008", "Cuentas Por Cobrar", "USD", "por_cobrar", 0),
              ("009", "Mercado Pago", "USD", "operativa", 0), ("010", "Casa Prados", "USD", "operativa", 0), ("011", "Pay Pal", "USD", "operativa", 0), ("012", "Amerant", "USD", "operativa", 0),
              ("013", "Dolares Argentina", "USD", "operativa", 0), ("014", "Credito Personal", "USD", "por_cobrar", 1), ("015", "Euros", "EUR", "operativa", 0), ("016", "Cuenta Dolares BVC Camila", "USD", "operativa", 0),

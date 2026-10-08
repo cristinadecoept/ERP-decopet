@@ -30,7 +30,7 @@ MAPA = {"PORCHE M": "PRO-M", "PORCHE L": "PRO-G", "PRO MEDIANO": "PRO-M", "PRO G
 PAGOS = {"PAGO MOVIL": "Pago Móvil", "CASH": "Efectivo USD", "CASH JUAN": "Efectivo USD", "CASH PM": "Efectivo USD", "ZELLE": "Zelle",
          "BNC CASHEA BOLOS": "Cashea BNC", "CASHEA": "Cashea BNC", "USDT BINANCE": "Binance USDT", "BINANCE": "Binance USDT", "BINAN": "Binance USDT",
          "PIPOL PAY": "Pipol Pay", "VENMO": "Venmo", "PAY PAL": "PayPal", "PAYPAL": "PayPal", "FACEBANK": "Facebank", "VIDAPETS": "Transferencia USD"}
-CUENTA = {"Pago Móvil": "Pago Movil BVC", "Efectivo USD": "Caja", "Zelle": "Zelle Decopet", "Cashea BNC": "Cashea BNC", "Binance USDT": "Caja USDT",
+CUENTA = {"Pago Móvil": "Pago Movil BVC", "Efectivo USD": "Caja", "Zelle": "Zelle", "Cashea BNC": "Cashea BNC", "Binance USDT": "Caja USDT",
           "Pipol Pay": "Pipol Pay", "Venmo": "Venmo", "PayPal": "Pay Pal", "Facebank": "Facebank", "Transferencia USD": "Caja"}
 
 SIN_NOMBRE = {"", "XX", "XXXXXXXX", "SIN NOMBRE", "X", "XXX", "XXXX", "?", "-"}

@@ -471,7 +471,7 @@ def wa_api(tel):
     return ("https://api.whatsapp.com/send?phone=" + b.rsplit("/", 1)[1]) if b else ""
 tpl.env.filters["wa_api"] = wa_api
 tpl.env.globals["wa_texto"] = lambda tel, txt: (wa_api(tel) + "&text=" + quote(txt or "")) if wa_api(tel) else ""
-# ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle Decopet')
+# ¿esta caja empieza como la forma que dijo el despachador? ('Zelle' → 'Zelle')
 tpl.env.tests["lower_empieza"] = lambda caja, dijo: bool(dijo) and (caja or "").lower().startswith((dijo or "").lower())
 CIUDADES_VE = ["Caracas", "Los Teques", "Guarenas", "Guatire", "La Guaira", "Valencia", "Maracay", "Maracaibo", "Barquisimeto", "Puerto Ordaz", "Ciudad Bolívar", "Puerto La Cruz", "Barcelona", "Lechería",
                "Mérida", "San Cristóbal", "Maturín", "Cumaná", "Porlamar", "Valera", "Punto Fijo", "Coro", "Cabimas", "Acarigua", "Guanare", "San Felipe", "Barinas", "El Tigre", "Carúpano", "Charallave", "Cúa",
@@ -2498,7 +2498,7 @@ def caja_de(forma):
     """La caja donde entra un pago con esa forma, o None si no es una caja (lo reportó el despachador y falta asignarla)."""
     return FORMA_CUENTA.get(forma or "") or (forma if forma in MONEDA_CAJA else None)
 FORMA_CUENTA = {}   # forma de pago → nombre de caja. Ahora son lo mismo; el dict queda para los nombres viejos.
-NOMBRES_VIEJOS = {"Pago Móvil": "Pago Móvil VES", "BNC": "BNC Cashea", "Zelle": "Zelle Decopet",
+NOMBRES_VIEJOS = {"Pago Móvil": "Pago Móvil VES", "BNC": "BNC Cashea", "Zelle Decopet": "Zelle",
                   "Efectivo USD": "Efectivo USD Caracas", "Efectivo Bs": "Efectivo USD Caracas",
                   "Efectivo EUR": "Efectivo Euros", "Binance USDT": "Binance USDT Investment",
                   "PayPal": "Wise", "Transferencia USD/EUR": "Amerant", "Saldo a favor": "Cuentas Por Cobrar"}
@@ -2536,7 +2536,7 @@ CODIGO_CAJA = {}   # nombre de la caja → su número (001, 002…), para mostra
 
 
 def caja_con_numero(nombre):
-    """En las listas cada caja va con su número delante: '003 · Zelle Decopet'. Así se busca más rápido."""
+    """En las listas cada caja va con su número delante: '003 · Zelle'. Así se busca más rápido."""
     c = CODIGO_CAJA.get(nombre or "")
     return f"{c} · {nombre}" if c else (nombre or "")
 

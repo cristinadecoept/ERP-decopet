@@ -22,7 +22,7 @@ for cm, sku in (("10", "SLOW-10"), ("15", "SLOW-15"), ("20", "SLOW-20"), ("25", 
 PAGO = {"pago movil": "Pago Móvil", "bnc": "Cashea BNC", "zelle": "Zelle", "efectivo": "Efectivo USD", "binance": "Binance USDT", "venmo": "Venmo", "pay pal": "PayPal", "paypal": "PayPal", "pipol pay": "Pipol Pay",
         "repuesto (pack / orden previa)": "Pago Móvil"}
 # Caja donde entró cada pago: los nombres de las cajas reales (los mismos que NOMBRES_VIEJOS en app.py).
-CUENTA = {"Pago Móvil": "Pago Móvil VES", "Cashea BNC": "BNC Cashea", "Zelle": "Zelle Decopet", "Efectivo USD": "Efectivo USD Caracas", "Binance USDT": "Binance USDT Investment", "Venmo": "Venmo", "PayPal": "Wise", "Pipol Pay": "Pipol Pay"}
+CUENTA = {"Pago Móvil": "Pago Móvil VES", "Cashea BNC": "BNC Cashea", "Zelle": "Zelle", "Efectivo USD": "Efectivo USD Caracas", "Binance USDT": "Binance USDT Investment", "Venmo": "Venmo", "PayPal": "Wise", "Pipol Pay": "Pipol Pay"}
 # Productos que se vendieron en Airtable y pueden no estar en el catálogo: si faltan se crean INACTIVOS (no aparecen para vender). Precio de Airtable.
 HISTORICOS = {"BAS-M": ("Porche Básico Mediano", "porche", 38), "BAS-G": ("Porche Básico Grande", "porche", 38),
               "PACK4": ("Pack 4 Repuestos Cashea", "repuesto", 88), "PACK8": ("Pack 8 Repuestos Cashea", "repuesto", 176)}

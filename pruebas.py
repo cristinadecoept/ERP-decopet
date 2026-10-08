@@ -115,7 +115,7 @@ def _():
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,total) VALUES (1,'#1',1,'pendiente',100)")
     con.commit()
-    A.cobro_extra(con, 1, "Delivery repuesto", 5, "Zelle Decopet", "2026-09-27", 1)
+    A.cobro_extra(con, 1, "Delivery repuesto", 5, "Zelle", "2026-09-27", 1)
     con.commit()
     assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 105
     p = con.execute("SELECT monto_usd, estado FROM pagos WHERE orden_id=1").fetchone()
@@ -127,7 +127,7 @@ def _():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total) VALUES (1,'#1',1,'entregada','pagada',72)")
-    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle Decopet',72,72,'USD','2026-10-01','confirmado')")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle',72,72,'USD','2026-10-01','confirmado')")
     con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,0)")
     con.commit()
     assert A.entregar_pack(con, 1, 1, "2026-10-05", "1", "delivery", "Juan", "5", "", pago=None)
@@ -154,10 +154,10 @@ def _():
 def _():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Rebecca','Rebecca')")
-    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,subtotal,delivery,forma_pago_prevista,creado_en) VALUES (1,'#1',1,'pendiente','pagada',75,70,5,'Zelle Decopet','2026-10-05 10:00')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,subtotal,delivery,forma_pago_prevista,creado_en) VALUES (1,'#1',1,'pendiente','pagada',75,70,5,'Zelle','2026-10-05 10:00')")
     con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total) VALUES (1,'Pack 3 Repuestos Mediano',1,60,0,60)")
     con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total,extra_en) VALUES (1,'Delivery de las próximas entregas del pack (2 × $5)',2,5,0,10,'2026-10-05')")
-    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle Decopet',75,75,'USD','2026-10-05','confirmado')")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle',75,75,'USD','2026-10-05','confirmado')")
     con.commit()
     filas = A._historial_rows(con, "2026", "", "")
     assert [(f["producto"], f["cantidad"], f["linea"]) for f in filas] == [("Pack 3 Repuestos Mediano", 1, 75)], filas
@@ -167,7 +167,7 @@ def _():
     con = base_limpia()
     con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
     con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,subtotal) VALUES (1,'#1',1,'pendiente','pagada',98,98)")
-    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle Decopet',98,98,'USD','2026-10-05','confirmado')")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle',98,98,'USD','2026-10-05','confirmado')")
     con.commit()
     A.cobro_extra(con, 1, "Delivery", 12, None, "2026-10-06", 1, pago=None)
     con.commit()
@@ -1167,14 +1167,14 @@ def _():
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
         con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (9001,'Marisol','Marisol')")
         con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,total,tipo_entrega,creado_en) VALUES (9001,'#99001',9001,'pendiente','pagada',98,98,'pickup','2026-10-05 10:00')")
-        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (9001,'Zelle Decopet',98,98,'USD','2026-10-05','confirmado')")
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (9001,'Zelle',98,98,'USD','2026-10-05','confirmado')")
         con.commit()
         A.cobro_extra(con, 9001, "Delivery", 12, "Pago Móvil VES", "2026-10-06", 1, pago=None); con.commit()
         lid = con.execute("SELECT id FROM orden_lineas WHERE orden_id=9001 AND extra_en IS NOT NULL").fetchone()[0]
         c.post(f"/ordenes/9001/linea/{lid}/quitar")
         o = con.execute("SELECT total, delivery, estado_pago FROM ordenes WHERE id=9001").fetchone()
         assert (o["total"], o["delivery"], o["estado_pago"]) == (98, 0, "pagada"), dict(o)
-        A.cobro_extra(con, 9001, "Propina", 3, "Zelle Decopet", "2026-10-06", 1); con.commit()   # pagado
+        A.cobro_extra(con, 9001, "Propina", 3, "Zelle", "2026-10-06", 1); con.commit()   # pagado
         lid = con.execute("SELECT id FROM orden_lineas WHERE orden_id=9001 AND extra_en IS NOT NULL").fetchone()[0]
         c.post(f"/ordenes/9001/linea/{lid}/quitar")
         assert con.execute("SELECT total FROM ordenes WHERE id=9001").fetchone()[0] == 101, "lo pagado no se quita"
@@ -1187,9 +1187,9 @@ def _():
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
         con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (9002,'Marelbis','Marelbis')")
         con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,total,creado_en) VALUES (9002,'#99002',9002,'pendiente','abonada',220.76,220.76,'2026-10-07 10:00')")
-        pid = con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (9002,'Zelle Decopet',216.06,216.06,'USD','2026-10-07 11:39','confirmado')").lastrowid
+        pid = con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (9002,'Zelle',216.06,216.06,'USD','2026-10-07 11:39','confirmado')").lastrowid
         con.commit()
-        c.post(f"/ordenes/9002/pago/{pid}/corregir", data={"monto_usd": "220.76", "forma": "Zelle Decopet", "fecha": "2026-10-07"})
+        c.post(f"/ordenes/9002/pago/{pid}/corregir", data={"monto_usd": "220.76", "forma": "Zelle", "fecha": "2026-10-07"})
         assert con.execute("SELECT monto_usd FROM pagos WHERE id=?", (pid,)).fetchone()[0] == 220.76
         assert con.execute("SELECT estado_pago FROM ordenes WHERE id=9002").fetchone()[0] == "pagada"
         c.post(f"/ordenes/9002/pago/{pid}/corregir", data={"borrar": "1"})
