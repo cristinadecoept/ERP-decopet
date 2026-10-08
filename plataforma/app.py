@@ -394,18 +394,18 @@ def faltan_datos_agencia(con):
 
 
 def navegacion(maps, direccion=None, ciudad=None):
-    """Botones 'Cómo llegar' del despachador: Google Maps y Waze ya navegando. Si el link trae coordenadas se usan
-    (q=10.45,-66.81 · @10.45,-66.81); si no, Google abre el mismo link y Waze busca la dirección escrita."""
+    """Botones 'Cómo llegar' del despachador: solo si subimos el link de la ubicación (Cristina, 8 oct). Con coordenadas,
+    Google Maps y Waze abren navegando; con un link sin coordenadas, Google abre ese link. Sin link no hay botones:
+    nunca se busca la dirección escrita (puede mandar al despachador a otro lado); él le pide la ubicación al cliente."""
     from urllib.parse import unquote
     m = re.search(r"(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)", unquote(maps or ""))
     if m:
         ll = f"{m.group(1)},{m.group(2)}"
         return {"maps": f"https://www.google.com/maps/dir/?api=1&destination={ll}&travelmode=driving",
                 "waze": f"https://waze.com/ul?ll={ll}&navigate=yes", "exacto": True}
-    texto = ", ".join(x for x in (direccion, ciudad or "Caracas") if x)   # sin link: es una búsqueda, puede no ser exacta (la pantalla lo dice)
-    g = (maps if (maps or "").startswith("http") else ("https://" + maps if maps else "")) or \
-        (f"https://www.google.com/maps/dir/?api=1&destination={quote(texto)}" if direccion else "")
-    return {"maps": g, "waze": f"https://waze.com/ul?q={quote(texto)}&navigate=yes" if direccion else "", "exacto": bool(maps)}
+    if (maps or "").strip():
+        return {"maps": maps if maps.startswith("http") else "https://" + maps.strip(), "waze": "", "exacto": True}
+    return {"maps": "", "waze": "", "exacto": False}
 
 
 def falta_ubicacion(con):
