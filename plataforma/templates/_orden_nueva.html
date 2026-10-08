@@ -143,7 +143,7 @@ var ZONAS=null;   // Caracas o fuera de Caracas: la lista muestra solo las zonas
 var ZONA_HAB='',PRECIO_AUTO=false;   // PRECIO_AUTO: el precio lo puso la zona guardada del cliente (si cambia el cliente, se quita)
 function precioAuto(){if(PRECIO_AUTO){document.getElementById('deliv').value='';PRECIO_AUTO=false;document.getElementById('deliv-z').textContent='';calc();}}
 function ponerPrecio(o){document.getElementById('deliv').value=o.dataset.t;document.getElementById('deliv-z').textContent='· '+o.value;PRECIO_AUTO=true;calc();}
-var sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+var sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bdel\b/g,'de').replace(/\s+/g,' ').trim();   // "lomas del avila" = "Lomas de Avila"
 function zonaDeTexto(t){const x=sinAcento(t);if(!x)return null;if(!ZONAS)ZONAS=[...document.getElementById('zona-sel').options].slice(1).map(o=>o.cloneNode(true));   // la zona de Tarifas que nombra lo escrito (una sola)
  const igual=ZONAS.find(o=>sinAcento(o.value)===x);if(igual)return igual;
  let hits=ZONAS.filter(o=>new RegExp('(^|[^a-z])'+sinAcento(o.value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'($|[^a-z])').test(x));
