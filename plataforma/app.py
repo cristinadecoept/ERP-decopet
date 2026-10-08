@@ -2146,7 +2146,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         cid = cur.lastrowid
         guardar_mascotas(con, cid, f, prefijo="cliente_mascota_")
         if (f.get("cliente_direccion") or "").strip():   # dirección habitual del cliente nuevo
-            zona_hab = (f.get("zona_tarifa") or "").strip() if f.get("tipo_entrega") in ("delivery", "delivery_fuera") and f.get("dir_modo", "hab") == "hab" else ""
+            zona_hab = (f.get("cliente_zona") or "").strip() or ((f.get("zona_tarifa") or "").strip() if f.get("tipo_entrega") in ("delivery", "delivery_fuera") and f.get("dir_modo", "hab") == "hab" else "")
             con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), zona_hab or None, *normalizar_ciudad(f.get("cliente_ciudad")), (f.get("cliente_maps") or "").strip() or None))
     if cid and not cliente_recien_creado:   # cliente que ya existía al que le faltaban datos: se completan desde la orden
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
