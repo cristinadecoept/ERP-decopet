@@ -4,8 +4,7 @@
 <div class="g2"><div><label>Nombre</label><input name="nombre_pila" required autofocus placeholder="María"></div><div><label>Apellido</label><input name="apellido" required placeholder="Pérez"></div></div>
 <div class="g2"><div><label>Teléfono <span class="obl">*</span></label><input name="telefono" placeholder="0414-1234567" inputmode="tel" required></div><div><label>Cédula / RIF</label><input name="cedula" placeholder="V-12345678"></div></div>
 <label>Correo <span class="obl">*</span></label><input name="correo" inputmode="email" placeholder="nombre@gmail.com" required>
-<div class="g2"><div><label>¿Cómo nos conoció?</label><select name="origen" onchange="this.form.querySelector('.ref-w').hidden=(this.value!='Recomendación de otro cliente')"><option value="">—</option>{% for o in ORIGENES %}<option>{{ o }}</option>{% endfor %}</select></div>
-<div class="ref-w" hidden><label>¿Quién lo recomendó?</label><input list="ref-cl" name="referido_nombre" placeholder="escribe el nombre" oninput="const o=[...document.getElementById('ref-cl').options].find(x=>x.value===this.value);this.form.querySelector('[name=referido_id]').value=o?o.dataset.id:''"><input type="hidden" name="referido_id"></div></div></div>
+</div>
 <div class="bloque"><h3>Dirección principal</h3>
 <label>Ciudad</label><input name="ciudad" value="Caracas" list="ciudades-cn" autocomplete="off"><datalist id="ciudades-cn">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist>
 <label>Dirección escrita</label><input name="direccion" placeholder="Res., edificio, apto, referencia"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
