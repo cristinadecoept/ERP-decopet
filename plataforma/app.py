@@ -1545,7 +1545,7 @@ def resumen_despacho(o, con_plata=True):
 def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
     productos = con.execute("SELECT * FROM productos WHERE activo=1 AND tipo='producto' ORDER BY orden").fetchall()
     opciones = {r["sku"]: r for r in con.execute("SELECT * FROM productos WHERE tipo='opcion'")}
-    clientes = con.execute("""SELECT c.*, (SELECT direccion || COALESCE(' · ' || zona,'') FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
+    clientes = con.execute("""SELECT c.*, (SELECT direccion || CASE WHEN zona IS NULL OR lower(trim(zona))=lower(trim(direccion)) THEN '' ELSE ' · ' || zona END FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
                                      (SELECT zona FROM direcciones d WHERE d.cliente_id=c.id ORDER BY principal DESC, id LIMIT 1) dir_zona,
                               (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
                               (SELECT ROUND(COALESCE(SUM(k.monto),0),2) FROM credito_cliente k WHERE k.cliente_id=c.id) credito,
@@ -2174,8 +2174,8 @@ async def crear_orden(request: Request, con=Depends(db)):
         if d and not (d["zona"] or "").strip() and (f.get("zona_tarifa") or "").strip() and f.get("tipo_entrega") in ("delivery", "delivery_fuera"):
             con.execute("UPDATE direcciones SET zona=? WHERE id=?", (f.get("zona_tarifa").strip(), d["id"]))   # la próxima vez ya sale elegida
         if d: f = _Form(f, {"direccion": d["direccion"], "zona": f.get("zona_tarifa") or d["zona"] or "", "ciudad": d["ciudad"] or f.get("ciudad") or "Caracas", "maps": d["maps"] or ""})
-    if f.get("zona_tarifa") and not (f.get("zona") or "").strip(): f = _Form(f, {"zona": f.get("zona_tarifa")})
-    elif cid and f.get("dir_modo") == "nueva" and (f.get("direccion") or "").strip():
+    if f.get("zona_tarifa") and not (f.get("zona") or "").strip(): f = _Form(f, {"zona": f.get("zona_tarifa")})   # la zona de la dirección es la de Tarifas
+    if cid and f.get("dir_modo") == "nueva" and (f.get("direccion") or "").strip():
         # dirección nueva: se guarda como otra dirección del cliente (no reemplaza la habitual)
         if not con.execute("SELECT 1 FROM direcciones WHERE cliente_id=? AND direccion=?", (cid, f["direccion"])).fetchone():
             # cliente recién creado: esta es su dirección habitual; cliente existente: se guarda como dirección adicional
