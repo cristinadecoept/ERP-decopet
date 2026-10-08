@@ -1377,6 +1377,36 @@ def _():
         assert f"/ordenes/{oid}/ubicacion" not in c.get("/inicio").text, "ya no falta"
         con.close()
 
+@prueba("Efectivo en la calle: lo que cobra un despachador queda a su nombre hasta que te lo entrega")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('ventas_auto','0')")
+        con.execute("INSERT OR IGNORE INTO cuentas (codigo,nombre,moneda,tipo,activa,orden) VALUES ('001','Efectivo USD','USD','operativa',1,1)")
+        did = con.execute("INSERT INTO despachadores (nombre, activo) VALUES ('Ingrid Prueba', 1)").lastrowid
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (61,'Rosa Prueba','Rosa')")
+        o1 = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega,despachador) VALUES ('#81',61,'pendiente','contra_entrega',40,5,45,'delivery','Ingrid Prueba')").lastrowid
+        con.commit(); A.cargar_formas_pago()
+        sesion_de(c, "admin")
+        c.post(f"/ordenes/{o1}/estado", data={"estado": "entregada", "monto_recibido": "45"})
+        p = con.execute("SELECT * FROM pagos WHERE orden_id=?", (o1,)).fetchone()
+        assert p and p["lo_tiene"] == "Ingrid Prueba" and p["monto_usd"] == 45 and not p["rendido_en"], dict(p) if p else None
+        h = c.get("/inicio").text
+        assert "Ingrid Prueba tiene $45.00 tuyos en efectivo" in h, re.findall(r"Ingrid[^<]{0,60}", h)
+        assert not [e for e in A.efectivo_por_registrar(con) if e["numero"] == "#81"], "mientras lo tiene ella, no está por registrar"
+        assert "Ingrid Prueba" in c.get("/cashflow").text, "al pasar el mouse por la caja de efectivo se ve quién lo tiene"
+        h = c.get(f"/despachadores/{did}").text
+        assert "efectivo que cobró" in h and ">Caja<" in h, (re.findall(r"<title>[^<]*", h), len(h))
+        # te entrega el efectivo aparte: entra a la caja de efectivo (al despachador se le paga por otro lado)
+        c.post(f"/despachadores/{did}/efectivo")
+        assert con.execute("SELECT rendido_en FROM pagos WHERE orden_id=?", (o1,)).fetchone()[0], "quedó entregado"
+        caja = con.execute("SELECT id FROM cuentas WHERE nombre='Efectivo USD'").fetchone()[0]
+        entra = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM movimientos WHERE cuenta_destino_id=?", (caja,)).fetchone()[0]
+        assert entra == 45, entra
+        assert not [e for e in A.efectivo_por_registrar(con) if e["numero"] == "#81"], "no se pide registrar a mano lo que ya entró solo"
+        assert "tuyos en efectivo" not in c.get("/inicio").text
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

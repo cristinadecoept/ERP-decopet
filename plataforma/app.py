@@ -663,6 +663,7 @@ COLUMNAS = (
     ("movimientos", "categoria", "TEXT"), ("movimientos", "comprobante", "TEXT"),
     ("movimientos", "notas", "TEXT"), ("movimientos", "subcategoria", "TEXT"),
     ("tarifas", "fuera_caracas", "INTEGER NOT NULL DEFAULT 0"),
+    ("pagos", "lo_tiene", "TEXT"), ("pagos", "rendido_en", "TEXT"),   # efectivo que cobró un despachador y todavía no le entregó a Cristina
     ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"), ("danados", "visto", "INTEGER NOT NULL DEFAULT 0"),
     ("notas_taller", "produccion_id", "INTEGER"), ("notas_taller", "danado_id", "INTEGER"),
     ("notas_taller", "agotando_id", "INTEGER"), ("notas_taller", "llegada", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "agotando_color", "TEXT"),
@@ -1145,6 +1146,8 @@ def inicio(request: Request, con=Depends(db)):
     c["fotos"] = con.execute("SELECT COUNT(*) FROM fotos WHERE permiso='sin_confirmar'").fetchone()[0]
     c["faltan_agencia"] = faltan_datos_agencia(con)
     c["danados"] = danados_pendientes(con)
+    c["efectivo_calle"] = [dict(r) for r in con.execute("""SELECT d.id, p.lo_tiene quien, ROUND(SUM(p.monto_usd),2) monto FROM pagos p JOIN despachadores d ON d.nombre=p.lo_tiene
+                                                          WHERE p.rendido_en IS NULL AND p.estado='confirmado' GROUP BY p.lo_tiene HAVING SUM(p.monto_usd) > 0.009""")]
     c["falta_ubicacion"] = falta_ubicacion(con)
     # clientes nuevos (desde que arrancó el registro) que compraron y no tienen ningún perro anotado (Cristina, 7 oct)
     desde_r = (con.execute("SELECT valor FROM config WHERE clave='registro_desde'").fetchone() or ["2026-10-03"])[0]
@@ -1632,9 +1635,9 @@ def cambiar_estado(request: Request, oid: int, estado: str = Form(...), motivo: 
             # es efectivo, y el despachador no elige caja ni forma.
             if yo and yo["rol"] == "despachador": moneda_recibida = "USD"
             if monto:
-                con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,cuenta,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?)",
+                con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,cuenta,fecha,estado,confirmado_por,confirmado_en,lo_tiene) VALUES (?,?,?,?,?,?,?,?,?)",
                             (oid, {"USD": "Efectivo USD", "Bs": "Efectivo Bs", "EUR": "Efectivo EUR"}.get(moneda_recibida, "Efectivo USD"), monto,
-                             caja_efectivo(con), fe, "confirmado", uid, datetime.datetime.now().strftime("%Y-%m-%d %H:%M")))
+                             caja_efectivo(con), fe, "confirmado", uid, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), guarda_efectivo(con, o["despachador"])))
             # la orden queda como lo que de verdad cobró: si trajo menos, queda con saldo, no "pagada"
             nuevo_estado = estado_pago_de(o["pagado"] + monto, o["total"])
             sets.append("estado_pago=?"); args.append(nuevo_estado)
@@ -2499,7 +2502,7 @@ def caja_de(forma):
     return FORMA_CUENTA.get(forma or "") or (forma if forma in MONEDA_CAJA else None)
 FORMA_CUENTA = {}   # forma de pago → nombre de caja. Ahora son lo mismo; el dict queda para los nombres viejos.
 NOMBRES_VIEJOS = {"Pago Móvil": "Pago Móvil VES", "BNC": "BNC Cashea", "Zelle Decopet": "Zelle",
-                  "Efectivo USD": "Efectivo USD Caracas", "Efectivo Bs": "Efectivo USD Caracas",
+                  "Efectivo USD Caracas": "Efectivo USD", "Efectivo Bs": "Efectivo USD",
                   "Efectivo EUR": "Efectivo Euros", "Binance USDT Investment": "Binance USDT",
                   "PayPal": "Wise", "Transferencia USD/EUR": "Amerant", "Saldo a favor": "Cuentas Por Cobrar"}
 
@@ -2577,7 +2580,7 @@ def efectivo_por_registrar(con):
     return [dict(r) for r in con.execute("""SELECT p.id, p.monto_usd, p.fecha, p.forma, p.cuenta,
                    o.numero, o.despachador, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente
                    FROM pagos p JOIN ordenes o ON o.id=p.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
-                   WHERE p.estado='confirmado' AND p.en_cashflow=0 AND p.forma LIKE 'Efectivo%'
+                   WHERE p.estado='confirmado' AND p.en_cashflow=0 AND p.forma LIKE 'Efectivo%' AND p.lo_tiene IS NULL
                      AND substr(p.fecha,1,10) >= ? AND o.origen_excel=0
                    ORDER BY p.fecha DESC, p.id DESC""", (desde,))]
 
@@ -2652,6 +2655,37 @@ def credito_devolver(request: Request, cid: int, monto: str = Form("0"), caja: s
         mover_credito(con, cid, -m, f"Se le devolvió la plata ({cta['nombre']})", None, uid, f)
         con.commit()
     return RedirectResponse(f"/clientes/{cid}", status_code=303)
+
+
+def guarda_efectivo(con, despachador):
+    """Quién se queda con el efectivo cobrado en la puerta: el despachador de esa entrega (no Cristina, que es la caja)."""
+    if not (despachador or "").strip(): return None
+    if con.execute("SELECT 1 FROM usuarios WHERE rol='admin' AND nombre=?", (despachador,)).fetchone(): return None
+    return despachador
+
+
+def efectivo_que_tiene(con, despachador):
+    """El efectivo de Decopet que un despachador cobró y todavía no ha entregado."""
+    return [dict(r) for r in con.execute("""SELECT p.id, p.fecha, p.monto_usd, o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente
+                                            FROM pagos p LEFT JOIN ordenes o ON o.id=p.orden_id LEFT JOIN clientes c ON c.id=o.cliente_id
+                                            WHERE p.lo_tiene=? AND p.rendido_en IS NULL AND p.estado='confirmado' ORDER BY p.fecha, p.id""", (despachador,))]
+
+
+def rendir_efectivo(con, despachador, uid, fecha=None):
+    """El despachador entregó el efectivo que tenía: entra a la caja de efectivo de Cristina (en Cash flow) y deja de estar en la calle."""
+    pend = efectivo_que_tiene(con, despachador)
+    total = round(sum(p["monto_usd"] or 0 for p in pend), 2)
+    if not total: return 0
+    fecha = fecha or datetime.date.today().isoformat()
+    con.execute(f"UPDATE pagos SET rendido_en=?, en_cashflow=1 WHERE id IN ({','.join('?' * len(pend))})", (fecha, *[p["id"] for p in pend]))
+    caja = con.execute("SELECT id FROM cuentas WHERE nombre=?", (caja_efectivo(con),)).fetchone()
+    if caja and not ventas_automaticas(con):   # si las ventas entran solas al libro, ya están: no se anota otra vez
+        nums = ", ".join(sorted({p["numero"] for p in pend if p["numero"]}))
+        con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_destino_id, monto_usd, monto_real, moneda, concepto, categoria, notas, usuario_id)
+                       VALUES (?,'entrada',?,?,?,'USD',?,'Ventas',?,?)""",
+                    (fecha, caja[0], total, total, f"Ventas · efectivo que cobró {despachador}" + (f" · {nums}" if nums else ""),
+                     "Lo tenía el despachador; te lo entregó", uid))
+    return total
 
 
 def caja_efectivo(con):
@@ -2762,7 +2796,11 @@ def cashflow(request: Request, caja: str = "", mes: str = "", q: str = "", con=D
                 "Teléfono Decopet": "Movistar", "Teléfono Cristina": "Movistar"}
     provs = [dict(r) for r in con.execute("SELECT id, nombre FROM proveedores ORDER BY nombre")]
     detalle = detalle_cajas(con)
-    return render(request, "cashflow.html", seccion="cashflow", q=q, cuentas=cs, activas=activas, detalle=detalle,
+    # al pasar el mouse por la caja de efectivo: el efectivo tuyo que todavía tienen los despachadores (no está en la caja)
+    caja_ef = con.execute("SELECT id FROM cuentas WHERE nombre=?", (caja_efectivo(con),)).fetchone()
+    en_calle = {caja_ef[0]: [dict(r) for r in con.execute("""SELECT lo_tiene quien, ROUND(SUM(monto_usd),2) monto, COUNT(*) n FROM pagos
+                     WHERE lo_tiene IS NOT NULL AND rendido_en IS NULL AND estado='confirmado' GROUP BY lo_tiene HAVING SUM(monto_usd) > 0.009 ORDER BY lo_tiene""")]} if caja_ef else {}
+    return render(request, "cashflow.html", seccion="cashflow", q=q, cuentas=cs, activas=activas, detalle=detalle, en_calle=en_calle,
                   efectivo_pend=efectivo_por_registrar(con),
                   lineas=lineas[:300], caja=caja, mes=mes, meses=meses, total=total, arcos=arcos, TIPOS_MOV=TIPOS_MOV,
                   cats=cats, cats_ent=cats_ent, provs=provs, a_quien=A_QUIEN, a_quien_ent=A_QUIEN_ENT, de_quien=DE_QUIEN, orden_ent=[k for k in ORDEN_ENT if k in cats_ent])
@@ -6337,10 +6375,13 @@ def mis_entregas_retiro(request: Request, kind: str, rid: int, accion: str, form
         forma = caja_efectivo(con) if efectivo else (forma_recibida if not despues else "")
         pago = None if despues else ("confirmado" if efectivo else "por_confirmar")   # Zelle, Pago Móvil…: Cristina confirma que llegó
         monto = (float(cifra(monto_recibido) or 0) if str(monto_recibido).strip() else debe) if not despues else debe
+        antes = con.execute("SELECT COALESCE(MAX(id),0) FROM pagos").fetchone()[0]
         if kind == "pack":
             entregar_pack(con, rid, uid, cuantos=str(k["retiro_programado"] or 1), delivery_cobrado=str(monto if debe else 0), pago_forma=forma, pago=pago)
         else:
             entregar_prepagado(con, rid, uid, delivery_cobrado="1" if debe else "", delivery_forma=forma, pago=pago)
+        if efectivo and guarda_efectivo(con, k[col]):   # el efectivo del delivery lo tiene el despachador hasta que lo entregue
+            con.execute("UPDATE pagos SET lo_tiene=? WHERE id>? AND cuenta=? AND estado='confirmado'", (k[col], antes, forma))
     con.commit(); return RedirectResponse("/mis-entregas", status_code=303)
 
 
@@ -6540,7 +6581,8 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     for h in hist:
         h["grupo"] = "viaje" if es_viaje(h) else ("por_entregar" if h["estado"] in ("pendiente", "en_ruta") else h["estado"])
         h["cobro"] = "al_entregar" if h["grupo"] == "por_entregar" else ("pagado" if h["despachador_pagado"] else "por_pagar")
-    return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO,
+    efectivo = efectivo_que_tiene(con, d["nombre"])
+    return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO, efectivo=efectivo, efectivo_total=round(sum(p["monto_usd"] or 0 for p in efectivo), 2),
                   CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,
                   tarifas_dil=tarifas_diligencia(con), ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),
                   hist=hist, record=record)
@@ -6607,6 +6649,15 @@ def despachador_diligencia_borrar(request: Request, did: int, vid: int, con=Depe
     """Se anotó por error. Solo si todavía no se le ha pagado."""
     if solo_admin(request):
         con.execute("DELETE FROM viajes_despachador WHERE id=? AND tipo='diligencia' AND pagado=0", (vid,)); con.commit()
+    return RedirectResponse(f"/despachadores/{did}", status_code=303)
+
+
+@app.post("/despachadores/{did}/efectivo")
+def despachador_efectivo(request: Request, did: int, con=Depends(db)):
+    """Te entregó el efectivo que tenía: entra a tu caja de efectivo."""
+    if not solo_admin(request): return RedirectResponse(f"/despachadores/{did}", status_code=303)
+    d = con.execute("SELECT nombre FROM despachadores WHERE id=?", (did,)).fetchone()
+    if d: rendir_efectivo(con, d["nombre"], uid_de(request)); con.commit()
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
 
 
