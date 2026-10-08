@@ -125,7 +125,15 @@ function calc(){const nh=document.getElementById('nada-hoy');if(nh)nh.hidden=!na
  const tot=s-ds+iva+dl+dm;document.getElementById('t-tot').innerText='$'+tot.toFixed(2);document.getElementById('t-bs').innerText='≈ Bs '+(tot*TASA).toLocaleString('es-VE',{maximumFractionDigits:0});pagos(tot);}
 function agregarPago(){const d=document.createElement('div');d.className='no-pago';let o='<option value="">forma de pago…</option>';FORMAS.forEach(x=>o+=`<option>${x}</option>`);
  d.innerHTML=`<select name="pago_forma" onchange="calc()">${o}</select><input type="number" step="0.01" name="pago_monto" placeholder="monto pagado" oninput="this.dataset.tocado=1;calc()"><input name="pago_ref" placeholder="referencia"><button type="button" class="no-x-sm" onclick="this.parentElement.remove();calc()">×</button>`;document.getElementById('pagos').appendChild(d);}
-function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');s+=+m.value||0;
+function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .no-pago')];let s=0,efe=0;
+ // el efectivo se cobra al entregar: su monto se pone solo (lo que falta), salvo que lo hayan escrito a mano
+ const esEf=d=>(d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo');
+ const otros=filas.filter(d=>!esEf(d)).reduce((a,d)=>a+(+d.querySelector('[name=pago_monto]').value||0),0);
+ filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');m.placeholder=esEf(d)?'a cobrar al entregar':'monto pagado';
+  if(esEf(d)&&!m.dataset.tocado){const r=Math.max(tot-otros,0);m.value=r>0.009?r.toFixed(2):'';}
+  // en efectivo no se escribe nada: se cobra al entregar
+  const rf=d.querySelector('[name=pago_ref]');m.hidden=esEf(d);if(rf)rf.hidden=esEf(d);
+  let t=d.querySelector('.ef-txt');if(esEf(d)){if(!t){t=document.createElement('span');t.className='ef-txt mini';m.after(t);}t.textContent=(+m.value>0?'$'+(+m.value).toFixed(2)+' ':'')+'se cobra al entregar';}else if(t)t.remove();});filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');s+=+m.value||0;
   m.classList.toggle('falta-monto',!!d.querySelector('[name=pago_forma]').value&&!(+m.value>0));   // eligió forma: falta escribir cuánto   // el monto no se pone solo: se escribe lo que de verdad pagó
   if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
  // el efectivo todavía no está pagado: se cobra al entregar, así que cuenta como saldo pendiente
