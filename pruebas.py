@@ -1329,7 +1329,7 @@ def _():
         # otra vez, pero pide en otra dirección: se guarda con su zona y su GPS, sin tocar la habitual
         con.execute("INSERT OR IGNORE INTO tarifas (zona, tarifa) VALUES ('Manzanares', 5)"); con.commit()
         r = c.post("/ordenes/nueva", data={"cliente_id": str(cid["id"]), "canal": "whatsapp", "producto_id": str(p), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
-               "tipo_entrega": "delivery", "dir_modo": "nueva", "direccion": "Oficina, Torre B piso 3", "ciudad": "Caracas", "maps": "https://maps.app.goo.gl/abc",
+               "tipo_entrega": "delivery", "dir_modo": "nueva", "direccion": "Oficina, Torre B piso 3", "maps": "https://maps.app.goo.gl/abc",
                "zona_tarifa": "Manzanares", "delivery": "5", "fecha_pago": "2026-10-08"})
         dirs = {x["direccion"]: (x["zona"], x["maps"], x["principal"]) for x in con.execute("SELECT * FROM direcciones WHERE cliente_id=?", (cid["id"],))}
         assert dirs.get("Oficina, Torre B piso 3") == ("Manzanares", "https://maps.app.goo.gl/abc", 0), dirs
