@@ -419,7 +419,7 @@ def falta_ubicacion(con):
         if ubicacion_de(con, o["cliente_id"], o["direccion"], o["maps"]): continue
         msj = (f"¡Hola{' ' + o['quien'] if o['quien'] else ''}! 👋🏻 Te escribimos de Decopet 💚 Para llevarte tu pedido, "
                f"¿nos compartes tu ubicación por aquí? 📍 Así el despachador llega directo 🙌🏻")
-        out.append({"id": o["id"], "numero": o["numero"], "quien": o["quien"], "msj": msj,
+        out.append({"id": o["id"], "numero": o["numero"], "quien": o["quien"], "msj": msj, "ubicacion": True,
                     "wa": ("https://api.whatsapp.com/send?phone=" + wa(o["telefono"]).rsplit("/", 1)[1] + "&text=" + quote(msj)) if wa(o["telefono"]) else ""})
     return out
 
@@ -2104,6 +2104,23 @@ def actualizar_porche_cliente(con, oid):
 
 def _falta(msg):
     return HTMLResponse(f"<p style='font-family:sans-serif;padding:30px'>{msg} Vuelve atrás y agrégalo.</p>", 400)
+
+
+@app.post("/ordenes/{oid}/ubicacion")
+def orden_ubicacion(request: Request, oid: int, maps: str = Form(""), volver: str = Form("/inicio"), con=Depends(db)):
+    """Pegar el link de Maps que mandó el cliente. Queda en la dirección del cliente a la que va el pedido (la habitual,
+    si no va a otra), así sirve para sus próximos pedidos; si el pedido va a una dirección que no está guardada, queda en el pedido."""
+    if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/inicio", status_code=303)
+    maps = maps.strip(); o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if o and maps.lower().startswith("http"):
+        norm = lambda t: re.sub(r"\W+", "", (t or "").lower())
+        dirs = con.execute("SELECT * FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id", (o["cliente_id"],)).fetchall()
+        fila = (dirs[0] if dirs else None) if not _sirve(o["direccion"]) else next(
+            (d for d in dirs if norm(d["direccion"]) and (norm(d["direccion"]) == norm(o["direccion"]) or norm(d["direccion"]) in norm(o["direccion"]) or norm(o["direccion"]) in norm(d["direccion"]))), None)
+        if fila: con.execute("UPDATE direcciones SET maps=? WHERE id=?", (maps, fila["id"]))
+        else: con.execute("UPDATE ordenes SET maps=? WHERE id=?", (maps, oid))
+        con.commit()
+    return RedirectResponse(volver if volver.startswith("/") else "/inicio", status_code=303)
 
 
 def ubicacion_de(con, cid, direccion, maps):

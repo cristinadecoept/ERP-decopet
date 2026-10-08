@@ -1361,6 +1361,22 @@ def _():
         assert "acaba de confirmar" not in c.get("/inicio").text, "con Visto se quita"
         con.close()
 
+@prueba("Falta la ubicación: desde Inicio se pega el link de Maps y queda en la dirección habitual del cliente")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (51,'Paola Prueba','Paola','04141112233')")
+        con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,principal) VALUES (51,'Principal','Res Isla de Aves, urb Manzanares',1)")
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,total,tipo_entrega) VALUES ('#77',51,'pendiente','pagada',24,29,'delivery')").lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        h = c.get("/inicio").text
+        assert f"/ordenes/{oid}/ubicacion" in h and "Subir" in h
+        c.post(f"/ordenes/{oid}/ubicacion", data={"maps": "https://maps.app.goo.gl/xyz"})
+        assert con.execute("SELECT maps FROM direcciones WHERE cliente_id=51").fetchone()[0] == "https://maps.app.goo.gl/xyz"
+        assert f"/ordenes/{oid}/ubicacion" not in c.get("/inicio").text, "ya no falta"
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

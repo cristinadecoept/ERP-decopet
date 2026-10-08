@@ -1590,3 +1590,4 @@ input[type=date][data-ctl]::-webkit-calendar-picker-indicator{pointer-events:non
 .pill-fuera span{display:none;white-space:nowrap;border:1px solid #f3d5bd;background:var(--naranja-tinte);color:#b45a1c;border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600}
 .pill-fuera input:checked+span,span.pill-fuera span{display:inline}
 html.oscuro .pill-fuera span{background:rgba(225,120,46,.16);border-color:rgba(225,120,46,.4);color:#f5b47f}
+.ahora-ln:has(details[open]){position:relative;z-index:30}
