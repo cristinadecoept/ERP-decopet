@@ -785,6 +785,16 @@ def normalizar_telefono(s):
     return s.strip()
 
 
+def normalizar_cedula(s):
+    """Cédula siempre con su letra: '12345678' o '12.345.678' → 'V-12345678'; 'v12345678' → 'V-12345678'.
+    RIF (J-…), extranjeros (E-…) y lo que no se entienda quedan como vinieron, en mayúsculas."""
+    t = re.sub(r"[\s.]", "", (s or "").upper())
+    if not t: return ""
+    if t.isdigit(): return "V-" + t
+    m = re.fullmatch(r"([VEJGP])-?(\d.*)", t)
+    return f"{m[1]}-{m[2]}" if m else t
+
+
 def guardar_mascotas(con, cid, f, prefijo="mascota_"):
     """Nombre + raza + cumpleaños. El cumpleaños puede venir como fecha completa, o como día/mes (25/09) con año opcional."""
     cumples = f.getlist(prefijo + "cumple"); anios = f.getlist(prefijo + "anio")
@@ -2167,7 +2177,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         np_, ap = capitalizar(f["cliente_nombre_pila"]), capitalizar(f.get("cliente_apellido"), inicio=False) or None
         ciu, edo = normalizar_ciudad(f.get("cliente_ciudad") or f.get("ciudad"))
         cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                          (np_, ap, nombre_completo(np_, ap), normalizar_telefono(f.get("cliente_telefono")) or "Pendiente", (f.get("cliente_cedula") or "").strip().upper() or None,
+                          (np_, ap, nombre_completo(np_, ap), normalizar_telefono(f.get("cliente_telefono")) or "Pendiente", normalizar_cedula(f.get("cliente_cedula")) or None,
                            (f.get("cliente_correo") or "").strip() or "Pendiente", ciu or "Pendiente", edo, f.get("canal"),
                            (f.get("cliente_origen") or "").strip() or None,
                            int(f["cliente_referido_id"]) if (f.get("cliente_referido_id") or "").isdigit() else None))
@@ -2178,14 +2188,14 @@ async def crear_orden(request: Request, con=Depends(db)):
             con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), zona_hab or None, *normalizar_ciudad(f.get("cliente_ciudad")), (f.get("cliente_maps") or "").strip() or None))
     if cid and not cliente_recien_creado:   # cliente que ya existía al que le faltaban datos: se completan desde la orden
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
-        for campo, dato in (("telefono", normalizar_telefono(f.get("cl_add_telefono"))), ("correo", (f.get("cl_add_correo") or "").strip()), ("cedula", (f.get("cl_add_cedula") or "").strip().upper())):
+        for campo, dato in (("telefono", normalizar_telefono(f.get("cl_add_telefono"))), ("correo", (f.get("cl_add_correo") or "").strip()), ("cedula", normalizar_cedula(f.get("cl_add_cedula")))):
             if dato and not _sirve(cl[campo]): con.execute(f"UPDATE clientes SET {campo}=? WHERE id=?", (dato, cid))
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
         if not _sirve(cl["telefono"]): con.rollback(); return _falta("El teléfono del cliente es obligatorio.")
         if not _sirve(cl["correo"]): con.rollback(); return _falta("El correo del cliente es obligatorio.")
     if nac:   # la agencia pide una cédula: la del cliente, o la del tercero que va a retirar
-        ced_ter = (f.get("receptor_cedula") or "").strip().upper()
-        ced_cli = (f.get("cliente_cedula") or f.get("cl_add_cedula") or f.get("cedula_envio") or "").strip().upper()
+        ced_ter = normalizar_cedula(f.get("receptor_cedula"))
+        ced_cli = normalizar_cedula(f.get("cliente_cedula") or f.get("cl_add_cedula") or f.get("cedula_envio"))
         if ced_cli and cid and not _sirve(con.execute("SELECT cedula FROM clientes WHERE id=?", (cid,)).fetchone()[0]):
             con.execute("UPDATE clientes SET cedula=? WHERE id=?", (ced_cli, cid))
         tiene_cli = bool(cid and _sirve(con.execute("SELECT cedula FROM clientes WHERE id=?", (cid,)).fetchone()[0]))
@@ -2295,7 +2305,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         cols = [r[1] for r in con.execute("PRAGMA table_info(ordenes)")]
         for c_ in ("receptor_correo", "receptor_cedula"):
             if c_ not in cols: con.execute(f"ALTER TABLE ordenes ADD COLUMN {c_} TEXT")
-        con.execute("UPDATE ordenes SET receptor_correo=?, receptor_cedula=? WHERE id=?", ((f.get("receptor_correo") or "").strip() or None, (f.get("receptor_cedula") or "").strip().upper() or None, oid))
+        con.execute("UPDATE ordenes SET receptor_correo=?, receptor_cedula=? WHERE id=?", ((f.get("receptor_correo") or "").strip() or None, normalizar_cedula(f.get("receptor_cedula")) or None, oid))
     con.execute("UPDATE ordenes SET despachador=COALESCE(NULLIF(?,''),despachador), agencia=COALESCE(NULLIF(?,''),agencia), guia=COALESCE(NULLIF(?,''),guia) WHERE id=?", (desp, f.get("agencia") or "", f.get("guia") or "", oid))
     if f.get("status") == "entregada":
         fe = (f.get("fecha_entrega") or hoy_d.isoformat()).strip()
@@ -5761,7 +5771,7 @@ async def cliente_crear(request: Request, con=Depends(db)):
     nombre_pila, apellido = capitalizar(f["nombre_pila"]), capitalizar(f.get("apellido"), inicio=False) or None
     ciu, edo = normalizar_ciudad(f.get("ciudad")); edo = edo or f.get("estado_geo") or None
     cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                      (nombre_pila, apellido, nombre_completo(nombre_pila, apellido), normalizar_telefono(f.get("telefono")), (f.get("cedula") or "").strip().upper() or None,
+                      (nombre_pila, apellido, nombre_completo(nombre_pila, apellido), normalizar_telefono(f.get("telefono")), normalizar_cedula(f.get("cedula")) or None,
                        f.get("correo") or None, ciu, edo, f.get("canal_habitual") or None,
                        (f.get("origen") or "").strip() or None, int(f["referido_id"]) if (f.get("referido_id") or "").isdigit() else None))
     cid = cur.lastrowid
@@ -6055,7 +6065,7 @@ async def cliente_editar(request: Request, cid: int, con=Depends(db)):
         "nombre_pila":    lambda v: capitalizar(v) or actual["nombre_pila"],   # sin nombre no se queda
         "apellido":       lambda v: capitalizar(v, inicio=False) or None,
         "telefono":       lambda v: normalizar_telefono(v),
-        "cedula":         lambda v: (v or "").strip().upper() or None,
+        "cedula":         lambda v: normalizar_cedula(v) or None,
         "correo":         lambda v: (v or "").strip() or None,
         "ciudad":         lambda v: (v or "").strip() or None,
         "porche_version": lambda v: (v or "").strip() or None,

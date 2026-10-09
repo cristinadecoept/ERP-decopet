@@ -1464,6 +1464,22 @@ def _():
         assert con.execute("SELECT cobra_viernes FROM despachadores WHERE id=?", (did,)).fetchone()[0] == 1
         con.close()
 
+@prueba("La cédula escrita solo con el número se guarda con su V adelante; el RIF queda con su J")
+def _():
+    assert A.normalizar_cedula("12345678") == "V-12345678"
+    assert A.normalizar_cedula(" 12.345.678 ") == "V-12345678"
+    assert A.normalizar_cedula("v12345678") == "V-12345678"
+    assert A.normalizar_cedula("V-12345678") == "V-12345678"
+    assert A.normalizar_cedula("j-40123456-7") == "J-40123456-7"
+    assert A.normalizar_cedula("E-84414421") == "E-84414421"
+    assert A.normalizar_cedula("") == ""
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        c.post("/clientes/nuevo", data={"nombre_pila": "Cedula Sola", "telefono": "04140000008", "cedula": "12345678"})
+        con = sqlite3.connect(A.DB)
+        assert con.execute("SELECT cedula FROM clientes WHERE nombre_pila='Cedula Sola'").fetchone()[0] == "V-12345678"
+        con.close()
+
 @prueba("Un cliente nuevo con solo el GPS (sin dirección escrita) guarda el GPS y la orden lo dice")
 def _():
     with erp_de_prueba() as c:
