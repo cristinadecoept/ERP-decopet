@@ -1482,7 +1482,7 @@ def descripcion_linea(l):
     ks = l.keys() if hasattr(l, "keys") else []
     if "pack_unidades" in ks and l["pack_unidades"]:   # de un pack no sale el pack: salen los que se lleva hoy
         hoy_ = l["pack_hoy"] or 0
-        return f"{int(l['cantidad'])} × {l['nombre']} · lleva {hoy_} de {l['pack_unidades']}" if hoy_ else f"{l['nombre']} · hoy no se lleva ninguno"
+        return (f"{int(l['cantidad'])} × {l['nombre']} · lleva {hoy_} de {l['pack_unidades']}" + (" + malla" if l["malla"] else "")) if hoy_ else f"{l['nombre']} · hoy no se lleva ninguno"
     partes = [f"{int(l['cantidad'])} × {l['nombre']}"]
     if l["color"]: partes.append(f"plato {l['color']}")
     if l["malla"]: partes.append("+ malla")
@@ -2353,11 +2353,15 @@ def tasa_manual(request: Request, valor: float = Form(...), fecha_valor: str = F
 
 
 # ------------------------------------------------------------------ OPERACIONES
-def repuesto_de_pack(k):
+def repuesto_de_pack(k, con=None):
     """Qué se lleva de un pack y qué número es: ('Repuesto Mediano', '1/3').
-    El saldo es lo que quedaba antes de esta entrega, así que el primero de hoy es el siguiente."""
+    El saldo es lo que quedaba antes de esta entrega, así que el primero de hoy es el siguiente.
+    Si el pack lleva malla, va con el primer repuesto: esa entrega dice '+ malla'."""
     n = k["retiro_programado"] or 1; u = k["unidades"] or 0; i = u - (k["saldo"] or 0) + 1
     que = f"Repuesto {k['tamano'] or ''}".strip()
+    if i == 1 and con is not None and k["orden_id"] and con.execute(
+            "SELECT 1 FROM orden_lineas WHERE orden_id=? AND producto_id=? AND malla=1", (k["orden_id"], k["producto_id"])).fetchone():
+        que += " + malla"
     if n == 1: return que, f"{i}/{u}"
     return f"{n}× {que}", f"{i}–{i + n - 1}/{u}"
 
@@ -2421,7 +2425,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             te = k["tipo_programado"] or k["tipo_entrega"]
             if tipo and te != tipo: continue
             lista.append(dict(id=None, es_pack=True, pack_id=k["id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
-                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=repuesto_de_pack(k)[0], pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
+                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=repuesto_de_pack(k, con)[0], pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
                               receptor_nombre=None, agencia=None, guia=None, distribuidor=None, despachador=k["despachador_programado"], ciudad=(d["ciudad"] if d else k["ciudad"]), zona=None,
                               direccion=(d["direccion"] if d else None), maps=(d["maps"] if d else None), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup"), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
     if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
@@ -6494,7 +6498,7 @@ def ruta_despachador(con, nombre, hoy):
     for k in cargar_packs(con):
         if k["saldo"] > 0 and (k["despachador_programado"] or "") == nombre and k["fecha_programada"] and k["fecha_programada"] <= hoy \
            and (k["tipo_programado"] or k["tipo_entrega"]) in ("delivery", "delivery_fuera"):
-            que, pos = repuesto_de_pack(k)
+            que, pos = repuesto_de_pack(k, con)
             filas.append(cli(k["cliente_id"]) | {"id": None, "kind": "pack", "rid": k["id"], "numero": k["orden"], "cid": k["cliente_id"],
                          "que_lleva": f"{que} · {pos} del pack", "en_ruta": bool(k.get("en_ruta")),
                          "cobrar": float(k["delivery_programado"] or 0) if not k["delivery_pagado"] else 0,

@@ -1429,6 +1429,17 @@ def _():
     o = A.completar_direccion({"tipo_entrega": "delivery", "direccion": None, "zona": None, "ciudad": None, "maps": None}, hab)
     assert o["zona"] == "Prados del Este" and o["maps"], o
 
+@prueba("Pack con malla: la malla va con el primer repuesto (esa entrega dice '+ malla'); las siguientes no")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO productos (id,sku,nombre,categoria,tipo,activo) VALUES (95,'PACK3-M','Pack 3 Repuestos Mediano','repuesto','producto',1)")
+    con.execute("INSERT INTO ordenes (id,numero,estado,estado_pago,subtotal,total) VALUES (5,'#5','pendiente','pagada',80,80)")
+    con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total,malla) VALUES (5,95,'Pack 3 Repuestos Mediano',1,60,0,80,1)")
+    k = {"retiro_programado": 1, "unidades": 3, "saldo": 3, "tamano": "Mediano", "orden_id": 5, "producto_id": 95}
+    assert A.repuesto_de_pack(k, con) == ("Repuesto Mediano + malla", "1/3"), A.repuesto_de_pack(k, con)
+    k["saldo"] = 2
+    assert A.repuesto_de_pack(k, con) == ("Repuesto Mediano", "2/3"), A.repuesto_de_pack(k, con)
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")
