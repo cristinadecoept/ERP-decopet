@@ -46,7 +46,7 @@
 {% if not pend and not vencen %}<span class="mini">✓ Nada pendiente ahora mismo.</span>{% endif %}</div>
 
 {# ---------- 2 · HOY #}
-{% set COL = {'pickup':'#5A9075','delivery':'#4A79A8','delivery_fuera':'#7FB3B0','nacional':'#E1782E','distribuidor':'#8E7CC3','otro':'#ABBABA'} %}
+{% set COL = {'pickup':'#28563E','delivery':'#4A79A8','delivery_fuera':'#7FB3B0','nacional':'#E1782E','distribuidor':'#8E7CC3','otro':'#ABBABA'} %}
 {% set tot = c.hoy + c.packs %}
 <div class="hoy-grid {{ 'solo' if rol!='admin' }}">
  <a class="tile hoy-hero" href="/operaciones?cola=hoy">

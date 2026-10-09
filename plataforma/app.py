@@ -2735,7 +2735,7 @@ def cashflow(request: Request, caja: str = "", mes: str = "", q: str = "", con=D
 
     activas = [c for c in cs if c["activa"]]
     total = round(sum(c["saldo"] for c in activas), 2)   # todas son cajas de Decopet: no se separan
-    PAL = ["#5A9075", "#E1782E", "#3f6d56", "#E4B18F", "#ABBABA", "#F89980", "#c9d6cf", "#8fb3a1"]
+    PAL = ["#28563E", "#E1782E", "#5F7E7E", "#E4B18F", "#ABBABA", "#F89980", "#c9d6cf", "#8fb3a1"]
 
     # dona: las cajas con saldo (hasta 6 + "otras"), si no es ilegible como en el Excel
     import math

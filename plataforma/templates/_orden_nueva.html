@@ -150,7 +150,7 @@ document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.
 var ZONAS=null;   // Caracas o fuera de Caracas: la lista muestra solo las zonas de ese delivery
 var ZONA_HAB='',DIR_HAB='',PRECIO_AUTO=false;   // PRECIO_AUTO: el precio lo puso la zona guardada del cliente (si cambia el cliente, se quita)
 function precioAuto(){if(PRECIO_AUTO){document.getElementById('deliv').value='';PRECIO_AUTO=false;document.getElementById('deliv-z').textContent='';const zs=document.getElementById('zona-sel');if(zs)zs.value='';calc();}}
-function ponerPrecio(o){document.getElementById('deliv').value=o.dataset.t;document.getElementById('deliv-z').textContent='· '+o.value;PRECIO_AUTO=true;calc();}
+function ponerPrecio(o){document.getElementById('deliv').value=o.dataset.t;document.getElementById('deliv-z').textContent=o.value?'· '+o.value:'';PRECIO_AUTO=true;calc();}
 var sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bdel\b/g,'de').replace(/\s+/g,' ').trim();   // "lomas del avila" = "Lomas de Avila"
 // cómo se suele escribir una zona incompleta o abreviada → su nombre en Tarifas (ya sin acentos; "del" se lee "de")
 var APODOS=[[/\b(plg|lpg)\b/g,'los palos grandes'],[/(^|[^a-z])(?<!los )palos grandes\b/g,'$1los palos grandes'],[/\bla cas\b/g,'la castellana'],
@@ -161,7 +161,10 @@ var APODOS=[[/\b(plg|lpg)\b/g,'los palos grandes'],[/(^|[^a-z])(?<!los )palos gr
 function zonaDeTexto(t){let x=sinAcento(t);if(!x)return null;APODOS.forEach(([r,v])=>{x=x.replace(r,v)});if(!ZONAS)ZONAS=[...document.getElementById('zona-sel').options].slice(1).map(o=>o.cloneNode(true));   // la zona de Tarifas que nombra lo escrito (una sola)
  const igual=ZONAS.find(o=>sinAcento(o.value)===x);if(igual)return igual;
  let hits=ZONAS.filter(o=>new RegExp('(^|[^a-z])'+sinAcento(o.value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'($|[^a-z])').test(x));
- hits=hits.filter(o=>!hits.some(h=>h!==o&&sinAcento(h.value).includes(sinAcento(o.value))));return hits.length===1?hits[0]:null;}   // la zona de la dirección habitual del cliente: si la hay, la zona de delivery sale elegida sola
+ hits=hits.filter(o=>!hits.some(h=>h!==o&&sinAcento(h.value).includes(sinAcento(o.value))));if(hits.length===1)return hits[0];
+ // nombra varias zonas (Santa Fe de Chuao): si todas cuestan lo mismo, ese precio; la zona no se guarda porque no se sabe cuál es
+ if(hits.length>1&&hits.every(o=>o.dataset.t===hits[0].dataset.t&&o.dataset.f===hits[0].dataset.f)){const v=hits[0].cloneNode(true);v.value='';return v;}
+ return null;}   // la zona de la dirección habitual del cliente: si la hay, la zona de delivery sale elegida sola
 function zonaHabitual(){const sel=document.getElementById('zona-sel'),te=document.getElementById('te').value;if(!sel)return;
  // la habitual sin zona guardada: si su dirección escrita nombra una zona de Tarifas, se usa esa (se ve al lado del precio)
  if(!ZONA_HAB&&DIR_HAB&&document.getElementById('dir-modo').value==='hab'&&(te==='delivery'||te==='delivery_fuera')){
@@ -181,7 +184,7 @@ function dirNueva(){const a=document.getElementById('zona-auto'),sel=document.ge
   const o=zonaDeTexto(document.getElementById('dir').value),manual=!PRECIO_AUTO&&document.getElementById('deliv').value;
   if(!manual)precioAuto();
   if(o){const te=document.getElementById('te').value,f=o.dataset.f==='1';if((te==='delivery_fuera')!==f)setEntrega(f?'delivery_fuera':'delivery');
-   if(!manual)ponerPrecio(o);if(sel&&[...sel.options].some(x=>x.value===o.value))sel.value=o.value;}   // el pedido se guarda con esa zona
+   if(!manual)ponerPrecio(o);if(sel)sel.value=[...sel.options].some(x=>x.value===o.value)?o.value:'';}   // el pedido se guarda con esa zona
   else if(sel)sel.value='';}
  else{precioAuto();zonaHabitual();}}
 function zonaVer(auto){const a=document.getElementById('zona-auto'),sel=document.getElementById('zona-sel');if(!a)return;a.hidden=!auto;sel.hidden=auto;}
