@@ -1440,6 +1440,17 @@ def _():
     k["saldo"] = 2
     assert A.repuesto_de_pack(k, con) == ("Repuesto Mediano", "2/3"), A.repuesto_de_pack(k, con)
 
+@prueba("Varios pedidos al mismo proveedor que tocan pagar hoy salen en un solo aviso con el total")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        for costo in (30, 45, 30):
+            con.execute("INSERT INTO produccion (cantidad,recibido,fecha_pedido,fecha_esperada,responsable,costo,estado,pieza,tipo_pedido) VALUES (10,10,'2026-10-03',date('now'),'Yovanny Prueba',?,'recibido','Grama','proveedor')", (costo,))
+        con.commit()
+        sesion_de(c, "admin"); h = c.get("/inicio").text
+        assert h.count("Hoy toca pagar Grama (3 pedidos) a Yovanny Prueba") == 1 and "105.00" in h, re.findall(r"Hoy toca pagar[^<]*", h)
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

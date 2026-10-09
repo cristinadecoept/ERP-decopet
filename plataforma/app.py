@@ -1208,6 +1208,13 @@ def inicio(request: Request, con=Depends(db)):
                               AND (COALESCE(pr.fecha_pago, pr.fecha_esperada) <= ?
                                    OR (COALESCE(pr.fecha_pago, pr.fecha_esperada) IS NULL AND (pr.recibido > 0 OR pr.estado!='en_proceso')))
                             ORDER BY 4""", (h,))] if rol == "admin" else []
+    juntos = {}   # varios pedidos al mismo proveedor que tocan pagar: un solo aviso con el total
+    for r in c["toca_pagar_prov"]:
+        g = juntos.setdefault((r["responsable"], r["tipo"]), dict(r, debe=0, n=0, piezas=[]))
+        g["debe"] += r["debe"] or 0; g["n"] += 1
+        if r["pieza"] not in g["piezas"]: g["piezas"].append(r["pieza"])
+    for g in juntos.values(): g["pieza"] = ", ".join(g["piezas"]) + (f" ({g['n']} pedidos)" if g["n"] > 1 else "")
+    c["toca_pagar_prov"] = list(juntos.values())
     c["prov_deben"] = proveedores_que_deben(con) if rol == "admin" else []   # no entregó todo y ya se le había pagado
     # a los despachadores se les paga los VIERNES: el resto de la semana el aviso solo estorba mientras se acumulan entregas
     viejo = con.execute("""SELECT MIN(COALESCE(fecha_entrega, substr(creado_en,1,10))) FROM ordenes

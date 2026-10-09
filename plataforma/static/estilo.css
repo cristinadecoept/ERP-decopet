@@ -1593,3 +1593,4 @@ html.oscuro .pill-fuera span{background:rgba(225,120,46,.16);border-color:rgba(2
 .ahora-ln:has(details[open]){position:relative;z-index:30}
 .tabla:has(details[open]){overflow:visible}   /* un menú abierto en la última fila no queda cortado por la tabla */
 .cf-lado:has(.cf-det:hover),.cf-lado:has(.cf-det:focus-within){overflow:visible}   /* el detalle de una caja no queda cortado por el panel */
+.op-dir-t{display:block;font-weight:600;overflow-wrap:anywhere}   /* la dirección escrita en grande cuando no hay zona: se parte en varias líneas, no se monta encima */
