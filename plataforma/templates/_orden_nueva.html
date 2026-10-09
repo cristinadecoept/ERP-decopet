@@ -23,7 +23,7 @@
 
 <!-- 2 · CANAL -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">2</span><b>Canal</b></div>
-<div class="no-pills" id="canal-pills">{% for k,v in CANAL.items() if k not in ('otro','shopify') %}<button type="button" class="no-pill {{ 'act' if k=='whatsapp' }}" data-v="{{ k }}" onclick="setCanal('{{ k }}')">{{ v }}</button>{% endfor %}</div>
+<div class="no-pills" id="canal-pills">{% for k,v in CANAL.items() if k not in ('otro','shopify','duwu','vidapets') %}<button type="button" class="no-pill {{ 'act' if k=='whatsapp' }}" data-v="{{ k }}" onclick="setCanal('{{ k }}')">{{ v }}</button>{% endfor %}</div>
 <div class="no-nota" id="iva-nota" hidden>Cashea: factura fiscal e IVA 16 % incluidos siempre.</div>
 </section>
 
