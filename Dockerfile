@@ -1,7 +1,7 @@
 # ERP Decopet — imagen para Railway.
 # Los datos NO van en la imagen: viven en el volumen /data (DECOPET_DATOS). El programa
 # es desechable y se reconstruye solo; los datos se respaldan aparte.
-FROM python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 # tzdata: sin ella el servidor vive en UTC y desde las 8 pm de Caracas el ERP ya cree que es mañana.
 # sqlite3: la usa scripts/respaldo.sh para copiar la base sin corromperla mientras se usa.
