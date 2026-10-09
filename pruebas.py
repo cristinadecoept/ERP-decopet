@@ -1451,6 +1451,19 @@ def _():
         assert h.count("Hoy toca pagar Grama (3 pedidos) a Yovanny Prueba") == 1 and "105.00" in h, re.findall(r"Hoy toca pagar[^<]*", h)
         con.close()
 
+@prueba("Un despachador que va acumulando (no cobra los viernes) no sale en el aviso del viernes")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        did = con.execute("INSERT INTO despachadores (nombre, activo) VALUES ('Ingrid Acumula', 1)").lastrowid; con.commit()
+        sesion_de(c, "admin")
+        assert "Se le paga los viernes" in c.get(f"/despachadores/{did}").text
+        c.post(f"/despachadores/{did}/viernes", data={"cobra": "0"})
+        assert con.execute("SELECT cobra_viernes FROM despachadores WHERE id=?", (did,)).fetchone()[0] == 0
+        c.post(f"/despachadores/{did}/viernes", data={"cobra": "1"})
+        assert con.execute("SELECT cobra_viernes FROM despachadores WHERE id=?", (did,)).fetchone()[0] == 1
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

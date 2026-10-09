@@ -9,7 +9,8 @@
  {% if r.adelanto_libre %}<div class="tile"><b style="color:var(--verde-osc)">{{ r.adelanto_libre|usd }}</b><span>Adelanto por descontar</span><i>se le resta de las próximas entregas</i></div>{% endif %}
  <div class="tile"><b>{% if r.ultimo_pago %}{{ r.ultimo_pago.monto|usd }}{% else %}—{% endif %}</b><span>Último pago</span><i>{% if r.ultimo_pago %}{{ r.ultimo_pago.fecha|dia }}{% else %}todavía ninguno{% endif %}</i></div>
 </div>{% endif %}
-{% if rol=='admin' %}<div class="desp-acc"><details class="eq-pagar"><summary class="btn sec chico">Darle un adelanto</summary>
+{% if rol=='admin' %}<div class="desp-acc"><form method="post" action="/despachadores/{{ d.id }}/viernes" style="display:inline"><input type="hidden" name="cobra" value="{{ '0' if d.cobra_viernes else '1' }}"><label class="chk no-chk-mini{{ ' act' if d.cobra_viernes }}" style="cursor:pointer"><input type="checkbox" {{ 'checked' if d.cobra_viernes }} onchange="this.form.submit()"> <span>Se le paga los viernes</span></label></form>
+<details class="eq-pagar"><summary class="btn sec chico">Darle un adelanto</summary>
  <form method="post" action="/despachadores/{{ d.id }}/adelanto" class="fal-f">
   <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
   <select name="forma" required><option value="" selected disabled>¿De qué caja?</option>{% for fp in FORMAS_PAGO %}<option value="{{ fp }}">{{ fp|caja }}</option>{% endfor %}</select>

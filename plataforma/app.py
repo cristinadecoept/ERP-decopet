@@ -6664,6 +6664,14 @@ def despachador_diligencia_borrar(request: Request, did: int, vid: int, con=Depe
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
 
 
+@app.post("/despachadores/{did}/viernes")
+def despachador_viernes(request: Request, did: int, cobra: str = Form(""), con=Depends(db)):
+    """Si se le paga los viernes (sale el aviso en Inicio) o va acumulando y avisa ella cuándo cobrar."""
+    if not solo_admin(request): return RedirectResponse(f"/despachadores/{did}", status_code=303)
+    con.execute("UPDATE despachadores SET cobra_viernes=? WHERE id=?", (1 if cobra == "1" else 0, did)); con.commit()
+    return RedirectResponse(f"/despachadores/{did}", status_code=303)
+
+
 @app.post("/despachadores/{did}/efectivo")
 def despachador_efectivo(request: Request, did: int, con=Depends(db)):
     """Te entregó el efectivo que tenía: entra a tu caja de efectivo."""
