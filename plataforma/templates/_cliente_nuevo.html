@@ -6,11 +6,11 @@
 <label>Correo <span class="obl">*</span></label><input name="correo" inputmode="email" placeholder="nombre@gmail.com" required>
 </div>
 <div class="bloque">
-<label>Ciudad</label><input name="ciudad" value="Caracas" list="ciudades-cn" autocomplete="off"><datalist id="ciudades-cn">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist>
+<label>Ciudad</label><input name="ciudad" placeholder="Escoger…" list="ciudades-cn" autocomplete="off"><datalist id="ciudades-cn">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist>
 <label>Dirección escrita (habitual)</label><input name="direccion" placeholder="Res., edificio, apto, referencia"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
 <div class="bloque"><h3>Perros</h3><table class="lineas" id="masc"><tr><th>Nombre</th><th>Raza</th><th>Cumple (día/mes)</th><th style="width:80px">Año</th><th></th></tr></table>
 <p><button type="button" class="btn sec chico" onclick="agregarMascota()">+ Agregar perro</button></p></div>
-<div class="bloque"><h3>Nota (opcional)</h3><textarea name="nota" rows="2" placeholder="ej. Recibe el conserje; avisar al llegar"></textarea>
+<div class="bloque"><h3>Nota del cliente (opcional)</h3><textarea name="nota" rows="2" placeholder="ej. Siempre se deja en vigilancia"></textarea>
 <label class="chk" style="margin-top:8px"><input type="checkbox" name="nota_privada" value="1"> Solo la veo yo <span class="mini">(si no la marcas, logística también la ve al despachar)</span></label></div>
 <p><button class="btn bloque">Guardar cliente</button></p></form>
 <script>function agregarMascota(){const tr=document.getElementById('masc').insertRow();tr.innerHTML=`<td><input name="mascota_nombre" placeholder="Toby"></td><td><input name="mascota_raza" list="razas" placeholder="elegir raza…" autocomplete="off"></td><td><input name="mascota_cumple" placeholder="25/09" inputmode="numeric"><input type="hidden" name="mascota_nacimiento" value=""><input type="hidden" name="mascota_peso" value=""></td><td><input name="mascota_anio" placeholder="2021" maxlength="4" inputmode="numeric"></td><td><button type="button" class="btn pel chico" onclick="this.closest('tr').remove()">×</button></td>`;}agregarMascota();</script>
