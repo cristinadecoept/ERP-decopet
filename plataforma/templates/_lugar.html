@@ -1,0 +1,5 @@
+{# Estado (lista cerrada de 24) + Ciudad (las de ese estado; si no está, se escribe). Elegir una ciudad pone su estado. #}
+{% macro lugar(ciudades_vl, n_ciudad='ciudad', n_estado='estado', ciudad='', estado='', id_ciudad='', req=false) %}
+<div class="g2 lugar"><div><label>Estado</label><select name="{{ n_estado }}" onchange="lugarEstado(this)"{{ ' required' if req }}><option value="">Elegir…</option>{% for e in ESTADOS_VE %}<option{{ ' selected' if e == estado }}>{{ e }}</option>{% endfor %}</select></div>
+<div><label>Ciudad</label><input name="{{ n_ciudad }}"{% if id_ciudad %} id="{{ id_ciudad }}"{% endif %} value="{{ '' if (ciudad or '') == 'Pendiente' else (ciudad or '') }}" placeholder="Escoger…" autocomplete="off" list="lc-{{ n_ciudad }}" oninput="lugarCiudad(this)"><datalist id="lc-{{ n_ciudad }}">{% for c, e in ciudades_vl %}<option value="{{ c }}" data-e="{{ e or '' }}"{{ ' disabled' if estado and e and e != estado }}>{% endfor %}</datalist></div></div>
+{% endmacro %}

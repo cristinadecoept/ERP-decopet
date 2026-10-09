@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block titulo %}{{ c.nombre }} · Decopet{% endblock %}{% block cuerpo %}
+{% extends "base.html" %}{% from "_lugar.html" import lugar %}{% block titulo %}{{ c.nombre }} · Decopet{% endblock %}{% block cuerpo %}
 <p class="mini" style="margin:0 0 10px"><a href="/clientes">← Clientes</a></p>
 {% set nsr = namespace(r=None) %}{% for s in segs if s.tipo in ['primer_repuesto','repuesto'] %}{% if loop.first %}{% set nsr.r = s.resultado %}{% endif %}{% endfor %}
 <div class="tarjeta perfil-cab">
@@ -123,7 +123,7 @@
 <form method="post" action="/clientes/{{ c.id }}/editar">
 <div class="g2"><div><label>Nombre</label><input name="nombre_pila" value="{{ c.nombre_pila }}" required></div><div><label>Apellido</label><input name="apellido" value="{{ c.apellido or '' }}"></div></div>
 <div class="g2"><div><label>Teléfono{% if c.telefono and c.telefono!='Pendiente' %} · <a class="wa-link" href="{{ c.telefono|wa }}" target="_blank">WhatsApp ↗</a>{% endif %}</label><input name="telefono" value="{{ c.telefono or '' }}"></div><div><label>Cédula / RIF</label><input name="cedula" value="{{ c.cedula or '' }}" placeholder="V-12345678"></div></div>
-<div class="g2"><div><label>Correo</label><input name="correo" value="{{ c.correo or '' }}"></div><div><label>Ciudad{% if c.estado %} <span class="mini">· estado {{ c.estado }}</span>{% endif %}</label><input name="ciudad" value="{{ c.ciudad or '' }}" list="ciudades" autocomplete="off">{% if c.ciudad=='Pendiente' and c.estado %}<div class="mini" style="color:#b3402b">Dijo «{{ c.estado }}» pero no la ciudad: pregúntale cuál.</div>{% endif %}<datalist id="ciudades">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist></div></div>
+<label>Correo</label><input name="correo" value="{{ c.correo or '' }}">{{ lugar(ciudades_vl, ciudad=c.ciudad, estado=c.estado or '') }}{% if c.ciudad=='Pendiente' and c.estado %}<div class="mini" style="color:#b3402b">Dijo «{{ c.estado }}» pero no la ciudad: pregúntale cuál.</div>{% endif %}
 <div class="g2"><div><label>El Porche Versión <span class="corona" id="corona-pv" {{ '' if c.porche_version=='PRO' else 'hidden' }}></span></label><select name="porche_version" onchange="document.getElementById('corona-pv').hidden=this.value!=='PRO'"><option value="">—</option>{% for v in ['PRO','Básico'] %}<option {{ 'selected' if c.porche_version==v }}>{{ v }}</option>{% endfor %}</select></div><div><label>Tamaño</label><div class="chk-fila">{% for v in ['Mediano','Grande'] %}<label class="chk"><input type="checkbox" name="porche_tamano" value="{{ v }}" {{ 'checked' if v in (c.porche_tamano or '') }}> <span>{{ v }}</span></label>{% endfor %}</div></div></div>
 <p style="margin:10px 0 0"><button type="button" class="btn chico sec" onclick="editar(this)">Editar datos</button><button class="btn chico" hidden>Guardar datos</button></p></form></div></div>
 <div class="tarjeta"><h3>Dirección{{ "es" if dirs|length > 1 }}</h3>

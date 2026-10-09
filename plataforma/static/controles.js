@@ -140,6 +140,7 @@
       const q = plano(inp.value.trim()), partes = q.split(/\s+/).filter(Boolean), dig = inp.value.replace(/\D/g, '');
       const r = [];
       for (const o of document.getElementById(inp.dataset.lista).options) {
+        if (o.disabled) continue;                   // p. ej. una ciudad de otro estado
         const sub = (o.textContent || '').trim(), t = plano(o.value);
         if (!partes.length || partes.every(p => t.includes(p)) || (dig.length >= 3 && sub.replace(/\D/g, '').includes(dig))) {
           r.push({ valor: o.value, texto: o.value, sub: sub && sub !== o.value ? sub : '' });
@@ -224,3 +225,20 @@
     .observe(document.documentElement, { childList: true, subtree: true });
   mejorar();
 })();
+
+/* Estado + Ciudad (_lugar.html): al elegir el estado, la lista de Ciudad muestra solo las de ese estado;
+   al elegir una ciudad de la lista, el Estado se pone solo. */
+function lugarLista(inp) { return document.getElementById(inp.dataset.lista || inp.getAttribute('list')); }   // controles.js le quita el list
+function lugarOpcion(inp) { const dl = lugarLista(inp); return dl && [...dl.options].find(o => o.value.toLowerCase() === inp.value.trim().toLowerCase()); }
+function lugarEstado(sel) {
+  const inp = sel.closest('.lugar').querySelector('input'), dl = lugarLista(inp), e = sel.value;
+  if (dl) [...dl.options].forEach(o => { o.disabled = !!(e && o.dataset.e && o.dataset.e !== e); });
+  const o = lugarOpcion(inp);
+  if (o && o.disabled) inp.value = '';   // la ciudad que estaba no es de ese estado
+}
+function lugarCiudad(inp) {
+  const o = lugarOpcion(inp);
+  if (!o || !o.dataset.e) return;
+  const sel = inp.closest('.lugar').querySelector('select');
+  if (sel.value !== o.dataset.e) { sel.value = o.dataset.e; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+}

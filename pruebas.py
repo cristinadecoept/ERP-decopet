@@ -1480,6 +1480,24 @@ def _():
         assert con.execute("SELECT cedula FROM clientes WHERE nombre_pila='Cedula Sola'").fetchone()[0] == "V-12345678"
         con.close()
 
+@prueba("Estado + ciudad: la ciudad de la lista trae su estado; solo el estado deja la ciudad por preguntar; no se adivina la capital")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB)
+        assert A.lugar(con, "maracaibo") == ("Maracaibo", "Zulia")
+        assert A.lugar(con, "", "Miranda") == ("Pendiente", "Miranda")
+        assert A.lugar(con, "Miranda") == ("Pendiente", "Miranda")
+        assert A.lugar(con, "Margarita") == ("Pendiente", "Nueva Esparta")
+        assert A.lugar(con, "", "") == (None, None)
+        c.post("/clientes/nuevo", data={"nombre_pila": "Ocumare Uno", "telefono": "04140000007", "estado": "Miranda", "ciudad": "Ocumare del Tuy"})
+        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre_pila='Ocumare Uno'").fetchone() == ("Ocumare del Tuy", "Miranda")
+        assert A.lugar(con, "OCUMARE DEL TUY", "") == ("Ocumare del Tuy", "Miranda")   # escrita distinto, queda igual que la primera
+        assert ("Ocumare del Tuy", "Miranda") in A.ciudades_conocidas(con)
+        h = c.get("/clientes/nuevo/panel").text
+        assert 'name="estado"' in h and 'data-e="Zulia"' in h
+        con.close()
+
 @prueba("Un cliente nuevo con solo el GPS (sin dirección escrita) guarda el GPS y la orden lo dice")
 def _():
     with erp_de_prueba() as c:

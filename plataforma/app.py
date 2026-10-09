@@ -515,9 +515,28 @@ def normalizar_ciudad(texto):
     if k in _CIUDAD_POR_LLAVE:
         c = _CIUDAD_POR_LLAVE[k]; return c, ESTADO_DE_CIUDAD.get(c)
     if k in _ESTADO_POR_LLAVE:
-        e = _ESTADO_POR_LLAVE[k]; return CIUDAD_DEL_ESTADO.get(e, "Pendiente"), e
+        return "Pendiente", _ESTADO_POR_LLAVE[k]   # dijo el estado y no la ciudad: no se adivina la capital, se le pregunta
     if k == "pendiente": return "Pendiente", None
     return " ".join(p.lower() if i and p.lower() in ("de", "del", "la", "las", "los", "el") else p[:1].upper() + p[1:] for i, p in enumerate(t.split())), None
+def lugar(con, ciudad, estado=None):
+    """Estado (de la lista de 24) + ciudad → (ciudad, estado) para guardar.
+    Una ciudad de la lista trae su estado. Una que no está se escribe igual que otra ya guardada con el mismo nombre
+    ('ocumare del tuy' = 'Ocumare del Tuy'), y lleva el estado que se eligió. Solo el estado → ciudad 'Pendiente'."""
+    e_elegido = _ESTADO_POR_LLAVE.get(_llave_lugar(estado)) if (estado or "").strip() else None
+    if not (ciudad or "").strip(): return ("Pendiente" if e_elegido else None), e_elegido
+    c, e = normalizar_ciudad(ciudad)
+    if c in ESTADO_DE_CIUDAD: return c, ESTADO_DE_CIUDAD[c]
+    if c != "Pendiente":
+        k = _llave_lugar(c)
+        for x, ex in con.execute("SELECT ciudad, MAX(estado) FROM clientes WHERE ciudad IS NOT NULL GROUP BY ciudad"):
+            if _llave_lugar(x) == k: c = x; e = e or ex; break
+    return c, (e_elegido or e)
+def ciudades_conocidas(con):
+    """Para la lista de Ciudad: las de siempre y las que ya se guardaron con su estado, cada una con su estado."""
+    lista = {c: ESTADO_DE_CIUDAD.get(c) for c in CIUDADES_VE}
+    for c, e in con.execute("SELECT ciudad, MAX(estado) FROM clientes WHERE ciudad IS NOT NULL AND ciudad!='Pendiente' AND estado IS NOT NULL GROUP BY ciudad"):
+        lista.setdefault(c, e)
+    return sorted(lista.items(), key=lambda x: _llave_lugar(x[0]))
 def fmt_cant(v, unidad=None):
     """37.8 → '37,8' y 20.0 → '20'. Con unidad: '37,8 litros', '1 rollo'."""
     v = round(float(v or 0), 1)
@@ -538,7 +557,7 @@ tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<sp
 # "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
 tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
-tpl.env.globals.update(entorno=entorno, ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
+tpl.env.globals.update(entorno=entorno, ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, ESTADOS_VE=ESTADOS_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
 
 def db():
@@ -1573,7 +1592,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
                               (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
                               FROM clientes c ORDER BY nombre""").fetchall()
     pre = con.execute("SELECT nombre FROM clientes WHERE id=?", (cliente,)).fetchone() if cliente else None
-    return render(request, "_orden_nueva.html", productos=productos, opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", tarifas=con.execute("SELECT zona, tarifa, fuera_caracas FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
+    return render(request, "_orden_nueva.html", productos=productos, ciudades_vl=ciudades_conocidas(con), opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", tarifas=con.execute("SELECT zona, tarifa, fuera_caracas FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
 
 
 @app.get("/ordenes/{oid}/panel", response_class=HTMLResponse)
@@ -2175,7 +2194,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         if not _sirve(f.get("cliente_correo")): return _falta("El correo del cliente es obligatorio.")
         cliente_recien_creado = True
         np_, ap = capitalizar(f["cliente_nombre_pila"]), capitalizar(f.get("cliente_apellido"), inicio=False) or None
-        ciu, edo = normalizar_ciudad(f.get("cliente_ciudad") or f.get("ciudad"))
+        ciu, edo = lugar(con, f.get("cliente_ciudad") or f.get("ciudad"), f.get("cliente_estado"))
         cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                           (np_, ap, nombre_completo(np_, ap), normalizar_telefono(f.get("cliente_telefono")) or "Pendiente", normalizar_cedula(f.get("cliente_cedula")) or None,
                            (f.get("cliente_correo") or "").strip() or "Pendiente", ciu or "Pendiente", edo, f.get("canal"),
@@ -2185,7 +2204,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         guardar_mascotas(con, cid, f, prefijo="cliente_mascota_")
         if (f.get("cliente_direccion") or "").strip():   # dirección habitual del cliente nuevo
             zona_hab = (f.get("cliente_zona") or "").strip() or ((f.get("zona_tarifa") or "").strip() if f.get("tipo_entrega") in ("delivery", "delivery_fuera") and f.get("dir_modo", "hab") == "hab" else "")
-            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), zona_hab or None, *normalizar_ciudad(f.get("cliente_ciudad")), (f.get("cliente_maps") or "").strip() or None))
+            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), zona_hab or None, ciu if ciu != "Pendiente" else None, edo, (f.get("cliente_maps") or "").strip() or None))
     if cid and not cliente_recien_creado:   # cliente que ya existía al que le faltaban datos: se completan desde la orden
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
         for campo, dato in (("telefono", normalizar_telefono(f.get("cl_add_telefono"))), ("correo", (f.get("cl_add_correo") or "").strip()), ("cedula", normalizar_cedula(f.get("cl_add_cedula")))):
@@ -5762,14 +5781,14 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
 @app.get("/clientes/nuevo/panel", response_class=HTMLResponse)
 def cliente_nuevo_panel(request: Request, con=Depends(db)):
     otros = con.execute("SELECT id, nombre FROM clientes ORDER BY nombre").fetchall()
-    return render(request, "_cliente_nuevo.html", otros=otros)
+    return render(request, "_cliente_nuevo.html", otros=otros, ciudades_vl=ciudades_conocidas(con))
 
 
 @app.post("/clientes/nuevo")
 async def cliente_crear(request: Request, con=Depends(db)):
     f = await request.form()
     nombre_pila, apellido = capitalizar(f["nombre_pila"]), capitalizar(f.get("apellido"), inicio=False) or None
-    ciu, edo = normalizar_ciudad(f.get("ciudad")); edo = edo or f.get("estado_geo") or None
+    ciu, edo = lugar(con, f.get("ciudad"), f.get("estado") or f.get("estado_geo"))
     cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                       (nombre_pila, apellido, nombre_completo(nombre_pila, apellido), normalizar_telefono(f.get("telefono")), normalizar_cedula(f.get("cedula")) or None,
                        f.get("correo") or None, ciu, edo, f.get("canal_habitual") or None,
@@ -6039,7 +6058,7 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     # lo que ha pasado en sus entregas: queda en su ficha para siempre, abierto o ya resuelto
     incid = con.execute("""SELECT i.*, o.numero, substr(i.creado_en,1,10) fecha FROM incidencias i JOIN ordenes o ON o.id=i.orden_id
                            WHERE o.cliente_id=? ORDER BY i.id DESC""", (cid,)).fetchall()
-    return render(request, "cliente.html", seccion="clientes", incid=incid,
+    return render(request, "cliente.html", seccion="clientes", incid=incid, ciudades_vl=ciudades_conocidas(con),
                   credito=credito_de(con, cid),
                   credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
                         (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=k.orden_id AND p.estado='confirmado' AND p.forma!=?) pagado
@@ -6071,7 +6090,7 @@ async def cliente_editar(request: Request, cid: int, con=Depends(db)):
         "porche_version": lambda v: (v or "").strip() or None,
     }
     campos = {k: fn(f.get(k)) for k, fn in limpiar.items() if k in f}
-    if "ciudad" in f: campos["ciudad"], campos["estado"] = normalizar_ciudad(f.get("ciudad"))
+    if "ciudad" in f or "estado" in f: campos["ciudad"], campos["estado"] = lugar(con, f.get("ciudad"), f.get("estado"))
     if "porche_tamano" in f:
         campos["porche_tamano"] = ", ".join(x for x in ("Mediano", "Grande") if x in f.getlist("porche_tamano")) or None
     if "nombre_pila" in campos or "apellido" in campos:
