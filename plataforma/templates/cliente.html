@@ -129,7 +129,7 @@
 <div class="tarjeta"><h3>Dirección{{ "es" if dirs|length > 1 }}</h3>
 {% for d in dirs %}<form method="post" action="/clientes/{{ c.id }}/direccion" class="dir-f"><input type="hidden" name="id" value="{{ d.id }}">
 <input type="hidden" name="etiqueta" value="{{ d.etiqueta or '' }}"><input type="hidden" name="ciudad" value="{{ d.ciudad or c.ciudad or '' }}">
-<div class="dir-ver"><b>{{ d.direccion }}</b></div><div class="ed-caja" hidden><label>Dirección escrita</label><input name="direccion" value="{{ d.direccion }}" required></div>
+<div class="dir-ver">{% if d.direccion %}<b>{{ d.direccion }}</b>{% else %}<span class="mini">Falta la dirección escrita</span>{% endif %}</div><div class="ed-caja" hidden><label>Dirección escrita</label><input name="direccion" value="{{ d.direccion }}" required></div>
 {% if d.maps or d.direccion %}<iframe class="dir-mapa" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="{{ mapa_embed(d.maps, d.direccion, d.ciudad or c.ciudad) }}" title="Mapa de {{ d.direccion }}"></iframe>
 {% if not d.maps %}<div class="mini">Ubicación aproximada por la dirección escrita: falta el link GPS.</div>{% endif %}{% endif %}
 <div class="dir-gps" hidden><label>GPS</label><input name="maps" value="{{ d.maps or '' }}" placeholder="https://maps.app.goo.gl/…"></div>

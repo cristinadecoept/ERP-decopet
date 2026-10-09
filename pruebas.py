@@ -1464,6 +1464,18 @@ def _():
         assert con.execute("SELECT cobra_viernes FROM despachadores WHERE id=?", (did,)).fetchone()[0] == 1
         con.close()
 
+@prueba("Un cliente nuevo con solo el GPS (sin dirección escrita) guarda el GPS y la orden lo dice")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        c.post("/clientes/nuevo", data={"nombre_pila": "Solo Gps", "telefono": "04140000009", "ciudad": "Caracas",
+                                        "direccion": "", "maps": "https://maps.app.goo.gl/prueba"})
+        con = sqlite3.connect(A.DB)
+        cid, = con.execute("SELECT id FROM clientes WHERE nombre_pila='Solo Gps'").fetchone()
+        assert con.execute("SELECT direccion, maps, principal FROM direcciones WHERE cliente_id=?", (cid,)).fetchone() == ("", "https://maps.app.goo.gl/prueba", 1)
+        assert "Falta la dirección escrita" in c.get(f"/clientes/{cid}").text
+        con.close()
+
 print("\nRECONSTRUIR DESDE CERO")
 
 @prueba("Una base nueva queda igual que la que está en uso (se puede reconstruir el ERP)")

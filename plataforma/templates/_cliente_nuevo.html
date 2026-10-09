@@ -5,9 +5,9 @@
 <div class="g2"><div><label>Teléfono <span class="obl">*</span></label><input name="telefono" placeholder="0414-1234567" inputmode="tel" required></div><div><label>Cédula / RIF</label><input name="cedula" placeholder="V-12345678"></div></div>
 <label>Correo <span class="obl">*</span></label><input name="correo" inputmode="email" placeholder="nombre@gmail.com" required>
 </div>
-<div class="bloque"><h3>Dirección principal</h3>
+<div class="bloque">
 <label>Ciudad</label><input name="ciudad" value="Caracas" list="ciudades-cn" autocomplete="off"><datalist id="ciudades-cn">{% for x in CIUDADES_VE %}<option value="{{ x }}">{% endfor %}</datalist>
-<label>Dirección escrita</label><input name="direccion" placeholder="Res., edificio, apto, referencia"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
+<label>Dirección escrita (habitual)</label><input name="direccion" placeholder="Res., edificio, apto, referencia"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
 <div class="bloque"><h3>Perros</h3><table class="lineas" id="masc"><tr><th>Nombre</th><th>Raza</th><th>Cumple (día/mes)</th><th style="width:80px">Año</th><th></th></tr></table>
 <p><button type="button" class="btn sec chico" onclick="agregarMascota()">+ Agregar perro</button></p></div>
 <div class="bloque"><h3>Nota (opcional)</h3><textarea name="nota" rows="2" placeholder="ej. Recibe el conserje; avisar al llegar"></textarea>

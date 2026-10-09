@@ -1557,6 +1557,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
     opciones = {r["sku"]: r for r in con.execute("SELECT * FROM productos WHERE tipo='opcion'")}
     clientes = con.execute("""SELECT c.*, (SELECT direccion || CASE WHEN zona IS NULL OR lower(trim(zona))=lower(trim(direccion)) THEN '' ELSE ' · ' || zona END FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
                                      (SELECT zona FROM direcciones d WHERE d.cliente_id=c.id ORDER BY principal DESC, id LIMIT 1) dir_zona,
+                                     (SELECT maps FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir_maps,
                               (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
                               (SELECT ROUND(COALESCE(SUM(k.monto),0),2) FROM credito_cliente k WHERE k.cliente_id=c.id) credito,
                               (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
@@ -5764,9 +5765,9 @@ async def cliente_crear(request: Request, con=Depends(db)):
                        f.get("correo") or None, ciu, edo, f.get("canal_habitual") or None,
                        (f.get("origen") or "").strip() or None, int(f["referido_id"]) if (f.get("referido_id") or "").isdigit() else None))
     cid = cur.lastrowid
-    if f.get("direccion"):
+    if f.get("direccion") or f.get("maps"):   # solo el GPS también se guarda: la dirección escrita se le pide después
         con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,municipio,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,?,1)",
-                    (cid, "Principal", f["direccion"], f.get("zona") or None, f.get("municipio") or None, ciu, edo, f.get("maps") or None))
+                    (cid, "Principal", (f.get("direccion") or "").strip(), f.get("zona") or None, f.get("municipio") or None, ciu, edo, f.get("maps") or None))
     if f.get("nota"):
         con.execute("INSERT INTO notas_cliente (cliente_id,tipo,texto,mostrar_en_orden,mostrar_logistica,autor_id) VALUES (?,?,?,?,?,?)",
                     (cid, "general", f["nota"], 1, 0 if f.get("nota_privada") else 1, uid_de(request)))
