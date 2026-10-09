@@ -40,7 +40,7 @@
 <!-- 4 · ENTREGA -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">4</span><b>Entrega</b></div>
 <div class="nota-log" id="nada-hoy" hidden style="margin-top:0">Hoy no se entrega nada. La entrega es opcional: si la llenas (delivery, despachador), queda guardada para cuando el cliente active su repuesto.</div>
-<div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
+<div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="ELIGIO='{{ k }}';setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
 <div id="ent-detalle" hidden>
 <div id="pack-dv" hidden style="margin-top:10px"><label>¿Cuántos deliveries del pack paga hoy?</label><div class="mini" style="margin:-2px 0 6px">Los que no pague hoy los paga al recibir cada entrega.</div><select id="pack-dv-sel" onchange="packDelivSet()"></select><div class="mini" id="pack-dv-txt"></div></div>
 <div class="g2" id="desp-w" hidden style="margin-top:10px"><div><label>Despachador</label><select name="despachador" id="desp-sel" onchange="document.getElementById('desp-otro').hidden=this.value!=='__otro__'"><option value="">— por asignar —</option>{% for d in DESPACHADORES %}<option>{{ d }}</option>{% endfor %}<option value="__otro__">Otro…</option></select></div><div id="desp-otro" hidden><label>Nombre</label><input name="despachador_otro" placeholder="nombre"></div></div>
@@ -148,7 +148,8 @@ function setCanal(c){document.getElementById('canal').value=c;document.querySele
  calc();}
 document.getElementById('factura-chk').addEventListener('click',e=>{if(e.target.dataset.lock){e.preventDefault();e.target.checked=true;}});
 var ZONAS=null;   // Caracas o fuera de Caracas: la lista muestra solo las zonas de ese delivery
-var ZONA_HAB='',DIR_HAB='',PRECIO_AUTO=false;   // PRECIO_AUTO: el precio lo puso la zona guardada del cliente (si cambia el cliente, se quita)
+var ZONA_HAB='',DIR_HAB='',PRECIO_AUTO=false,ELIGIO='';   // ELIGIO: la entrega que Cristina tocó; la zona no se la cambia
+   // PRECIO_AUTO: el precio lo puso la zona guardada del cliente (si cambia el cliente, se quita)
 function precioAuto(){if(PRECIO_AUTO){document.getElementById('deliv').value='';PRECIO_AUTO=false;document.getElementById('deliv-z').textContent='';const zs=document.getElementById('zona-sel');if(zs)zs.value='';calc();}}
 function ponerPrecio(o){document.getElementById('deliv').value=o.dataset.t;document.getElementById('deliv-z').textContent=o.value?'· '+o.value:'';PRECIO_AUTO=true;calc();}
 var sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bdel\b/g,'de').replace(/\s+/g,' ').trim();   // "lomas del avila" = "Lomas de Avila"
@@ -170,21 +171,21 @@ function zonaHabitual(){const sel=document.getElementById('zona-sel'),te=documen
  // la habitual sin zona guardada: si su dirección escrita nombra una zona de Tarifas, se usa esa (se ve al lado del precio)
  if(!ZONA_HAB&&DIR_HAB&&document.getElementById('dir-modo').value==='hab'&&(te==='delivery'||te==='delivery_fuera')){
   const o=zonaDeTexto(DIR_HAB),manual=!PRECIO_AUTO&&document.getElementById('deliv').value;
-  if(o){const f=o.dataset.f==='1';if((te==='delivery_fuera')!==f){setEntrega(f?'delivery_fuera':'delivery');return;}
+  if(o){const f=o.dataset.f==='1';if((te==='delivery_fuera')!==f){if(ELIGIO!==te){setEntrega(f?'delivery_fuera':'delivery');return;}precioAuto();zonaVer(false);return;}
    if(!manual)ponerPrecio(o);if([...sel.options].some(x=>x.value===o.value))sel.value=o.value;}
   zonaVer(false);return;}
  const usa=!!ZONA_HAB&&document.getElementById('dir-modo').value==='hab'&&(te==='delivery'||te==='delivery_fuera');
  if(!usa){zonaVer(false);return;}
  if(!ZONAS)ZONAS=[...sel.options].slice(1).map(o=>o.cloneNode(true));
  const z=ZONAS.find(x=>x.value===ZONA_HAB);if(!z){zonaVer(false);return;}
- const fuera=z.dataset.f==='1';if((te==='delivery_fuera')!==fuera){setEntrega(fuera?'delivery_fuera':'delivery');return;}   // la zona dice si es de Caracas o de afuera
+ const fuera=z.dataset.f==='1';if((te==='delivery_fuera')!==fuera){if(ELIGIO!==te){setEntrega(fuera?'delivery_fuera':'delivery');return;}precioAuto();zonaVer(false);return;}   // la zona dice si es de Caracas o de afuera
  sel.value=ZONA_HAB;ponerPrecio(z);
  document.getElementById('zona-auto-txt').innerText=z.textContent;zonaVer(true);}
 function dirNueva(){const a=document.getElementById('zona-auto'),sel=document.getElementById('zona-sel');   // otra dirección: su zona y su precio salen de lo escrito
  if(document.getElementById('dir-modo').value==='nueva'){if(a&&!a.hidden){zonaVer(false);sel.value='';}
   const o=zonaDeTexto(document.getElementById('dir').value),manual=!PRECIO_AUTO&&document.getElementById('deliv').value;
   if(!manual)precioAuto();
-  if(o){const te=document.getElementById('te').value,f=o.dataset.f==='1';if((te==='delivery_fuera')!==f)setEntrega(f?'delivery_fuera':'delivery');
+  if(o){const te=document.getElementById('te').value,f=o.dataset.f==='1';if((te==='delivery_fuera')!==f){if(ELIGIO!==te)setEntrega(f?'delivery_fuera':'delivery');else{if(sel)sel.value='';return;}}
    if(!manual)ponerPrecio(o);if(sel)sel.value=[...sel.options].some(x=>x.value===o.value)?o.value:'';}   // el pedido se guarda con esa zona
   else if(sel)sel.value='';}
  else{precioAuto();zonaHabitual();}}
@@ -210,7 +211,7 @@ function recModo(m){document.getElementById('rec-datos').hidden=(m!=='tercero');
 function agregarMascota(){const d=document.createElement('div');d.className='no-sub';d.style.marginTop='8px';d.innerHTML=`<div class="no-sub-h"><span>Mascota</span><button type="button" class="no-link" onclick="this.closest('.no-sub').remove()">Quitar</button></div><div class="g2"><div><label>Nombre</label><input name="cliente_mascota_nombre" placeholder="Toby"></div><div><label>Raza</label><input name="cliente_mascota_raza" list="razas" autocomplete="off" placeholder="elegir…"></div></div><div class="g2"><div><label>Cumpleaños <span class="mini">(día/mes)</span></label><input name="cliente_mascota_cumple" placeholder="25/09" inputmode="numeric"></div><div><label>Año de nacimiento <span class="mini">(si lo saben)</span></label><input name="cliente_mascota_anio" placeholder="2021" inputmode="numeric" maxlength="4"></div></div><input type="hidden" name="cliente_mascota_nacimiento" value=""><input type="hidden" name="cliente_mascota_peso" value="">`;document.getElementById('masc-lista').appendChild(d);d.querySelector('input').focus();}
 function clienteNuevo(){document.getElementById('cl-faltan').hidden=true;document.getElementById('cl-buscar').hidden=true;document.getElementById('cl-nuevo').hidden=false;document.getElementById('cl-id').value='';document.getElementById('cl-in').value='';dirHabitualNueva();document.getElementById('cl-nombre').focus();}
 function limpiarCliente(){mostrarCredito(0);precioAuto();ZONA_HAB='';DIR_HAB='';zonaVer(false);document.getElementById('cl-in').value='';document.getElementById('cl-id').value='';document.getElementById('cl-existente').hidden=true;document.getElementById('cl-faltan').hidden=true;document.getElementById('cl-nuevo').hidden=true;document.getElementById('cl-buscar').hidden=false;['cl-nombre','cl-apellido','cl-tel'].forEach(id=>document.getElementById(id).value='');document.getElementById('cl-in').focus();}
-document.getElementById('cl-in').addEventListener('input',e=>{const op=[...document.getElementById('cl').options].find(o=>o.value===e.target.value);if(!op)return;document.getElementById('cl-id').value=op.dataset.id;precioAuto();ZONA_HAB=op.dataset.zona||'';DIR_HAB=op.dataset.zona?'':(op.dataset.dir||'');zonaHabitual();
+document.getElementById('cl-in').addEventListener('input',e=>{const op=[...document.getElementById('cl').options].find(o=>o.value===e.target.value);if(!op)return;document.getElementById('cl-id').value=op.dataset.id;precioAuto();ELIGIO='';ZONA_HAB=op.dataset.zona||'';DIR_HAB=op.dataset.zona?'':(op.dataset.dir||'');zonaHabitual();
  document.getElementById('cl-ex-ini').innerText=op.value.trim()[0].toUpperCase();document.getElementById('cl-ex-nombre').innerText=op.value;document.getElementById('cl-ex-datos').innerHTML=(op.dataset.porche?'<span class="porche-tag'+(op.dataset.porche.startsWith('Miembro')?' pro':'')+'">'+op.dataset.porche+'</span> ':'')+[op.dataset.tel,op.dataset.ciudad].filter(Boolean).join(' · ');
  const ms=document.getElementById('cl-ex-mascotas');ms.innerHTML=op.dataset.perros?op.dataset.perros.split(', ').map(p=>'<span class="no-perro">🐾 '+p+'</span>').join(''):'<span class="mini">sin mascotas registradas</span>';
  document.getElementById('dir-hab-txt').innerHTML=op.dataset.dir?('<b>'+op.dataset.dir+'</b>'+(op.dataset.ciudad?' · '+op.dataset.ciudad:'')):op.dataset.maps?'<b>Solo GPS</b> · falta la dirección escrita':'Este cliente no tiene dirección habitual guardada: escribe una nueva abajo.';
