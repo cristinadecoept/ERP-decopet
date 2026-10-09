@@ -6807,7 +6807,11 @@ def tarifas_guardar(request: Request, id: int = Form(0), zona: str = Form(...), 
     if not solo_admin(request): return RedirectResponse("/tarifas", status_code=303)
     monto = float((tarifa or "0").replace(",", ".") or 0); pago_d = float(pago.replace(",", ".")) if pago.strip() else None
     if borrar and id: con.execute("DELETE FROM tarifas WHERE id=?", (id,))
-    elif id: con.execute("UPDATE tarifas SET zona=?, tarifa=?, pago_despachador=?, notas=?, fuera_caracas=? WHERE id=?", (zona.strip(), monto, pago_d, notas.strip() or None, 1 if fuera == "1" else 0, id))
+    elif id:
+        viejo = con.execute("SELECT zona FROM tarifas WHERE id=?", (id,)).fetchone()
+        con.execute("UPDATE tarifas SET zona=?, tarifa=?, pago_despachador=?, notas=?, fuera_caracas=? WHERE id=?", (zona.strip(), monto, pago_d, notas.strip() or None, 1 if fuera == "1" else 0, id))
+        if viejo and viejo["zona"] != zona.strip():   # si se le cambia el nombre, los clientes y pedidos con esa zona siguen apuntando bien
+            for t in ("direcciones", "ordenes"): con.execute(f"UPDATE {t} SET zona=? WHERE zona=?", (zona.strip(), viejo["zona"]))
     elif zona.strip(): con.execute("INSERT OR IGNORE INTO tarifas (zona, tarifa, pago_despachador, notas, fuera_caracas) VALUES (?,?,?,?,?)", (zona.strip(), monto, pago_d, notas.strip() or None, 1 if fuera == "1" else 0))
     con.commit(); return RedirectResponse("/tarifas", status_code=303)
 

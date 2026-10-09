@@ -1310,6 +1310,11 @@ def _():
         assert f == {"Los Teques": 1, "Chacao": 0}, f
         h = c.get("/ordenes/nueva/panel").text
         assert 'value="Los Teques" data-t="15.0" data-f="1"' in h and 'value="Chacao" data-t="5.0" data-f="0"' in h, "la lista sabe cuál es de afuera"
+        # cambiarle el nombre a una zona la cambia también en los clientes que la tienen
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (71,'Carmen Prueba','Carmen')"); con.execute("INSERT INTO direcciones (cliente_id,direccion,zona,principal) VALUES (71,'Av Panteon','Chacao',1)"); con.commit()
+        tid = con.execute("SELECT id FROM tarifas WHERE zona='Chacao'").fetchone()[0]
+        c.post("/tarifas/guardar", data={"id": str(tid), "zona": "Chacao Centro", "tarifa": "5"})
+        assert con.execute("SELECT zona FROM direcciones WHERE cliente_id=71").fetchone()[0] == "Chacao Centro"
         con.close()
 
 @prueba("Cliente nuevo: la zona se elige con su dirección habitual, queda guardada y la próxima orden ya la trae")
