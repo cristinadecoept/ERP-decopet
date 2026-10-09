@@ -153,11 +153,12 @@ function precioAuto(){if(PRECIO_AUTO){document.getElementById('deliv').value='';
 function ponerPrecio(o){document.getElementById('deliv').value=o.dataset.t;document.getElementById('deliv-z').textContent=o.value?'· '+o.value:'';PRECIO_AUTO=true;calc();}
 var sinAcento=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bdel\b/g,'de').replace(/\s+/g,' ').trim();   // "lomas del avila" = "Lomas de Avila"
 // cómo se suele escribir una zona incompleta o abreviada → su nombre en Tarifas (ya sin acentos; "del" se lee "de")
-var APODOS=[[/\b(plg|lpg)\b/g,'los palos grandes'],[/(^|[^a-z])(?<!los )palos grandes\b/g,'$1los palos grandes'],[/\bla cas\b/g,'la castellana'],
+var APODOS=[[/\b(frente (a|al|de)|cerca de|al lado de|diagonal (a|al))\b[^.,;]*/g,''],   // "frente al centro cardiovascular": un punto de referencia, no la zona
+ [/\b(plg|lpg)\b/g,'los palos grandes'],[/(^|[^a-z])(?<!los )palos grandes\b/g,'$1los palos grandes'],[/\bla cas\b/g,'la castellana'],
  [/\blas merce\b/g,'las mercedes'],[/\bel cafe\b/g,'el cafetal'],[/\bla cali\b/g,'la california'],[/\bla trini\b/g,'la trinidad'],
  [/(?<!de )\bprados\b(?! de)/g,'prados de este'],[/\bsabana\b(?! grande)/g,'sabana grande'],[/(?<!el )\bparaiso\b/g,'el paraiso'],
  [/\bterrazas\b(?! de)/g,'terrazas de avila'],[/\bmontalban (1|i)\b/g,'montalban'],[/\bmontalban (2|ii)\b/g,'montalban ii'],[/\bmontalban (3|iii)\b/g,'montalban iii'],
- [/\bsta\.?\s/g,'santa ']];
+ [/\bsta\.?\s/g,'santa '],[/\bsanta fe de chuao\b/g,'chuao']];
 function zonaDeTexto(t){let x=sinAcento(t);if(!x)return null;APODOS.forEach(([r,v])=>{x=x.replace(r,v)});if(!ZONAS)ZONAS=[...document.getElementById('zona-sel').options].slice(1).map(o=>o.cloneNode(true));   // la zona de Tarifas que nombra lo escrito (una sola)
  const igual=ZONAS.find(o=>sinAcento(o.value)===x);if(igual)return igual;
  let hits=ZONAS.filter(o=>new RegExp('(^|[^a-z])'+sinAcento(o.value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'($|[^a-z])').test(x));
