@@ -1445,7 +1445,7 @@ def _():
     with erp_de_prueba() as c:
         con = sqlite3.connect(A.DB)
         for costo in (30, 45, 30):
-            con.execute("INSERT INTO produccion (cantidad,recibido,fecha_pedido,fecha_esperada,responsable,costo,estado,pieza,tipo_pedido) VALUES (10,10,'2026-10-03',date('now'),'Yovanny Prueba',?,'recibido','Grama','proveedor')", (costo,))
+            con.execute("INSERT INTO produccion (cantidad,recibido,fecha_pedido,fecha_esperada,responsable,costo,estado,pieza,tipo_pedido) VALUES (10,10,'2026-10-03',date('now','localtime'),'Yovanny Prueba',?,'recibido','Grama','proveedor')", (costo,))
         con.commit()
         sesion_de(c, "admin"); h = c.get("/inicio").text
         assert h.count("Hoy toca pagar Grama (3 pedidos) a Yovanny Prueba") == 1 and "105.00" in h, re.findall(r"Hoy toca pagar[^<]*", h)
@@ -1496,6 +1496,15 @@ def _():
         assert ("Ocumare del Tuy", "Miranda") in A.ciudades_conocidas(con)
         h = c.get("/clientes/nuevo/panel").text
         assert 'name="estado"' in h and 'data-e="Zulia"' in h
+        # Tina solo escribe en Ciudad lo que dijo el cliente, sin tocar el Estado: se guarda igual y lo que falta queda pendiente
+        for n, ciu in (("Isla Uno", "Margarita"), ("Sin Estado", "Pueblo Raro")):
+            c.post("/clientes/nuevo", data={"nombre_pila": n, "telefono": "04140000006", "ciudad": ciu})
+        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre_pila='Isla Uno'").fetchone() == ("Pendiente", "Nueva Esparta")
+        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre_pila='Sin Estado'").fetchone() == ("Pueblo Raro", None)
+        assert "Sin Estado" in c.get("/clientes?falta=estado").text and "Isla Uno" in c.get("/clientes?falta=ciudad").text
+        con.execute("INSERT INTO tarifas (zona, tarifa, fuera_caracas) VALUES ('Los Palos Grandes', 5, 0), ('El Junquito', 10, 1)"); con.commit()
+        assert A.lugar(con, "los palos grandes") == ("Caracas", "Distrito Capital")   # una zona de Caracas de Tarifas es Caracas
+        assert A.lugar(con, "El Junquito")[0] != "Caracas"                              # una de fuera de Caracas no se adivina
         con.close()
 
 @prueba("Un cliente nuevo con solo el GPS (sin dirección escrita) guarda el GPS y la orden lo dice")

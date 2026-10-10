@@ -528,6 +528,10 @@ def lugar(con, ciudad, estado=None):
     if c in ESTADO_DE_CIUDAD: return c, ESTADO_DE_CIUDAD[c]
     if c != "Pendiente":
         k = _llave_lugar(c)
+        if e_elegido in (None, "Distrito Capital", "Miranda"):   # dijo una zona de Caracas de Tarifas ("Chacao"): es Caracas, como los demás
+            de = lambda x: " ".join("de" if p == "del" else p for p in _llave_lugar(x).split())
+            if any(de(z) == de(c) for (z,) in con.execute("SELECT zona FROM tarifas WHERE COALESCE(fuera_caracas,0)=0")):
+                return "Caracas", "Distrito Capital"
         for x, ex in con.execute("SELECT ciudad, MAX(estado) FROM clientes WHERE ciudad IS NOT NULL GROUP BY ciudad"):
             if _llave_lugar(x) == k: c = x; e = e or ex; break
     return c, (e_elegido or e)
@@ -5695,7 +5699,7 @@ def mascotas_lista(request: Request, q: str = "", ver: str = "mascotas", raza: s
 
 
 # lo que le puede faltar a la ficha de un cliente, en el orden en que se muestra
-FALTA_CLIENTE = {"telefono": "teléfono", "correo": "correo", "ciudad": "ciudad", "direccion": "dirección", "mascota": "mascota", "raza": "raza del perro"}
+FALTA_CLIENTE = {"telefono": "teléfono", "correo": "correo", "ciudad": "ciudad", "estado": "estado", "direccion": "dirección", "mascota": "mascota", "raza": "raza del perro"}
 
 def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
     base = """SELECT c.*, (SELECT direccion FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
@@ -5706,7 +5710,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
              (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
              (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id AND (m.raza='Pendiente' OR m.revisar=1)) perro_pend,
              (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id) n_perros,
-             (SELECT COUNT(*) FROM direcciones d WHERE d.cliente_id=c.id) n_dir,
+             (SELECT COUNT(*) FROM direcciones d WHERE d.cliente_id=c.id AND trim(d.direccion) NOT IN ('', '(solo GPS)')) n_dir,   -- solo el GPS: falta la dirección escrita
              (SELECT COUNT(*) FROM notas_cliente nc WHERE nc.cliente_id=c.id) n_notas,
              (SELECT GROUP_CONCAT(nc.texto, ' · ') FROM notas_cliente nc WHERE nc.cliente_id=c.id) notas_txt,
              (SELECT canal FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada' GROUP BY canal ORDER BY COUNT(*) DESC LIMIT 1) canal_top,
@@ -5724,6 +5728,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
         r["pro"] = r["pro"] or (r["porche_version"] == "PRO")
         r["basico"] = (r["porches"] or "").startswith("Básico") or r["porche_version"] == "Básico"
         r["pendientes"] = ([k for k in ("telefono", "correo", "ciudad") if (r[k] or "Pendiente") == "Pendiente"]
+                           + (["estado"] if not r["estado"] else [])
                            + (["direccion"] if not r["n_dir"] else []) + (["mascota"] if not r["n_perros"] else [])
                            + (["raza"] if r["perro_pend"] else []))
     creditos = {r[0]: round(r[1], 2) for r in con.execute("SELECT cliente_id, SUM(monto) FROM credito_cliente GROUP BY cliente_id HAVING SUM(monto) > 0.009")}

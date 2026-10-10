@@ -6,7 +6,7 @@
 <label>Correo <span class="obl">*</span></label><input name="correo" inputmode="email" placeholder="nombre@gmail.com" required>
 </div>
 <div class="bloque">
-{{ lugar(ciudades_vl, req=true) }}
+{{ lugar(ciudades_vl) }}
 <label>Dirección escrita (habitual)</label><input name="direccion" placeholder="Res., edificio, apto, referencia"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
 <div class="bloque"><h3>Perros</h3><table class="lineas" id="masc"><tr><th>Nombre</th><th>Raza</th><th>Cumple (día/mes)</th><th style="width:80px">Año</th><th></th></tr></table>
 <p><button type="button" class="btn sec chico" onclick="agregarMascota()">+ Agregar perro</button></p></div>
