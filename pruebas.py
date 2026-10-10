@@ -144,14 +144,32 @@ def _():
     con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle',72,72,'USD','2026-06-01','confirmado')")
     con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,2)")
     con.commit()
-    A.pack_programar(None, 1, fecha="2026-10-10", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", con=con)
+    A.pack_programar(None, 1, fecha="2026-10-10", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
     for _ in range(2):   # reprogramar con "Sí" ya elegido tampoco lo vuelve a cobrar
-        A.pack_programar(None, 1, fecha="2026-10-11", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="1", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", con=con)
+        A.pack_programar(None, 1, fecha="2026-10-11", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="1", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
     assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 72
     assert con.execute("SELECT COUNT(*) FROM pagos").fetchone()[0] == 1
-    A.entregar_pack(con, 1, 1, "2026-10-11", "1", "", "", "0", ""); con.commit()
+    A.entregar_pack(con, 1, 1, "2026-10-11", "1", "", "", "5", "Pago Móvil VES"); con.commit()   # aunque al entregar digan que cobró, no entra otra vez
     assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 72
     assert [tuple(r) for r in con.execute("SELECT despachador, monto FROM viajes_despachador")] == [("Juan", 5)]
+
+@prueba("Entrega de pack en otra dirección: el despachador y el aviso de WhatsApp llevan la nueva; al entregar se vuelve a la habitual")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (1,'Karen X','Karen','0414-1234567')")
+    con.execute("INSERT INTO direcciones (cliente_id,direccion,maps,principal) VALUES (1,'Casa de siempre','https://maps.app.goo.gl/vieja',1)")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total) VALUES (1,'#1',1,'entregada','pagada',72)")
+    con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,2)")
+    con.commit()
+    hoy = datetime.date.today().isoformat()
+    A.pack_programar(None, 1, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="",
+                     diferencia="", diferencia_pagada="0", volver="", direccion="Oficina nueva, piso 3", maps="https://maps.app.goo.gl/nueva", con=con)
+    f = [x for x in A.ruta_despachador(con, "Juan", hoy) if x["kind"] == "pack"][0]
+    assert (f["direccion"], f["maps"]) == ("Oficina nueva, piso 3", "https://maps.app.goo.gl/nueva"), f
+    assert "Oficina nueva, piso 3" in A.texto_aviso(f["quien"], "Juan", f["que_lleva"], False, f["direccion"], f["maps"])
+    assert con.execute("SELECT direccion FROM direcciones WHERE cliente_id=1").fetchone()[0] == "Casa de siempre"   # la ficha no cambia
+    A.entregar_pack(con, 1, 1, hoy, "1", "", "", "0", ""); con.commit()
+    assert con.execute("SELECT direccion_programada FROM packs WHERE id=1").fetchone()[0] is None
 
 @prueba("El delivery cobrado hoy de un pack viejo entra al Registro de ventas hoy, con la forma con que se cobró")
 def _():
