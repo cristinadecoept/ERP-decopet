@@ -5581,7 +5581,8 @@ def packs(request: Request, ver: str = "activos", q: str = "", con=Depends(db), 
 def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entrega: str = Form(""), despachador: str = Form(""), notas: str = Form(""), retiro: str = Form(""), delivery: str = Form("0"), delivery_pagado: str = Form("0"), pago_forma: str = Form(""), diferencia: str = Form(""), diferencia_pagada: str = Form("0"), volver: str = Form(""), con=Depends(db)):
     k = con.execute("SELECT * FROM packs WHERE id=?", (pid,)).fetchone()
     dl = float(delivery or 0) if tipo_entrega in ("delivery", "delivery_fuera") else 0.0
-    pagado = 1 if delivery_pagado == "1" and dl > 0 else 0
+    pagado = 1 if delivery_pagado in ("1", "antes") and dl > 0 else 0
+    ya_cobrado = delivery_pagado == "antes" or bool(k and k["delivery_pagado"] == 1)   # lo pagó antes del ERP, o ya se cobró al programar: no entra otra vez
     dif = 0.0
     if k and (k["deliveries_prepagados"] or 0) > 0 and tipo_entrega in ("delivery", "delivery_fuera"):   # ya lo pagó por adelantado con el pack: no se cobra de nuevo
         dif = round(max(float(diferencia or 0), 0), 2)   # salvo una diferencia (un sitio más lejos): se cobra aparte y al despachador se le paga todo
@@ -5597,7 +5598,7 @@ def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entre
         if dif > 0 and dif_pag and not ya and k["orden_id"]:
             cobro_extra(con, k["orden_id"], "Diferencia de delivery · entrega de pack", dif, pago_forma or "Pago Móvil", datetime.date.today().isoformat(), uid_de(request),
                         nota=f"entrega programada para el {fmt_fecha(fecha)}" if fecha else None)
-    if pagado == 1 and k and k["orden_id"]:   # el delivery ya lo pagó: entra a la orden del pack, contado el día de hoy
+    if pagado == 1 and not ya_cobrado and k and k["orden_id"]:   # el delivery ya lo pagó: entra a la orden del pack, contado el día de hoy
         cobro_extra(con, k["orden_id"], "Delivery entrega de pack", dl, pago_forma or "Pago Móvil", datetime.date.today().isoformat(), uid_de(request),
                     nota=f"entrega programada para el {fmt_fecha(fecha)}" if fecha else None)
     con.commit(); return RedirectResponse(volver or "/packs", status_code=303)

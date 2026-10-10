@@ -136,6 +136,23 @@ def _():
     assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=1").fetchone()[0] == 1, "no debe registrar un pago que no entró"
     assert con.execute("SELECT estado_pago FROM ordenes WHERE id=1").fetchone()[0] == "abonada"
 
+@prueba("Pack con el delivery pagado antes del ERP: no entra como venta de hoy, no se cobra al entregar y al despachador sí se le paga")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total) VALUES (1,'#1',1,'entregada','pagada',72)")
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle',72,72,'USD','2026-06-01','confirmado')")
+    con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,2)")
+    con.commit()
+    A.pack_programar(None, 1, fecha="2026-10-10", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", con=con)
+    for _ in range(2):   # reprogramar con "Sí" ya elegido tampoco lo vuelve a cobrar
+        A.pack_programar(None, 1, fecha="2026-10-11", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="1", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", con=con)
+    assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 72
+    assert con.execute("SELECT COUNT(*) FROM pagos").fetchone()[0] == 1
+    A.entregar_pack(con, 1, 1, "2026-10-11", "1", "", "", "0", ""); con.commit()
+    assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 72
+    assert [tuple(r) for r in con.execute("SELECT despachador, monto FROM viajes_despachador")] == [("Juan", 5)]
+
 @prueba("El delivery cobrado hoy de un pack viejo entra al Registro de ventas hoy, con la forma con que se cobró")
 def _():
     con = base_limpia()
