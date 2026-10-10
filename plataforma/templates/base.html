@@ -18,7 +18,7 @@
 <a class="tasa {{ 'alerta' if tasa.alerta }}" href="/tasa" title="{{ tasa.fuente or '' }}">{% if tasa.valor %}BCV <b>{{ '{:,.2f}'.format(tasa.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }} Bs/$</b> <span class="t-largo">· {% if tasa.es_futura %}tasa del {{ tasa.fecha_valor|dia }}{% else %}valor {{ tasa.fecha_valor|fecha }}{% endif %}</span>{% if tasa.manual %} · manual{% endif %}{% if tasa.alerta %} · ⚠ {{ tasa.alerta }}{% endif %}{% else %}⚠ Sin tasa BCV{% endif %}</a></header>
 <main class="cont"{% block main_attrs %} data-sin-recarga{% endblock %}>{% block cuerpo %}{% endblock %}</main></div></div>
 <div id="aviso" class="aviso-flot" role="status" aria-live="polite"></div>
-<datalist id="razas">{% for r in RAZAS %}<option value="{{ r }}">{% endfor %}</datalist>
+<datalist id="razas">{% for r in razas or RAZAS %}<option value="{{ r }}">{% endfor %}</datalist>
 {% block extra %}{% endblock %}
 <script>
 function aplicarDinero(){const o=document.documentElement.classList.contains('dinero-oculto');document.querySelectorAll('.dinero').forEach(el=>{if(o){if(!el.dataset.v){el.dataset.v=el.textContent;el.textContent='••••';}}else if(el.dataset.v){el.textContent=el.dataset.v;delete el.dataset.v;}});}

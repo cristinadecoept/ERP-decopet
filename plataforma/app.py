@@ -270,6 +270,12 @@ RAZAS = ["Mestizo", "Akita", "Basset Hound", "Beagle", "Bichón Frisé", "Border
          "Cavalier King Charles", "Chihuahua", "Chow Chow", "Cocker Spaniel", "Corgi", "Dálmata", "Doberman", "Dogo Argentino", "Golden Retriever", "Gran Danés", "Husky Siberiano", "Jack Russell",
          "Labrador", "Lhasa Apso", "Maltés", "Mastín", "Pastor Alemán", "Pastor Australiano", "Pequinés", "Pinscher", "Pitbull", "Pomerania", "Pug", "Rottweiler", "Salchicha / Dachshund",
          "Samoyedo", "San Bernardo", "Schnauzer", "Shar Pei", "Shih Tzu", "Terrier", "Weimaraner", "Westie", "Yorkshire"]
+def razas_lista(con):
+    """Las razas para sugerir: las de RAZAS y además las escritas en mascotas, sin repetir la misma con otra tilde."""
+    vistas = {_llave_lugar(r) for r in RAZAS}; extra = []
+    for (r,) in con.execute("SELECT DISTINCT TRIM(raza) FROM mascotas WHERE raza IS NOT NULL AND TRIM(raza) NOT IN ('', 'Pendiente', 'pet')"):
+        if _llave_lugar(r) not in vistas: vistas.add(_llave_lugar(r)); extra.append(r)
+    return sorted(RAZAS + extra, key=lambda r: (r != "Mestizo", _llave_lugar(r)))
 MODALIDAD = {"cobro_destino": "A cobro en destino", "pagado_decopet": "Envío pagado por Decopet"}
 ENTREGA = {"pickup": "Pick-up", "delivery": "Delivery Caracas", "delivery_fuera": "Delivery fuera de Caracas", "nacional": "Envío nacional", "distribuidor": "Distribuidor", "otro": "Otro"}
 DISTRIBUIDORES = ["Vivero Maracaibo"]
@@ -988,6 +994,9 @@ def render(request, nombre, **ctx):
     ctx.update(request=request, rol=rol, puede=PERMISOS[rol], hoy=datetime.date.today().isoformat(),
                seccion=ctx.get("seccion", ""), usuario=ctx.get("usuario") or quien_es(request),
                viendo_como=request.cookies.get("ver_como") or "")
+    try:   # razas: la lista fija + las que ya tienen las mascotas guardadas (American Bully, Goldendoodle…)
+        con = sqlite3.connect(DB); ctx["razas"] = razas_lista(con); con.close()
+    except sqlite3.Error: ctx["razas"] = RAZAS
     if rol in ("admin", "logistica", "taller") and "casos_abiertos" not in ctx:
         try:
             con = sqlite3.connect(DB); ctx["casos_abiertos"] = con.execute("SELECT COUNT(*) FROM danados WHERE estado IN ('pendiente','reparando')").fetchone()[0]; con.close()
@@ -1331,7 +1340,7 @@ def alertas(o):
     activa = o["estado"] == "pendiente"
     if activa and o["fecha_prometida"] and o["fecha_prometida"] < hoy:
         a.append(("retrasada", f"Retrasada · prometida {fmt_fecha(o['fecha_prometida'])}"))
-    elif activa and o.get("pagada_en") and horas(o["pagada_en"]) > 72:
+    elif activa and not o["fecha_prometida"] and o.get("pagada_en") and horas(o["pagada_en"]) > 72:   # con fecha a futuro (reprogramada) no está retrasada
         a.append(("retrasada", f"Retrasada · {int(horas(o['pagada_en']) // 24)} días sin entregar"))
     if o["estado_pago"] == "por_confirmar" and horas(o["actualizado_en"]) > 2: a.append(("pago", "Pago por revisar +2 h"))
     if o["estado_pago"] == "rechazado": a.append(("pago", "Pago rechazado · contactar cliente"))
