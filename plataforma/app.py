@@ -242,13 +242,15 @@ def _entradas_de(con, oid):
     return out
 
 
+# los pedidos de hoy (o con algo agregado hoy) que todavía deben: el mismo filtro para el número del Inicio y para su lista
+POR_COBRAR_HOY = """o.estado!='cancelada' AND o.estado_pago NOT IN ('por_cobrar','reembolsada')
+                         AND (substr(o.creado_en,1,10)=? OR EXISTS (SELECT 1 FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en=?))
+                         AND o.total - (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') > 0.009"""
+
 def por_cobrar_de_hoy(con, h):
     """Lo que los pedidos de hoy (y lo que se les agregó hoy) todavía deben: se muestra aparte, no es venta hasta que entre."""
     r = con.execute("""SELECT COALESCE(SUM(o.total - (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado')),0)
-                       FROM ordenes o WHERE o.estado!='cancelada' AND o.estado_pago NOT IN ('por_cobrar','reembolsada')
-                         AND (substr(o.creado_en,1,10)=? OR EXISTS (SELECT 1 FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en=?))
-                         AND o.total - (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') > 0.009""",
-                    (h, h)).fetchone()[0]
+                       FROM ordenes o WHERE """ + POR_COBRAR_HOY, (h, h)).fetchone()[0]
     return round(r or 0, 2)
 
 
@@ -1383,6 +1385,19 @@ def HAY_QUE_ENTREGAR(a="o"):
                   AND NOT EXISTS (SELECT 1 FROM packs kx WHERE kx.orden_id={a}.id AND kx.producto_id=lx.producto_id AND kx.entregadas_inicio=0))"""
 
 
+def deudas_sin_entrega(con, cid):
+    """Pedidos del cliente que hoy no llevan nada (un pack para después, repuestos prepagados) y todavía deben:
+    no salen en Operaciones, así que se cobran junto con la próxima entrega que sí le llega (un retiro de pack, un prepagado)."""
+    if not cid: return []
+    return [dict(r) for r in con.execute("""SELECT * FROM (SELECT o.id, o.numero,
+                ROUND(o.total - (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado'), 2) saldo,
+                (SELECT GROUP_CONCAT(l.nombre, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id AND l.extra_en IS NULL) que,
+                (SELECT COALESCE(SUM(cc.monto),0) FROM credito_cliente cc WHERE cc.cliente_id=o.cliente_id) credito
+                FROM ordenes o WHERE o.cliente_id=? AND o.estado!='cancelada' AND o.origen_excel=0
+                  AND o.estado_pago IN ('sin_pago','abonada','contra_entrega','rechazado') AND NOT """ + HAY_QUE_ENTREGAR() + """)
+                WHERE saldo > 0.009 ORDER BY id""", (cid,))]
+
+
 def pasar_entrega_a_prepagado(con, oid, uid):
     """Si el pedido no trae nada para entregar hoy (solo repuestos prepagados, o un pack del que no se lleva ninguno)
     y aun así se llenó cómo se va a entregar, eso no es una entrega de hoy: queda guardado en el repuesto (o el pack)
@@ -1454,6 +1469,7 @@ def cargar_ordenes(con, filtros, rol):
     if filtros.get("vista") == "sin_coordinar": sql += " AND o.estado='pendiente'"
     if filtros.get("vista") == "incidencias": sql += " AND EXISTS (SELECT 1 FROM incidencias i WHERE i.orden_id=o.id AND i.estado='abierta')"
     if filtros.get("vista") == "por_cobrar_clientes": sql += " AND o.estado_pago='abonada' AND o.estado!='cancelada'"
+    if filtros.get("vista") == "por_cobrar_hoy": sql += " AND " + POR_COBRAR_HOY; args += [hoy, hoy]
     if filtros.get("vista") == "creadas_hoy": sql += " AND substr(o.creado_en,1,10)=? AND o.estado!='cancelada'"; args.append(hoy)
     if filtros.get("q"): sql += " AND (c.nombre LIKE ? OR o.numero LIKE ? OR c.telefono LIKE ? OR o.guia LIKE ?)"; args += [f"%{filtros['q']}%"] * 4
     sql += " ORDER BY CAST(substr(o.numero,2) AS INTEGER) DESC LIMIT 300"
@@ -1467,7 +1483,7 @@ def cargar_ordenes(con, filtros, rol):
     return rows
 
 
-VISTAS = {"hoy": "Entregas de hoy", "retrasadas": "Retrasadas", "sin_coordinar": "Pendientes", "incidencias": "Con incidencias abiertas", "creadas_hoy": "Creadas hoy", "por_cobrar_clientes": "Por cobrar a clientes"}
+VISTAS = {"hoy": "Entregas de hoy", "retrasadas": "Retrasadas", "sin_coordinar": "Pendientes", "incidencias": "Con incidencias abiertas", "creadas_hoy": "Creadas hoy", "por_cobrar_clientes": "Por cobrar a clientes", "por_cobrar_hoy": "Por cobrar de hoy"}
 
 @app.get("/ordenes", response_class=HTMLResponse)
 def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", abrir: int = 0, nueva: int = 0, con=Depends(db)):
@@ -2494,6 +2510,10 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
                               coordinada=bool(r["despachador"] or r["agencia"] or r["tipo_entrega"] == "pickup"), total=0, pagado=0, monto_contra_entrega=None, telefono=r["telefono"],
                               delivery=r["delivery"], delivery_pagado=r["delivery_pagado"]))   # para preguntar si cobró el delivery al entregar
     lista.sort(key=lambda o: (o["fecha_op"], o["franja"] or "", o["id"] or 0))
+    for o in lista:   # un pack o un prepagado que se lleva: si el cliente debe otro pedido que hoy no sale (un pack para después), se cobra ahí
+        if o.get("es_pack") or o.get("es_prepagado"): o["tambien_cobrar"] = deudas_sin_entrega(con, o["cliente_id"])
+    junto = {t["id"] for o in lista for t in o.get("tambien_cobrar") or []}
+    lista = [o for o in lista if o.get("id") not in junto]   # ese pedido ya se cobra en la fila de la entrega: no sale dos veces
     for o in lista:   # volvió de la calle sin entregar: que se note, para no confundirlo con uno nuevo
         if o.get("id") and o["estado"] == "pendiente":
             h_ = con.execute("SELECT detalle, creado_en FROM historial WHERE orden_id=? AND accion='estado' ORDER BY id DESC LIMIT 1", (o["id"],)).fetchone()
@@ -6304,7 +6324,7 @@ def mis_entregas(request: Request, con=Depends(db)):
     viajes_pend = [v for v in viajes_pend if (v["fecha"] or "")[:10] <= hoy.isoformat()]
     en_caja = round(sum(p["monto_usd"] or 0 for p in efectivo_que_tiene(con, nombre)), 2) if nombre else 0   # efectivo de Decopet que tiene y debe entregar
     return render(request, "mis_entregas.html", seccion="mis_entregas", quien=nombre, viendo=viendo, r=r, en_caja=en_caja, ruta=ruta, ruta_manana=ruta_manana, viajes_manana=viajes_manana,
-                  ruta_cobrar=sum(f["cobrar"] for f in ruta),
+                  ruta_cobrar=sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in ruta),
                   hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(), viajes_pend=viajes_pend, tarifas_dil=tarifas_diligencia(con),
                   ganado_mes=round(sum(h["pago"] for h in hist if h["estado"] == "entregada" and (h["fecha"] or "")[:7] == mes), 2),
                   ganado_todo=round(sum(h["pago"] for h in hist if h["estado"] == "entregada"), 2),
@@ -6565,6 +6585,8 @@ def ruta_despachador(con, nombre, hoy):
                          "que_lleva": f"1× Repuesto {r['tamano'] or ''} · ya pagado".strip(), "en_ruta": bool(r.get("en_ruta")),
                          "cobrar": float(r["delivery"] or 0) if not r["delivery_pagado"] else 0,
                          "indicaciones": indicaciones_cliente(con, r["cliente_id"], r["notas"])})
+    for f in filas:   # lo que el cliente debe de un pedido que no sale (un pack para después): se cobra en esta misma visita
+        if f["kind"] != "orden": f["tambien_cobrar"] = deudas_sin_entrega(con, f["cid"])
     return filas
 
 
@@ -6582,8 +6604,9 @@ def texto_ruta(filas, hoy):
         out.append(f"   {f['que_lleva']}")
         for t in f.get("indicaciones") or []: out.append(f"   📌 {t}")
         if f["cobrar"]: out.append(f"   COBRAR ${f['cobrar']:,.2f}" + (f" · por {f['cobrar_forma']}" if f.get("cobrar_forma") else ""))
+        for t in f.get("tambien_cobrar") or []: out.append(f"   COBRAR ${t['saldo']:,.2f} · {t['que']}")
         out.append("")
-    cobros = sum(f["cobrar"] for f in filas)
+    cobros = sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in filas)
     if cobros: out.append(f"Total a cobrar: ${cobros:,.2f}")
     return "\n".join(out).strip()
 
@@ -6645,7 +6668,7 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     efectivo = efectivo_que_tiene(con, d["nombre"])
     return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO, efectivo=efectivo, efectivo_total=round(sum(p["monto_usd"] or 0 for p in efectivo), 2),
                   CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,
-                  tarifas_dil=tarifas_diligencia(con), ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] for f in ruta),
+                  tarifas_dil=tarifas_diligencia(con), ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in ruta),
                   hist=hist, record=record)
 
 

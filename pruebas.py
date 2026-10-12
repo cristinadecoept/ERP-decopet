@@ -171,6 +171,19 @@ def _():
     A.entregar_pack(con, 1, 1, hoy, "1", "", "", "0", ""); con.commit()
     assert con.execute("SELECT direccion_programada FROM packs WHERE id=1").fetchone()[0] is None
 
+@prueba("El '$ por cobrar' del Inicio lleva a una lista con esas mismas órdenes (también las que se pagan al entregar)")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Cliente X','Cliente')")
+    hoy = datetime.date.today().isoformat()
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,origen_excel,creado_en) VALUES (1,'#1',1,'pendiente','contra_entrega',60,0,? || ' 10:00')", (hoy,))
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,origen_excel,creado_en) VALUES (2,'#2',1,'pendiente','abonada',20,0,? || ' 10:00')", (hoy,))
+    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (2,'Zelle',15,15,'USD',?,'confirmado')", (hoy,))
+    con.commit()
+    assert A.por_cobrar_de_hoy(con, hoy) == 65
+    filas = A.cargar_ordenes(con, {"vista": "por_cobrar_hoy", "estado": "todas"}, "admin")
+    assert sorted(o["numero"] for o in filas) == ["#1", "#2"], [o["numero"] for o in filas]
+
 @prueba("El delivery cobrado hoy de un pack viejo entra al Registro de ventas hoy, con la forma con que se cobró")
 def _():
     con = base_limpia()
@@ -1569,6 +1582,28 @@ def _():
         cn = {r[1] for r in nueva.execute(f"PRAGMA table_info({t})")}
         faltan_c += [f"{t}.{c}" for c in cv - cn]
     assert not faltan_c, f"columnas que faltarían: {sorted(faltan_c)}"
+
+@prueba("Pack para después sin pagar: el cobro sale junto con la entrega de su repuesto prepagado (Operaciones y lista del despachador)")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); hoy = datetime.date.today().isoformat(); desp = A.DESPACHADORES[0]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Darwin Prueba','Darwin')").lastrowid
+        pid = con.execute("INSERT INTO productos (sku,nombre,categoria,tipo,activo,precio) VALUES ('PACK3-X','Pack 3 Repuestos Prueba','repuesto','producto',1,60)").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,total,origen_excel) VALUES ('#PK1',?,'pendiente','contra_entrega',60,60,0)", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,'Pack 3 Repuestos Prueba',1,60,0,60)", (oid, pid))
+        con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio) VALUES (?,?,?,3,0)", (cid, oid, pid))
+        con.execute("INSERT INTO repuestos_prepagados (cliente_id,tamano,fecha_programada,tipo_entrega,despachador,delivery,delivery_pagado) VALUES (?,'Mediano',?,'delivery',?,5,0)", (cid, hoy, desp))
+        con.commit()
+        sesion_de(c, "admin"); h = c.get("/operaciones?cola=hoy").text
+        assert f'action="/ordenes/{oid}/cobrar' in h and 'value="60.00"' in h and "Pack 3 Repuestos Prueba" in h, "el cobro del pack no sale en Operaciones"
+        con.execute("UPDATE ordenes SET estado_pago='sin_pago' WHERE id=?", (oid,)); con.commit()
+        h = c.get("/operaciones?cola=hoy&q=Darwin").text
+        assert h.count(f'action="/ordenes/{oid}/cobrar') == 1, "sin pagar: el pack sale una sola vez, junto con la entrega"
+        c2 = sqlite3.connect(A.DB); c2.row_factory = sqlite3.Row
+        filas = [f for f in A.ruta_despachador(c2, desp, hoy) if f["cid"] == cid]
+        txt = A.texto_ruta(filas, datetime.date.today())
+        assert "COBRAR $5.00" in txt and "COBRAR $60.00 · Pack 3 Repuestos Prueba" in txt and "Total a cobrar: $65.00" in txt, txt
+        c2.close(); con.close()
 
 
 print()

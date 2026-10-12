@@ -43,7 +43,7 @@
  <td style="width:130px"><b>{{ f.quien }}</b>{% if f.telefono %}<div class="mini mono">{{ f.telefono }}</div>{% endif %}</td>
  <td>{{ f.direccion or '—' }}{% if f.maps %} <a href="{{ f.maps }}" target="_blank" rel="noreferrer" class="mini">mapa</a>{% endif %}</td>
  <td class="mini">{{ f.que_lleva }}</td>
- <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}</td>
+ <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}{% for t in f.tambien_cobrar or [] %}<div><b class="ln-alerta">+ {{ t.saldo|usd }}</b> <span class="mini">{{ t.que }}</span></div>{% endfor %}</td>
 </tr>{% endfor %}
 {% if ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td></tr>{% endif %}</table>
 <div class="ruta-b">
