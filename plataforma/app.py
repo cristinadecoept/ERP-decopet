@@ -6434,6 +6434,23 @@ def mis_entregas_confirmar_pago(request: Request, pid: int, con=Depends(db)):
     return RedirectResponse("/mis-entregas", status_code=303)
 
 
+def cobro_en_visita(con, oid, monto, forma, pago, uid):
+    """Lo que el despachador cobró de otro pedido del cliente (un pack para después) al llevarle su repuesto.
+    Efectivo: entra confirmado. Zelle, Pago Móvil…: queda por revisar hasta que Cristina vea que llegó."""
+    tasa = tasa_hoy(con)["valor"] or 0; en_bs = es_bolivares(forma) and tasa
+    hoy = datetime.date.today().isoformat()
+    con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,fecha,estado,confirmado_por,confirmado_en)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (oid, forma, monto, round(monto * tasa, 2) if en_bs else monto, "VES" if en_bs else "USD", tasa if en_bs else None,
+                 caja_de(forma), hoy, pago,
+                 uid if pago == "confirmado" else None, datetime.datetime.now().strftime("%Y-%m-%d %H:%M") if pago == "confirmado" else None))
+    o = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+    con.execute("UPDATE ordenes SET estado_pago=? WHERE id=?", ("por_confirmar" if pago != "confirmado" else estado_pago_de(pagado, o["total"]), oid))
+    if pago == "confirmado": fijar_fecha_pago(con, oid)
+    registrar(con, oid, uid, "pago", f"Cobrado al llevarle su repuesto: {fmt_usd(monto)} por {forma}" + ("" if pago == "confirmado" else " · por revisar"))
+
+
 @app.post("/mis-entregas/retiro/{kind}/{rid}/{accion}")
 def mis_entregas_retiro(request: Request, kind: str, rid: int, accion: str, forma_recibida: str = Form(""), monto_recibido: str = Form(""),
                         fue: str = Form(""), motivo: str = Form(""), forma_otro: str = Form(""), con=Depends(db)):
@@ -6454,12 +6471,20 @@ def mis_entregas_retiro(request: Request, kind: str, rid: int, accion: str, form
         efectivo = not despues and (forma_recibida or "Efectivo").startswith("Efectivo")
         forma = caja_efectivo(con) if efectivo else (forma_recibida if not despues else "")
         pago = None if despues else ("confirmado" if efectivo else "por_confirmar")   # Zelle, Pago Móvil…: Cristina confirma que llegó
-        monto = (float(cifra(monto_recibido) or 0) if str(monto_recibido).strip() else debe) if not despues else debe
+        deudas = deudas_sin_entrega(con, k["cliente_id"])   # un pack para después sin pagar: se cobra en esta misma visita
+        total = round(debe + sum(t["saldo"] for t in deudas), 2)
+        recibido = (float(cifra(monto_recibido) or 0) if str(monto_recibido).strip() else total) if not despues else 0.0
+        monto = min(recibido, debe) if not despues else debe   # primero el delivery de esta entrega, lo demás a lo que debe
+        resto = round(recibido - monto, 2) if not despues else 0.0
         antes = con.execute("SELECT COALESCE(MAX(id),0) FROM pagos").fetchone()[0]
         if kind == "pack":
             entregar_pack(con, rid, uid, cuantos=str(k["retiro_programado"] or 1), delivery_cobrado=str(monto if debe else 0), pago_forma=forma, pago=pago)
         else:
             entregar_prepagado(con, rid, uid, delivery_cobrado="1" if debe else "", delivery_forma=forma, pago=pago)
+        for t in deudas:
+            parte = round(min(resto, t["saldo"]), 2); resto = round(resto - parte, 2)
+            if parte <= 0: continue
+            cobro_en_visita(con, t["id"], parte, forma, pago, uid)
         if efectivo and guarda_efectivo(con, k[col]):   # el efectivo del delivery lo tiene el despachador hasta que lo entregue
             con.execute("UPDATE pagos SET lo_tiene=? WHERE id>? AND cuenta=? AND estado='confirmado'", (k[col], antes, forma))
     con.commit(); return RedirectResponse("/mis-entregas", status_code=303)

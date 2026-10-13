@@ -184,6 +184,34 @@ def _():
     filas = A.cargar_ordenes(con, {"vista": "por_cobrar_hoy", "estado": "todas"}, "admin")
     assert sorted(o["numero"] for o in filas) == ["#1", "#2"], [o["numero"] for o in filas]
 
+@prueba("El despachador marca entregado el repuesto prepagado y cobra $65: $5 al delivery y $60 al pack para después, que queda pagado y con sus 3 repuestos")
+def _():
+    con = base_limpia()
+    con.execute("INSERT INTO usuarios (id,nombre,rol) VALUES (2,'Juan','despachador')")
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Darwin X','Darwin')")
+    con.execute("INSERT INTO productos (id,sku,nombre,precio,activo) VALUES (5,'PACK3-M','Pack 3 Repuestos Mediano',60,1)")
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES (1,'#1',1,'entregada','pagada',120,2)")
+    hoy = datetime.date.today().isoformat()
+    con.execute("INSERT INTO repuestos_prepagados (id,orden_id,cliente_id,tamano,fecha_programada,tipo_entrega,despachador,delivery,delivery_pagado) VALUES (1,1,1,'Mediano',?,'delivery','Juan',5,0)", (hoy,))
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES (2,'#2',1,'pendiente','contra_entrega',60,0,'delivery')")
+    con.execute("INSERT INTO orden_lineas (orden_id,nombre,producto_id,cantidad,precio,total) VALUES (2,'Pack 3 Repuestos Mediano',5,1,60,60)")
+    con.execute("INSERT INTO packs (id,cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado) VALUES (1,1,2,5,'Mediano',3,0,'activo')")
+    con.commit()
+    class Pedido:   # lo mínimo que la ruta lee del pedido web: es Cristina (admin) marcando por el despachador
+        cookies = {}; headers = {}; url = type("u", (), {"path": "/mis-entregas"})()
+    viejo = (A.quien_es, A.rol_de, A.uid_de)
+    A.quien_es = lambda r: {"rol": "admin", "despachador": None}; A.rol_de = lambda r: "admin"; A.uid_de = lambda r: 1
+    try:
+        A.mis_entregas_retiro(Pedido(), "prep", 1, "entregado", forma_recibida="Efectivo USD", monto_recibido="65", fue="", motivo="", forma_otro="", con=con)
+    finally:
+        A.quien_es, A.rol_de, A.uid_de = viejo
+    o = con.execute("SELECT estado_pago FROM ordenes WHERE id=2").fetchone()
+    assert o["estado_pago"] == "pagada", dict(o)
+    assert con.execute("SELECT SUM(monto_usd) FROM pagos WHERE orden_id=2 AND estado='confirmado'").fetchone()[0] == 60
+    assert con.execute("SELECT entregado_en IS NOT NULL FROM repuestos_prepagados WHERE id=1").fetchone()[0] == 1
+    assert con.execute("SELECT COUNT(*) FROM entregas_repuesto WHERE pack_id=1").fetchone()[0] == 0   # el pack no se toca
+    assert A.deudas_sin_entrega(con, 1) == []
+
 @prueba("El delivery cobrado hoy de un pack viejo entra al Registro de ventas hoy, con la forma con que se cobró")
 def _():
     con = base_limpia()
@@ -1604,6 +1632,19 @@ def _():
         txt = A.texto_ruta(filas, datetime.date.today())
         assert "COBRAR $5.00" in txt and "COBRAR $60.00 · Pack 3 Repuestos Prueba" in txt and "Total a cobrar: $65.00" in txt, txt
         c2.close(); con.close()
+
+
+@prueba("Desde la orden abierta se puede registrar un cobro (Cristina sí; logística no ve plata)")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#CB1',(SELECT MIN(id) FROM clientes),'pendiente','abonada',65,0)").lastrowid
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Efectivo USD',5,5,'USD',date('now'),'confirmado')", (oid,)); con.commit()
+        sesion_de(c, "logistica"); assert "Registrar cobro" not in c.get(f"/ordenes/{oid}/panel").text
+        sesion_de(c, "admin"); h = c.get(f"/ordenes/{oid}/panel").text
+        assert "Registrar cobro" in h and 'value="60.00"' in h
+        c.post(f"/ordenes/{oid}/cobrar?estado=todas", data={"forma": "Efectivo USD", "monto_usd": "60"}, follow_redirects=False)
+        assert sqlite3.connect(A.DB).execute("SELECT estado_pago FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == "pagada"
 
 
 print()
