@@ -1150,8 +1150,9 @@ def inicio(request: Request, con=Depends(db)):
         "por_llevar": con.execute("""SELECT COUNT(*) FROM ordenes WHERE tipo_entrega='nacional' AND viaje_id IS NULL
                                      AND origen_excel=0 AND estado IN ('pendiente','en_ruta') AND """ + HAY_QUE_ENTREGAR("ordenes")).fetchone()[0],
     }
+    # lo que falta cobrar a clientes, también lo que se paga al entregar: así sale en el Inicio para cobrarlo
     deudas = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(total - (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado')),0) s
-                            FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado')""").fetchone()
+                            FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado','contra_entrega')""").fetchone()
     c["con_saldo"], c["saldo_total"] = deudas["n"], deudas["s"]
     c["personalizar"] = por_personalizar(con)
     c["incid_lista"] = [dict(r) for r in con.execute("""SELECT i.id, i.orden_id, i.tipo, i.descripcion, i.responsable, o.numero,
@@ -1450,7 +1451,7 @@ def cargar_ordenes(con, filtros, rol):
     args = []
     if filtros.get("estado") == "activas": sql += " AND o.estado NOT IN ('entregada','cancelada') AND " + HAY_QUE_ENTREGAR()
     elif filtros.get("estado") == "por_revisar": sql += " AND o.estado_pago='por_confirmar'"
-    elif filtros.get("estado") == "con_saldo": sql += " AND o.estado!='cancelada' AND o.estado_pago IN ('abonada','sin_pago','rechazado')"
+    elif filtros.get("estado") == "con_saldo": sql += " AND o.estado!='cancelada' AND o.estado_pago IN ('abonada','sin_pago','rechazado','contra_entrega')"
     elif filtros.get("estado") == "pack_pend": sql += """ AND EXISTS (SELECT 1 FROM packs k WHERE k.orden_id=o.id
         AND k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) > 0)"""
     elif filtros.get("estado") == "repuesto_pend": sql += " AND EXISTS (SELECT 1 FROM repuestos_prepagados rp WHERE rp.orden_id=o.id AND rp.entregado_en IS NULL)"
@@ -1495,7 +1496,7 @@ def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", form
     conteos["todas"] = sum(conteos.values())
     conteos["activas"] = sum(v for k, v in conteos.items() if k not in ("entregada", "cancelada", "todas"))
     conteos["por_revisar"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado_pago='por_confirmar'").fetchone()[0]
-    conteos["con_saldo"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado')").fetchone()[0]
+    conteos["con_saldo"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado','contra_entrega')").fetchone()[0]
     conteos["pack_pend"] = con.execute("""SELECT COUNT(DISTINCT k.orden_id) FROM packs k WHERE k.orden_id IS NOT NULL
         AND k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) > 0""").fetchone()[0]
     conteos["repuesto_pend"] = con.execute("SELECT COUNT(DISTINCT orden_id) FROM repuestos_prepagados WHERE orden_id IS NOT NULL AND entregado_en IS NULL").fetchone()[0]

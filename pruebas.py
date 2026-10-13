@@ -1634,6 +1634,17 @@ def _():
         c2.close(); con.close()
 
 
+@prueba("Un pedido que se paga al entregar sale en el Inicio para cobrar, y en 'Con saldo pendiente' tiene su botón de cobro")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#CE1',(SELECT MIN(id) FROM clientes),'en_ruta','contra_entrega',100,0,'delivery')").lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        assert "#CE1" in c.get("/operaciones?cola=con_saldo").text and f"/ordenes/{oid}/cobrar" in c.get("/operaciones?cola=con_saldo").text
+        assert "con saldo pendiente" in c.get("/inicio").text
+
+
 @prueba("Desde la orden abierta se puede registrar un cobro (Cristina sí; logística no ve plata)")
 def _():
     with erp_de_prueba() as c:
