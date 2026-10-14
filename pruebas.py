@@ -1658,6 +1658,25 @@ def _():
         assert sqlite3.connect(A.DB).execute("SELECT estado_pago FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == "pagada"
 
 
+@prueba("Forma de pago con monto 0: la orden queda sin pagar, recuerda cómo va a pagar y el cobro ya trae esa forma")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        cid = con.execute("SELECT MIN(id) FROM clientes").fetchone()[0]
+        fo = con.execute("SELECT nombre FROM cuentas WHERE activa=1 AND COALESCE(cobra,1)=1 AND nombre NOT LIKE 'Efectivo%' ORDER BY orden, codigo LIMIT 1 OFFSET 1").fetchone()[0]
+        sesion_de(c, "admin")
+        c.post("/ordenes/nueva", data={"cliente_id": str(cid), "canal": "whatsapp", "producto_id": str(p), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+               "tipo_entrega": "pickup", "pago_forma": fo, "pago_monto": "0", "pago_ref": "", "fecha_pago": "2026-10-08"})
+        o = con.execute("SELECT * FROM ordenes WHERE cliente_id=? ORDER BY id DESC LIMIT 1", (cid,)).fetchone()
+        assert (o["forma_pago_prevista"], o["estado_pago"], o["fecha_pago"]) == (fo, "sin_pago", None), dict(o)
+        assert not con.execute("SELECT 1 FROM pagos WHERE orden_id=?", (o["id"],)).fetchone(), "no entró plata"
+        assert o["creado_en"][:10] == datetime.date.today().isoformat(), "sin pago, la orden no se fecha con la fecha de pago"
+        h = c.get(f"/ordenes/{o['id']}/panel").text
+        assert f'<option value="{fo}" selected>' in h, "el cobro ya trae la forma con que va a pagar"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

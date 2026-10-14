@@ -2319,6 +2319,9 @@ async def crear_orden(request: Request, con=Depends(db)):
         if fo == SALDO_FAVOR:
             usa = round(min(mo, disponible), 2); disponible -= usa; pagos_in[i] = (fo, usa, re_)
     pagos_in = [p for p in pagos_in if p[1] > 0]
+    # forma elegida con monto 0: todavía no pagó, pero ya se sabe cómo va a pagar
+    formas_elegidas = list(dict.fromkeys([fo for fo, _, _ in pagos_in] + [fo for fo in f.getlist("pago_forma") if fo]))
+    fp_in = (f.get("fecha_pago") or "").strip() if pagos_in else ""   # no pagó nada: la fecha de pago la pone el cobro
     cur = con.execute("""INSERT INTO ordenes (numero,tipo,cliente_id,canal,creada_por,ref_externa,estado,estado_pago,subtotal,descuento,motivo_descuento,iva,delivery,total,tasa_bcv,comision,
                          tipo_entrega,direccion,zona,ciudad,receptor_nombre,receptor_telefono,fecha_prometida,franja,notas_entrega,notas,costo_productos,forma_pago_prevista,modalidad_envio,maps)
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -2326,7 +2329,7 @@ async def crear_orden(request: Request, con=Depends(db)):
                        "pagada", subtotal, descuento, f.get("motivo_descuento") or None, iva, delivery, total, tasa,
                        round(total * 0.06, 2) if canal == "cashea" else 0, f.get("tipo_entrega") or None, f.get("direccion") or None, f.get("zona") or None, f.get("ciudad") or None,
                        f.get("receptor_nombre") or None, f.get("receptor_telefono") or None, fecha_auto, f.get("franja") or None, f.get("notas_entrega") or None, f.get("notas") or None, costo,
-                       " + ".join(dict.fromkeys(fo for fo, _, _ in pagos_in)) or ("BNC" if canal == "cashea" else None), f.get("modalidad_envio") or ("cobro_destino" if f.get("tipo_entrega") == "nacional" else None), f.get("maps") or None))
+                       " + ".join(formas_elegidas) or ("BNC" if canal == "cashea" else None), f.get("modalidad_envio") or ("cobro_destino" if f.get("tipo_entrega") == "nacional" else None), f.get("maps") or None))
     oid = cur.lastrowid
     for li, (p, c, perso, color, malla, extras, total_linea, prepago) in enumerate(lineas):
         cur_l = con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,personalizacion,color,malla,extras,total) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -2360,7 +2363,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     if f.get("status") == "entregada":
         fe = (f.get("fecha_entrega") or hoy_d.isoformat()).strip()
         con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=?, fecha_prometida=? WHERE id=?", (fe, fe, oid)); registrar(con, oid, uid, "estado", f"Entregada el {fe} (registrada al crear)")
-    fp = (f.get("fecha_pago") or "").strip()   # vacía = contra entrega: se llena sola el día que se entrega
+    fp = fp_in   # vacía = contra entrega o todavía no pagó: se llena sola el día que se cobra
     con.execute("UPDATE ordenes SET fecha_pago=? WHERE id=?", (fp or None, oid))
     if fp and fp != hoy_d.isoformat():   # fecha de pago distinta a hoy: la orden se fecha ese día (como en Airtable)
         con.execute("UPDATE ordenes SET creado_en=? || ' 12:00:00', fecha_prometida=COALESCE(fecha_prometida, ?) WHERE id=?", (fp, fp, oid))
