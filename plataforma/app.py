@@ -5239,6 +5239,21 @@ def produccion_cerrar(request: Request, pid: int, con=Depends(db)):
     return volver_produccion(con, pid)
 
 
+@app.post("/produccion/{pid}/aceptar-demas")
+def produccion_aceptar_demas(request: Request, pid: int, con=Depends(db)):
+    """Llegaron más de los que pediste porque se lo pediste después al proveedor: la cantidad sube a lo que llegó
+    y el costo sube en proporción (lo que le debes)."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    r = con.execute("SELECT cantidad, recibido, costo FROM produccion WHERE id=?", (pid,)).fetchone()
+    if r and r["cantidad"] and (r["recibido"] or 0) > r["cantidad"]:
+        costo = round(r["costo"] / r["cantidad"] * r["recibido"], 2) if r["costo"] is not None else None
+        con.execute("UPDATE produccion SET cantidad=?, costo=? WHERE id=?", (r["recibido"], costo, pid))
+        ab = con.execute("SELECT COALESCE(SUM(monto),0) FROM abonos_produccion WHERE produccion_id=?", (pid,)).fetchone()[0]
+        con.execute("UPDATE produccion SET pagado=? WHERE id=?", (1 if costo is not None and ab >= costo - 0.009 else 0, pid))
+        con.commit()
+    return volver_produccion(con, pid)
+
+
 def proveedores_que_deben(con):
     """Pedidos donde se pagó más de lo que llegó: el proveedor te debe la diferencia hasta que te la devuelva."""
     return [dict(r) for r in con.execute("""SELECT pr.id, COALESCE(pr.pieza, p.nombre) pieza, pr.responsable, pr.faltaron,

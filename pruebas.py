@@ -1745,6 +1745,24 @@ def _():
         con.close()
 
 
+@prueba("Pedido a proveedor que llegó con más de lo pedido: Cristina lo acepta y suben la cantidad y lo que se le debe")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pid = con.execute("""INSERT INTO produccion (cantidad,recibido,fecha_pedido,responsable,costo,estado,pieza,tipo_pedido)
+                             VALUES (10,15,'2026-10-12','Yovanny Sánchez',30,'recibido','Grama','proveedor')""").lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        assert f"/produccion/{pid}/aceptar-demas" in c.get("/produccion?tipo=proveedor&ver=todas").text, "sale el aviso con su botón"
+        sesion_de(c, "taller"); c.post(f"/produccion/{pid}/aceptar-demas", follow_redirects=False)
+        assert con.execute("SELECT cantidad FROM produccion WHERE id=?", (pid,)).fetchone()[0] == 10, "el taller no lo acepta"
+        sesion_de(c, "admin"); c.post(f"/produccion/{pid}/aceptar-demas", follow_redirects=False)
+        r = con.execute("SELECT cantidad, costo, pagado FROM produccion WHERE id=?", (pid,)).fetchone()
+        assert tuple(r) == (15, 45.0, 0), tuple(r)
+        assert f"/produccion/{pid}/aceptar-demas" not in c.get("/produccion?tipo=proveedor&ver=todas").text, "ya aceptado: no sale más"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
