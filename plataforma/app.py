@@ -5703,9 +5703,10 @@ def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
 
 
 @app.post("/packs/{pid}/campo")
-def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), volver: str = Form(""), con=Depends(db)):
-    """Marcar en ruta un retiro de pack (o devolverlo si se tocó sin querer)."""
+def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), volver: str = Form(""), con=Depends(db)):
+    """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
     if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
+    if despachador is not None: con.execute("UPDATE packs SET despachador_programado=? WHERE id=?", (despachador.strip() or None, pid))
     if en_ruta: con.execute("UPDATE packs SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, pid))
     con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
 

@@ -1677,6 +1677,29 @@ def _():
         con.close()
 
 
+@prueba("Entrega de pack en Operaciones: se le cambia el despachador desde la lista, y marcarla en ruta no se lo borra")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Patricia Prueba','Patricia')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#PK1',?,'entregada','pagada',72,0)", (cid,)).lastrowid
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,3,1)", (cid, oid)).lastrowid
+        con.commit()
+        A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="",
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+        sesion_de(c, "logistica")
+        assert f'action="/packs/{pid}/campo"' in c.get("/operaciones").text, "la entrega del pack tiene su lista de despachadores"
+        c.post(f"/packs/{pid}/campo", data={"despachador": "Ingrid", "volver": "/operaciones"}, follow_redirects=False)
+        assert con.execute("SELECT despachador_programado FROM packs WHERE id=?", (pid,)).fetchone()[0] == "Ingrid"
+        c.post(f"/packs/{pid}/campo", data={"en_ruta": "1", "volver": "/operaciones"}, follow_redirects=False)
+        assert con.execute("SELECT despachador_programado, en_ruta FROM packs WHERE id=?", (pid,)).fetchone()[:] == ("Ingrid", 1)
+        sesion_de(c, "taller")
+        c.post(f"/packs/{pid}/campo", data={"despachador": "Juan"}, follow_redirects=False)
+        assert con.execute("SELECT despachador_programado FROM packs WHERE id=?", (pid,)).fetchone()[0] == "Ingrid", "el taller no coordina"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
