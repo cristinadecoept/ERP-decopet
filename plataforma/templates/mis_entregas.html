@@ -60,8 +60,8 @@
     <input type="hidden" name="estado" value="entregada">
     {% set cobrar_todo = f.cobrar + ((f.tambien_cobrar or [])|sum(attribute='saldo')) %}{% if cobrar_todo %}<input type="hidden" name="moneda_recibida" value="USD">
      <label style="margin-top:0">¿Cómo pagó? <span class="mini">falta pagar {{ cobrar_todo|usd }}{% if f.cobrar_forma %} · dijo que por {{ f.cobrar_forma }}{% endif %}</span></label>
-     <select name="forma_recibida" onchange="this.form.querySelector('.me-monto').hidden=this.value==='despues';this.form.querySelector('.me-otro').hidden=this.value!=='Otro'">
-      <option value="Efectivo USD">Efectivo</option><option>Zelle</option><option>Binance</option><option>Pago Móvil</option><option>Otro</option>
+     <select name="forma_recibida" required onchange="this.form.querySelector('.me-monto').hidden=this.value==='despues';this.form.querySelector('.me-otro').hidden=this.value!=='Otro'">
+      <option value="" selected disabled>Elegir…</option><option value="Efectivo USD">Efectivo</option><option>Zelle</option><option>Binance</option><option>Pago Móvil</option><option>Otro</option>
       <option value="despues">No pagó · se le cobra después</option></select>
      <div class="me-otro" hidden><label>¿Cuál?</label><input name="forma_otro" placeholder="ej. PayPal, transferencia…"></div>
      <div class="me-monto"><label>¿Cuánto?</label><div class="cf-in"><span class="mini">$</span><input name="monto_recibido" inputmode="decimal" value="{{ '%g'|format(cobrar_todo) }}" style="width:110px"></div>

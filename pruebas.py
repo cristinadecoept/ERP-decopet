@@ -1763,6 +1763,23 @@ def _():
         con.close()
 
 
+@prueba("Despachador: al marcar entregado tiene que elegir cómo pagó (no viene 'Efectivo' puesto); corregir un efectivo a otra forma le quita esa plata de la mano")
+def _():
+    txt = (A.BASE / "templates" / "mis_entregas.html").read_text()
+    assert '<select name="forma_recibida" required' in txt and '<option value="" selected disabled>Elegir…</option>' in txt
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Patricia Prueba','Patricia')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#EF1',?,'entregada','pagada',77,0)", (cid,)).lastrowid
+        pid = con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado,lo_tiene)
+                             VALUES (?,'Efectivo USD',5,5,'USD',date('now'),'confirmado','Ingrid')""", (oid,)).lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        c.post(f"/ordenes/{oid}/pago/{pid}/corregir", data={"monto_usd": "5", "forma": "Zelle"}, follow_redirects=False)
+        assert tuple(con.execute("SELECT forma, lo_tiene FROM pagos WHERE id=?", (pid,)).fetchone()) == ("Zelle", None)
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

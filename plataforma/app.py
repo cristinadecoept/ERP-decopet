@@ -1883,6 +1883,8 @@ async def corregir_pago(request: Request, oid: int, pid: int, con=Depends(db)):
         hora = (p["fecha"] or "")[10:] if (p["fecha"] or "")[:10] == fecha else ""
         con.execute("""UPDATE pagos SET monto_usd=?, monto_real=?, moneda=?, tasa=?, forma=?, cuenta=?, fecha=?, referencia=? WHERE id=?""",
                     (monto, real, "VES" if en_bs else "USD", tasa if en_bs else None, forma, caja_de(forma) or p["cuenta"], fecha + hora, ref, pid))
+        if not (forma or "").startswith("Efectivo"):   # ya no fue en efectivo: el despachador no tiene esa plata en la mano
+            con.execute("UPDATE pagos SET lo_tiene=NULL WHERE id=?", (pid,))
         cambios = [f"{n}: {a} → {b}" for n, a, b in (("monto", fmt_usd(p["monto_usd"] or 0), fmt_usd(monto)), ("forma", p["forma"], forma),
                                                      ("fecha", (p["fecha"] or "")[:10], fecha), ("referencia", p["referencia"] or "—", ref or "—")) if str(a) != str(b)]
         if cambios: registrar(con, oid, uid_de(request), "pago", "Pago corregido · " + "; ".join(cambios))
