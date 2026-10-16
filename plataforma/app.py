@@ -2025,6 +2025,20 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     con.commit(); return volver(oid, request)
 
 
+@app.post("/ordenes/{oid}/fecha")
+def reprogramar_orden(request: Request, oid: int, fecha: str = Form(""), con=Depends(db)):
+    """'Otro día' desde Operaciones: una orden que todavía no salió pasa a otra fecha. Lo demás de la entrega queda igual."""
+    if "reprogramar" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    o = con.execute("SELECT estado, fecha_prometida FROM ordenes WHERE id=?", (oid,)).fetchone()
+    fecha = fecha.strip()
+    if o and o["estado"] == "pendiente" and fecha and fecha != o["fecha_prometida"]:
+        con.execute("UPDATE ordenes SET fecha_prometida=? WHERE id=?", (fecha, oid))
+        f = fmt_fecha(fecha)
+        registrar(con, oid, uid_de(request), "entrega", f"Reprogramada para {f if f in ('hoy', 'mañana') else 'el ' + f}")
+        con.commit()
+    return volver(oid, request)
+
+
 @app.post("/ordenes/{oid}/revertir")
 def revertir_estado(request: Request, oid: int, con=Depends(db)):
     """Vuelve la orden a Pendiente (deshace 'En ruta' o 'Entregado'). No toca los pagos."""

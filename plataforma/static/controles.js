@@ -242,3 +242,20 @@ function lugarCiudad(inp) {
   const sel = inp.closest('.lugar').querySelector('select');
   if (sel.value !== o.dataset.e) { sel.value = o.dataset.e; sel.dispatchEvent(new Event('change', { bubbles: true })); }
 }
+
+// El detalle de una caja (Cash flow, Cajas): se abre fijo sobre la pantalla. Así el panel que se desliza
+// no lo corta ni salta para arriba al pasar el mouse (y la nota se cerraba sola).
+function ubicarDetalleCaja(d) {
+  const p = d.querySelector('.cf-det-pop');
+  if (!p || !p.offsetWidth) return;
+  const r = d.getBoundingClientRect(), m = 8;
+  const x = Math.max(m, Math.min(r.left, innerWidth - p.offsetWidth - m));
+  let y = r.bottom + 6;
+  if (y + p.offsetHeight > innerHeight - m) y = Math.max(m, r.top - p.offsetHeight - 6);
+  p.style.left = x + 'px'; p.style.top = y + 'px'; p.style.right = 'auto';
+}
+['mouseover', 'focusin'].forEach(ev => document.addEventListener(ev, e => {
+  const d = e.target.closest && e.target.closest('.cf-det');
+  if (d) { ubicarDetalleCaja(d); requestAnimationFrame(() => ubicarDetalleCaja(d)); }
+}));
+document.addEventListener('scroll', () => document.querySelectorAll('.cf-det:hover,.cf-det:focus-within').forEach(ubicarDetalleCaja), true);

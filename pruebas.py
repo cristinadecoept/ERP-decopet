@@ -1803,6 +1803,36 @@ def _():
         con.close()
 
 
+@prueba("Operaciones: una orden normal que no ha salido se pasa a otro día desde su fila ('Otro día'); en ruta ya no")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat(); manana = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        p = con.execute("SELECT id, nombre, precio, costo FROM productos WHERE tipo='producto' AND categoria NOT IN ('opcion','kit') LIMIT 1").fetchone()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Reprogramada Prueba','Reprogramada')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida,despachador)
+                             VALUES ('#OD1',?,'pendiente','pagada',24,0,'delivery',?,'Juan')""", (cid, hoy)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,?,?,?)", (oid, p["id"], p["nombre"], p["precio"], p["costo"], p["precio"]))
+        con.commit()
+        sesion_de(c, "logistica")
+        assert f'action="/ordenes/{oid}/fecha' in c.get("/operaciones").text
+        c.post(f"/ordenes/{oid}/fecha?volver=/operaciones", data={"fecha": manana}, follow_redirects=False)
+        assert tuple(con.execute("SELECT fecha_prometida, despachador FROM ordenes WHERE id=?", (oid,)).fetchone()) == (manana, "Juan")
+        con.execute("UPDATE ordenes SET estado='en_ruta' WHERE id=?", (oid,)); con.commit()
+        c.post(f"/ordenes/{oid}/fecha?volver=/operaciones", data={"fecha": hoy}, follow_redirects=False)
+        assert con.execute("SELECT fecha_prometida FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == manana, "en ruta no se reprograma así"
+        sesion_de(c, "taller"); con.execute("UPDATE ordenes SET estado='pendiente' WHERE id=?", (oid,)); con.commit()
+        c.post(f"/ordenes/{oid}/fecha", data={"fecha": hoy}, follow_redirects=False)
+        assert con.execute("SELECT fecha_prometida FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == manana, "el taller no reprograma"
+        con.close()
+
+@prueba("Cash flow: el detalle de una caja flota sobre la pantalla (no cambia el panel, que al deslizarse lo cerraba)")
+def _():
+    css = (A.BASE / "static" / "estilo.css").read_text(); js = (A.BASE / "static" / "controles.js").read_text()
+    assert ".cf-lado:has(.cf-det:hover)" not in css, "cambiar el panel al pasar el mouse lo devolvía arriba y la nota se cerraba"
+    assert ".cf-det-pop{position:fixed}" in css and "function ubicarDetalleCaja" in js
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
