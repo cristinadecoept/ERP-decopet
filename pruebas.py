@@ -1780,6 +1780,29 @@ def _():
         con.close()
 
 
+@prueba("Operaciones: una entrega de pack se pasa a otro día desde su fila ('Otro día'), sin tocar despachador ni delivery")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat(); manana = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Alexandra Prueba','Alexandra')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#RP1',?,'entregada','pagada',96,0)", (cid,)).lastrowid
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,4,2)", (cid, oid)).lastrowid
+        con.commit()
+        A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery_fuera", despachador="Cristina", retiro="1", delivery="10", delivery_pagado="antes", notas="", pago_forma="",
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+        sesion_de(c, "logistica")
+        h = c.get("/operaciones").text
+        assert f'action="/packs/{pid}/campo" class="cobro-f"' in h and "Otro día" in h
+        c.post(f"/packs/{pid}/campo", data={"fecha": manana, "volver": "/operaciones"}, follow_redirects=False)
+        k = con.execute("SELECT fecha_programada, despachador_programado, delivery_programado, delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()
+        assert tuple(k) == (manana, "Cristina", 10.0, 1), tuple(k)
+        assert "Alexandra" not in c.get("/operaciones?cola=hoy").text and "Alexandra" in c.get("/operaciones?cola=manana").text
+        sesion_de(c, "taller"); c.post(f"/packs/{pid}/campo", data={"fecha": hoy}, follow_redirects=False)
+        assert con.execute("SELECT fecha_programada FROM packs WHERE id=?", (pid,)).fetchone()[0] == manana, "el taller no reprograma"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

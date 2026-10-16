@@ -5530,9 +5530,10 @@ def prepagado_con_pedido(request: Request, rid: int, volver: str = Form(""), con
 
 
 @app.post("/prepagados/{rid}/campo")
-def prepagado_campo(request: Request, rid: int, despachador: str = Form(""), agencia: str = Form(""), en_ruta: str = Form(""), volver: str = Form(""), con=Depends(db)):
-    """Ajustes rápidos desde Operaciones: quién lo lleva, por cuál agencia, o marcarlo en ruta."""
+def prepagado_campo(request: Request, rid: int, despachador: str = Form(""), agencia: str = Form(""), en_ruta: str = Form(""), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
+    """Ajustes rápidos desde Operaciones: quién lo lleva, por cuál agencia, otro día, o marcarlo en ruta."""
     if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
+    if fecha.strip(): reprogramar_retiro(con, "prep", rid, fecha.strip(), uid_de(request))
     if despachador: con.execute("UPDATE repuestos_prepagados SET despachador=? WHERE id=?", (despachador, rid))
     if agencia: con.execute("UPDATE repuestos_prepagados SET agencia=? WHERE id=?", (agencia, rid))
     if en_ruta: con.execute("UPDATE repuestos_prepagados SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, rid))
@@ -5693,6 +5694,17 @@ def pack_entregar(request: Request, pid: int, fecha: str = Form(""), cuantos: st
     con.commit(); return RedirectResponse(volver or "/prepagados", status_code=303)
 
 
+def reprogramar_retiro(con, tipo, rid, fecha, uid):
+    """Un retiro de pack o un prepagado que todavía no salió pasa a otro día. Lo demás (despachador, delivery, dirección) queda igual."""
+    tabla = "packs" if tipo == "pack" else "repuestos_prepagados"
+    k = con.execute(f"SELECT orden_id, fecha_programada FROM {tabla} WHERE id=?", (rid,)).fetchone()
+    if not k or k["fecha_programada"] == fecha: return
+    con.execute(f"UPDATE {tabla} SET fecha_programada=?, en_ruta=0 WHERE id=?", (fecha, rid))
+    if k["orden_id"]:
+        f = fmt_fecha(fecha)
+        registrar(con, k["orden_id"], uid, "estado", f"Entrega del repuesto reprogramada para {f if f in ('hoy', 'mañana') else 'el ' + f}")
+
+
 def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
     """Un retiro de pack o un prepagado iba en ruta y no se entregó. Vuelve a programado; si el despachador llegó
     al sitio se le paga el viaje. Sin fecha nueva queda por programar otra vez."""
@@ -5720,9 +5732,10 @@ def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
 
 
 @app.post("/packs/{pid}/campo")
-def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), volver: str = Form(""), con=Depends(db)):
-    """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
+def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
+    """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, otro día, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
     if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
+    if fecha.strip(): reprogramar_retiro(con, "pack", pid, fecha.strip(), uid_de(request))
     if despachador is not None: con.execute("UPDATE packs SET despachador_programado=? WHERE id=?", (despachador.strip() or None, pid))
     if en_ruta: con.execute("UPDATE packs SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, pid))
     con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
