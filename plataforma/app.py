@@ -5711,6 +5711,25 @@ def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador:
     con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
 
 
+@app.post("/packs/{rid}/cobrar-delivery")
+@app.post("/prepagados/{rid}/cobrar-delivery")
+def retiro_cobrar_delivery(request: Request, rid: int, forma: str = Form(""), monto_usd: str = Form(""), referencia: str = Form(""), volver: str = Form(""), con=Depends(db)):
+    """El cliente pagó el delivery de un retiro de pack o de un repuesto prepagado antes de que se lo lleven:
+    entra a su orden hoy y al entregar ya no se le cobra. Al despachador se le sigue pagando su delivery."""
+    rol = rol_de(request); ir = RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
+    if "confirmar_pago" not in PERMISOS[rol] and "ver_cobros" not in PERMISOS[rol]: return ir
+    kind = "pack" if request.url.path.startswith("/packs/") else "prep"
+    tabla, col, concepto = ("packs", "delivery_programado", "Delivery entrega de pack") if kind == "pack" else ("repuestos_prepagados", "delivery", "Delivery repuesto")
+    k = con.execute(f"SELECT orden_id, {col} dl, delivery_pagado FROM {tabla} WHERE id=?", (rid,)).fetchone()
+    monto = float(cifra(monto_usd) or 0)
+    if k and k["orden_id"] and not k["delivery_pagado"] and monto > 0 and forma:
+        cobro_extra(con, k["orden_id"], concepto, monto, forma, datetime.date.today().isoformat(), uid_de(request), referencia)
+        con.execute(f"UPDATE {tabla} SET delivery_pagado=1 WHERE id=?", (rid,))
+        if kind != "pack": con.execute("UPDATE repuestos_prepagados SET delivery_forma=? WHERE id=?", (forma, rid))
+        con.commit()
+    return ir
+
+
 @app.post("/packs/{pid}/no-recibio")
 def pack_no_recibio(request: Request, pid: int, fue: str = Form(""), motivo: str = Form(""), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
     if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/operaciones", status_code=303)

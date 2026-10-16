@@ -1700,6 +1700,33 @@ def _():
         con.close()
 
 
+@prueba("Entrega de pack con el delivery sin pagar: se cobra desde Operaciones antes de llevarla, entra a su orden y al entregar no se cobra otra vez")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Patricia Prueba','Patricia')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#PK2',?,'entregada','pagada',72,0)", (cid,)).lastrowid
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Zelle',72,72,'USD','2026-10-01','confirmado')", (oid,))
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,3,1)", (cid, oid)).lastrowid
+        con.commit()
+        A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="0", notas="", pago_forma="",
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+        sesion_de(c, "logistica")
+        assert f'action="/packs/{pid}/cobrar-delivery' in c.get("/operaciones").text, "logística ve el botón para cobrar el delivery"
+        c.post(f"/packs/{pid}/cobrar-delivery", data={"forma": "Zelle", "monto_usd": "5", "referencia": "123", "volver": "/operaciones"}, follow_redirects=False)
+        assert con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()[0] == 1
+        assert con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == 77
+        assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=? AND fecha=? AND monto_usd=5", (oid, hoy)).fetchone()[0] == 1, "entra como venta de hoy"
+        c.post(f"/packs/{pid}/cobrar-delivery", data={"forma": "Zelle", "monto_usd": "5"}, follow_redirects=False)   # doble clic: no cobra dos veces
+        assert con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == 77
+        assert f'action="/packs/{pid}/cobrar-delivery' not in c.get("/operaciones").text, "ya pagado: no sale el botón"
+        A.entregar_pack(con, pid, 1, hoy, "1", "", "", "5", "Efectivo USD"); con.commit()
+        assert con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == 77, "al entregar no se cobra otra vez"
+        assert [tuple(r) for r in con.execute("SELECT despachador, monto FROM viajes_despachador WHERE pack_id=?", (pid,))] == [("Juan", 5)], "al despachador sí se le paga"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
