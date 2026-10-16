@@ -7081,6 +7081,7 @@ def taller_hoy(request: Request, con=Depends(db)):
             pickups.append({"quien": (r["cliente"] or "").split()[0], "fecha": r["fecha_programada"], "falta_cobrar": 0, "tipo": "prepagado",
                             "que_lleva": f"1× Repuesto {r['tamano'] or ''} · ya pagado".strip(),
                             "accion": f"/taller/prepagado/{r['id']}/entregado"})
+    pickups = [p for p in pickups if (p["fecha"] or hoy) <= hoy]   # cada pick-up sale el día que le toca (y si se atrasa, sigue saliendo)
     pickups.sort(key=lambda x: (x["fecha"], x["quien"]))
 
     # Lo que se lleva cada despachador hoy: para que en el taller sepan qué entregarle cuando pasa por la casa.

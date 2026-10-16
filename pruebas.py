@@ -1727,6 +1727,24 @@ def _():
         con.close()
 
 
+@prueba("Taller: cada pick-up sale el día que le toca (y si se atrasa sigue saliendo); el de otro día no")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        d = lambda n: (datetime.date.today() + datetime.timedelta(days=n)).isoformat()
+        p = con.execute("SELECT id, nombre, precio, costo FROM productos WHERE tipo='producto' AND categoria NOT IN ('opcion','kit') LIMIT 1").fetchone()
+        for nombre, fecha in (("Hoyita", d(0)), ("Atrasadita", d(-2)), ("Jueveta", d(1))):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES (?,?)", (nombre + " Prueba", nombre)).lastrowid
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida) VALUES (?,?,'pendiente','pagada',24,0,'pickup',?)",
+                              ("#T" + nombre, cid, fecha)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,?,?,?)", (oid, p["id"], p["nombre"], p["precio"], p["costo"], p["precio"]))
+        con.commit()
+        sesion_de(c, "taller"); h = c.get("/taller").text
+        assert "Hoyita" in h and "Atrasadita" in h, "hoy y atrasados salen"
+        assert "Jueveta" not in h, "el de mañana todavía no"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
