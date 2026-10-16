@@ -2573,6 +2573,9 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     viajes = con.execute("""SELECT v.*, (SELECT COUNT(*) FROM ordenes o WHERE o.viaje_id=v.id) n_ordenes
                             FROM viajes_agencia v WHERE v.pagado=0 AND v.llevado_en IS NULL
                             ORDER BY v.fecha DESC, v.id DESC""").fetchall()
+    # cada viaje sale el día que toca llevarlo: en Hoy los de hoy y los atrasados; en Mañana u Otro día, los de ese día
+    dia_v = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
+    if dia_v: viajes = [x for x in viajes if ((x["fecha"] or hoy) <= hoy if cola == "hoy" else (x["fecha"] or hoy) == dia_v)]
     # en Operaciones solo lo que falta llevar. Lo ya llevado pasa a la ficha del despachador (ahí se deshace si hizo falta).
     # Pagarlo no es de aquí: se le paga el viernes con lo demás, desde su ficha de despachador.
     tarifas_ag = {a: tarifa_agencia(con, a) for a in AGENCIAS}

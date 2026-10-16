@@ -1833,6 +1833,29 @@ def _():
     assert ".cf-det-pop{position:fixed}" in css and "function ubicarDetalleCaja" in js
 
 
+@prueba("Viaje a la agencia: viene con la fecha del pedido y sale en Operaciones el día que toca llevarlo, no antes")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        lunes = (datetime.date.today() + datetime.timedelta(days=3)).isoformat()
+        p = con.execute("SELECT id, nombre, precio, costo FROM productos WHERE tipo='producto' AND categoria NOT IN ('opcion','kit') LIMIT 1").fetchone()
+        con.execute("UPDATE ordenes SET estado='entregada' WHERE tipo_entrega='nacional'")   # solo este pedido esperando la agencia
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,cedula) VALUES ('David Prueba','David','V12345678')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida,agencia)
+                             VALUES ('#VJ1',?,'pendiente','pagada',24,0,'nacional',?,'Zoom')""", (cid, lunes)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,?,?,?)", (oid, p["id"], p["nombre"], p["precio"], p["costo"], p["precio"]))
+        con.commit()
+        sesion_de(c, "admin")
+        h = c.get("/operaciones").text
+        f_ = [x for x in h.split('action="/viajes/crear"')[1:] if "#VJ1" in x.split("</form>")[0]][0].split("</form>")[0]
+        assert f'name="fecha" value="{lunes}"' in f_, "la fecha del viaje viene con la del pedido"
+        vid = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,monto,pedidos,usuario_id) VALUES (?,'Cristina','Zoom',5,1,1)", (lunes,)).lastrowid
+        con.execute("UPDATE ordenes SET viaje_id=? WHERE id=?", (vid, oid)); con.commit()
+        assert f"/viajes/{vid}/llevado" not in c.get("/operaciones?cola=hoy").text, "hoy no sale: es para el lunes"
+        assert f"/viajes/{vid}/llevado" in c.get(f"/operaciones?cola=dia&dia={lunes}").text and f"/viajes/{vid}/llevado" in c.get("/operaciones?cola=todo").text
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
