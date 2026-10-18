@@ -5457,7 +5457,7 @@ def seguimientos(request: Request, ver: str = "pendientes", tipo: str = "", q: s
 
 
 @app.post("/seguimientos/hecho")
-def seguimiento_hecho(request: Request, clave: str = Form(...), cliente_id: int = Form(...), tipo: str = Form(...), resultado: str = Form(...), nota: str = Form(""), fecha: str = Form(""), volver: str = Form("/seguimientos"), con=Depends(db)):
+def seguimiento_hecho(request: Request, clave: str = Form(...), cliente_id: int = Form(...), tipo: str = Form(...), resultado: str = Form(...), nota: str = Form(""), fecha: str = Form(""), volver: str = Form("/seguimientos"), corrige: str = Form(""), con=Depends(db)):
     hoy = datetime.date.today()
     hasta = None
     if resultado == "mensaje": hasta = (hoy + datetime.timedelta(days=REINTENTO_DIAS)).isoformat()
@@ -5470,6 +5470,9 @@ def seguimiento_hecho(request: Request, clave: str = Form(...), cliente_id: int 
             r = next((r for r in cargar_prepagados(con) if r["cliente_id"] == cliente_id and not r["fecha_programada"]), None)
             if r: con.execute("UPDATE repuestos_prepagados SET fecha_programada=?, notas=? WHERE id=?", (hasta, nota or None, r["id"]))
     prev = con.execute("SELECT intentos FROM seguimientos WHERE clave=?", (clave,)).fetchone()
+    if corrige and prev:   # se equivocó al marcarlo (desde Contactados): se corrige, sin contar otro intento ni cambiar cuándo se hizo
+        con.execute("UPDATE seguimientos SET resultado=?, nota=?, posponer_hasta=?, usuario_id=? WHERE clave=?", (resultado, nota or None, hasta, uid_de(request), clave))
+        con.commit(); return RedirectResponse(volver_seguro(volver) or "/seguimientos?ver=hechos", status_code=303)
     con.execute("INSERT OR REPLACE INTO seguimientos (cliente_id, tipo, clave, resultado, nota, posponer_hasta, usuario_id, intentos) VALUES (?,?,?,?,?,?,?,?)",
                 (cliente_id, tipo, clave, resultado, nota or None, hasta, uid_de(request), (prev["intentos"] if prev else 0) + 1))
     con.commit(); return RedirectResponse(volver, status_code=303)

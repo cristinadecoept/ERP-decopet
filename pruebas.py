@@ -1856,6 +1856,23 @@ def _():
         con.close()
 
 
+@prueba("Seguimientos: uno ya marcado se corrige desde Contactados (resultado, nota) sin contar otro intento ni cambiar cuándo se hizo")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Daniel Prueba','Daniel')").lastrowid
+        con.execute("""INSERT INTO seguimientos (cliente_id,tipo,clave,resultado,posponer_hasta,intentos,hecho_en)
+                       VALUES (?,'repuesto','rep-prueba-1','mensaje','2026-10-20',1,'2026-10-17 23:39:00')""", (cid,))
+        con.commit()
+        sesion_de(c, "admin")
+        assert 'name="corrige" value="1"' in c.get("/seguimientos?ver=hechos").text, "cada contactado tiene su 'Cambiar'"
+        c.post("/seguimientos/hecho", data={"clave": "rep-prueba-1", "cliente_id": str(cid), "tipo": "repuesto", "resultado": "compro", "nota": "pidió por IG",
+                                            "corrige": "1", "volver": "/seguimientos?ver=hechos"}, follow_redirects=False)
+        r = con.execute("SELECT resultado, nota, posponer_hasta, intentos, hecho_en FROM seguimientos WHERE clave='rep-prueba-1'").fetchone()
+        assert tuple(r) == ("compro", "pidió por IG", None, 1, "2026-10-17 23:39:00"), tuple(r)
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
