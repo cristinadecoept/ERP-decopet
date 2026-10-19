@@ -5584,9 +5584,10 @@ def prepagado_entregar(request: Request, rid: int, tipo_entrega: str = Form(""),
 
 @app.post("/prepagados/nuevo")
 def prepagado_nuevo(request: Request, cliente_id: int = Form(...), tamano: str = Form("Grande"), pagado_en: str = Form(""), monto: str = Form(""), notas: str = Form(""), con=Depends(db)):
-    """Registrar a mano un repuesto que el cliente dejó pagado (por ejemplo, del histórico)."""
+    """Registrar a mano un repuesto que el cliente dejó pagado (por ejemplo, del histórico de Airtable): queda en Repuestos prepagados para programarlo."""
+    if "crear" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     con.execute("INSERT INTO repuestos_prepagados (cliente_id,tamano,pagado_en,monto,notas,usuario_id) VALUES (?,?,?,?,?,?)", (cliente_id, tamano, pagado_en or datetime.date.today().isoformat(), float(monto.replace(",", ".")) if monto.strip() else None, notas or None, uid_de(request)))
-    con.commit(); return RedirectResponse("/prepagados", status_code=303)
+    con.commit(); return RedirectResponse("/prepagados?ver=sin_programar", status_code=303)
 
 
 def cargar_packs(con):

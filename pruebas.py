@@ -1892,6 +1892,25 @@ def _():
         con.close()
 
 
+@prueba("Ficha del cliente: '+ Repuesto que dejó pagado' (del histórico de Airtable) lo deja en Repuestos prepagados para programarlo")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,porche_version,porche_tamano) VALUES ('Maria Carmen Prueba','Maria Carmen','PRO','Mediano')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#AT1',?,'entregada','pagada',112,1)", (cid,)).lastrowid
+        pro = con.execute("SELECT id, nombre FROM productos WHERE sku LIKE 'PRO-%' LIMIT 1").fetchone()
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,88,0,88)", (oid, pro["id"], pro["nombre"]))
+        con.commit()
+        sesion_de(c, "admin")
+        assert 'action="/prepagados/nuevo"' in c.get(f"/clientes/{cid}").text
+        r = c.post("/prepagados/nuevo", data={"cliente_id": str(cid), "tamano": "Mediano", "pagado_en": "2026-10-02", "notas": "venía en la orden #AT1"}, follow_redirects=False)
+        assert r.headers["location"] == "/prepagados?ver=sin_programar"
+        k = con.execute("SELECT tamano, pagado_en, entregado_en, fecha_programada FROM repuestos_prepagados WHERE cliente_id=?", (cid,)).fetchone()
+        assert tuple(k) == ("Mediano", "2026-10-02", None, None), tuple(k)
+        assert "Maria Carmen" in c.get("/prepagados?ver=sin_programar").text
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
