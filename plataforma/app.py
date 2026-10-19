@@ -5525,6 +5525,8 @@ def prepagado_programar(request: Request, rid: int, fecha: str = Form(""), tipo_
     else:
         env = None; dl = monto(delivery) if tipo_entrega in ("delivery", "delivery_fuera") else 0.0; pag = 1 if (delivery_pagado == "1" and dl > 0) else 0
     r = con.execute("SELECT orden_id, delivery, delivery_pagado FROM repuestos_prepagados WHERE id=?", (rid,)).fetchone()
+    if pag == 1 and tipo_entrega != "nacional" and not (r and r["delivery_pagado"]) and not (delivery_forma or "").strip():
+        pag = 0   # dijo que ya pagó pero no con qué: queda por cobrar (sale 'Debe' en Operaciones), en vez de anotar un pago sin forma
     con.execute("UPDATE repuestos_prepagados SET fecha_programada=?, tipo_entrega=?, despachador=?, agencia=?, notas=?, delivery=?, delivery_pagado=?, envio=? WHERE id=?",
                 (fecha or None, tipo_entrega or None, despachador or None, agencia or None, notas or None, dl, pag, env, rid))
     if pag == 1 and dl > 0 and not (r and r["delivery_pagado"]) and r and r["orden_id"]:   # lo paga ahora: entra dentro de su orden

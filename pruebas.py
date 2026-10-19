@@ -1911,6 +1911,26 @@ def _():
         con.close()
 
 
+@prueba("Repuesto prepagado: activarlo con el delivery 'ya pagado' pide con qué se pagó; sin forma no se cae, queda por cobrar")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Carmen Prueba','Carmen')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#PP1',?,'entregada','pagada',24,0)", (cid,)).lastrowid
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Zelle',24,24,'USD','2026-10-02','confirmado')", (oid,))
+        rid = con.execute("INSERT INTO repuestos_prepagados (cliente_id,orden_id,tamano,pagado_en) VALUES (?,?,'Mediano','2026-10-02')", (cid, oid)).lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        assert 'name="delivery_forma"' in c.get("/prepagados?ver=sin_programar").text, "pregunta con qué se pagó el delivery"
+        r = c.post(f"/prepagados/{rid}/programar", data={"fecha": hoy, "tipo_entrega": "delivery", "despachador": "Cristina", "delivery": "5", "delivery_pagado": "1", "delivery_forma": ""}, follow_redirects=False)
+        assert r.status_code == 303 and con.execute("SELECT delivery_pagado FROM repuestos_prepagados WHERE id=?", (rid,)).fetchone()[0] == 0, "sin forma: queda por cobrar"
+        c.post(f"/prepagados/{rid}/programar", data={"fecha": hoy, "tipo_entrega": "delivery", "despachador": "Cristina", "delivery": "5", "delivery_pagado": "1", "delivery_forma": "Zelle"}, follow_redirects=False)
+        assert con.execute("SELECT delivery_pagado FROM repuestos_prepagados WHERE id=?", (rid,)).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=? AND forma='Zelle' AND monto_usd=5", (oid,)).fetchone()[0] == 1
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
