@@ -7079,11 +7079,17 @@ async def proveedores_guardar(request: Request, con=Depends(db)):
 
 
 # ------------------------------------------------------------------ TALLER (Isaías y Manawa)
+def prepagado_con_malla(con, r):
+    """El repuesto prepagado se compró con malla (la línea de su orden la lleva)."""
+    l = con.execute("SELECT malla FROM orden_lineas WHERE id=?", (r["linea_id"],)).fetchone() if r.get("linea_id") else None
+    return bool(l and l[0])
+
+
 def lo_que_lleva(con, oid, cuenta):
     """Qué va dentro de una entrega y cuántas piezas son, en palabras del taller.
     De un pack no se lleva "el pack", sino los repuestos que le tocan hoy."""
     partes = []; piezas = 0
-    for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku
+    for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, l.malla
                             FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?
                               AND COALESCE(p.tipo,'producto')!='opcion' AND l.extra_en IS NULL
                               AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id AND r.entregado_en IS NULL)""", (oid,)):
@@ -7092,10 +7098,10 @@ def lo_que_lleva(con, oid, cuenta):
             k = con.execute("SELECT tamano, unidades, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
                             (oid, l["sku"])).fetchone()
             n = (k["entregadas_inicio"] if k else 1) or 1
-            partes.append(f"{n}× Repuesto {(k['tamano'] if k else '') or ''}".strip() + (f" · {cuenta(0, n, k['unidades'])}" if k else ""))
+            partes.append(f"{n}× Repuesto {(k['tamano'] if k else '') or ''}".strip() + (" + malla" if l["malla"] else "") + (f" · {cuenta(0, n, k['unidades'])}" if k else ""))
         else:
             n = int(l["cantidad"])
-            partes.append(f"{n}× {l['nombre']}" + (f" {l['color']}" if l["color"] else ""))
+            partes.append(f"{n}× {l['nombre']}" + (f" {l['color']}" if l["color"] else "") + (" + malla" if l["malla"] else ""))
         piezas += n
     return " · ".join(partes), piezas
 
@@ -7122,14 +7128,14 @@ def taller_hoy(request: Request, con=Depends(db)):
         if k["saldo"] > 0 and k["fecha_programada"] and (k["tipo_programado"] or k["tipo_entrega"]) == "pickup":
             n = k["retiro_programado"] or 1
             pickups.append({"quien": (k["cliente"] or "").split()[0], "fecha": k["fecha_programada"], "falta_cobrar": 0, "tipo": "pack",
-                            "que_lleva": f"{n}× Repuesto {k['tamano'] or ''}".strip()
+                            "que_lleva": f"{n}× Repuesto {k['tamano'] or ''}".strip() + (" + malla" if "+ malla" in repuesto_de_pack(k, con)[0] else "")
                                           + " · " + cuenta(k["unidades"] - k["saldo"], n, k["unidades"]),
                             "accion": f"/taller/pack/{k['id']}/entregado"})
     # repuestos que ya pagó y viene a buscar
     for r in cargar_prepagados(con):
         if r["fecha_programada"] and r["tipo_entrega"] == "pickup":
             pickups.append({"quien": (r["cliente"] or "").split()[0], "fecha": r["fecha_programada"], "falta_cobrar": 0, "tipo": "prepagado",
-                            "que_lleva": f"1× Repuesto {r['tamano'] or ''} · ya pagado".strip(),
+                            "que_lleva": f"1× Repuesto {r['tamano'] or ''}".strip() + (" + malla" if prepagado_con_malla(con, r) else "") + " · ya pagado",
                             "accion": f"/taller/prepagado/{r['id']}/entregado"})
     pickups = [p for p in pickups if (p["fecha"] or hoy) <= hoy]   # cada pick-up sale el día que le toca (y si se atrasa, sigue saliendo)
     pickups.sort(key=lambda x: (x["fecha"], x["quien"]))
@@ -7156,7 +7162,7 @@ def taller_hoy(request: Request, con=Depends(db)):
         # un envío nacional sin despachador no es "sin despachador": va a una agencia (MRW, Tealca…) y falta quién lo lleve hasta allá
         falta = not (o["despachador"] or "").strip()
         lleva = (o["despachador"] or "").strip() or ((f"Para {o['agencia']}" if o["agencia"] else "Para la agencia") if a_agencia else "Sin despachador")
-        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo,
+        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo, l.malla,
                                 TRIM(COALESCE(l.personalizacion,'')) perso
                                 FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? AND l.extra_en IS NULL
                                   AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id AND r.entregado_en IS NULL)""", (o["id"],)):
@@ -7166,17 +7172,17 @@ def taller_hoy(request: Request, con=Depends(db)):
             if (l["sku"] or "").startswith("PACK"):   # de un pack no sale "el pack": salen los repuestos que le tocan
                 k = con.execute("SELECT tamano, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
                                 (o["id"], l["sku"])).fetchone()
-                sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip(), (k["entregadas_inicio"] if k else 1) or 1, a_agencia, falta)
+                sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip() + (" + malla" if l["malla"] else ""), (k["entregadas_inicio"] if k else 1) or 1, a_agencia, falta)
             else:
-                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else "")
+                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else "") + (" + malla" if l["malla"] else "")
                      + (f" ✎ personalizado “{l['perso']}”" if l["perso"] else ""), int(l["cantidad"]), a_agencia, falta)
     for k in cargar_packs(con):
         if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= hoy and (k["tipo_programado"] or k["tipo_entrega"]) != "pickup" and not k.get("en_ruta"):
             sale((k["despachador_programado"] or "").strip() or "Sin despachador",
-                 f"Repuesto {k['tamano'] or ''}".strip(), min(k["retiro_programado"] or 1, k["saldo"]))
+                 f"Repuesto {k['tamano'] or ''}".strip() + (" + malla" if "+ malla" in repuesto_de_pack(k, con)[0] else ""), min(k["retiro_programado"] or 1, k["saldo"]))
     for r in cargar_prepagados(con):
         if r["fecha_programada"] and r["fecha_programada"] <= hoy and r["tipo_entrega"] != "pickup" and not r.get("en_ruta"):
-            sale((r["despachador"] or "").strip() or "Sin despachador", f"Repuesto {r['tamano'] or ''}".strip(), 1)
+            sale((r["despachador"] or "").strip() or "Sin despachador", f"Repuesto {r['tamano'] or ''}".strip() + (" + malla" if prepagado_con_malla(con, r) else ""), 1)
 
     for g in salidas.values():
         for k_ in ("cosas", "agencia"):

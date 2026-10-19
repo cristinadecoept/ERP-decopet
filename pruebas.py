@@ -1873,6 +1873,25 @@ def _():
         con.close()
 
 
+@prueba("Taller: un repuesto con malla dice '+ malla' en lo que se lleva cada despachador y en los pick-ups")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        rep = con.execute("SELECT id, nombre, precio, costo FROM productos WHERE sku='REP-G'").fetchone()
+        for nombre, te, desp in (("Sandra", "delivery", "Cristina"), ("Marilyn", "pickup", None)):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES (?,?)", (nombre + " Prueba", nombre)).lastrowid
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida,despachador)
+                                 VALUES (?,?,'pendiente','pagada',44,0,?,?,?)""", ("#M" + nombre, cid, te, hoy, desp)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total,malla) VALUES (?,?,?,1,?,?,?,1)",
+                        (oid, rep["id"], rep["nombre"], rep["precio"], rep["costo"], rep["precio"]))
+        con.commit()
+        sesion_de(c, "taller"); h = c.get("/taller").text
+        assert f"1× {rep['nombre']} + malla" in h, "el despachador se lleva el repuesto con su malla"
+        i = h.index("Marilyn"); assert "+ malla" in h[i:i + 400], "el pick-up también lo dice"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
