@@ -682,6 +682,7 @@ async def puerta(request: Request, call_next):
 # Columnas que se fueron agregando con el tiempo y no están en modelo.sql.
 # Se aplican al arrancar, así una base nueva queda igual que la que está en uso.
 COLUMNAS = (
+    ("ordenes", "espera_aviso", "INTEGER NOT NULL DEFAULT 0"),   # el cliente avisa cuándo lo busca o lo recibe: no sale en el día a día
     ("abonos_produccion", "gasto_id", "INTEGER"),
     ("clientes", "origen", "TEXT"), ("clientes", "origen_nota", "TEXT"),
     ("clientes", "porche_tamano", "TEXT"), ("clientes", "porche_version", "TEXT"),
@@ -1136,7 +1137,7 @@ def personalizacion_estado(request: Request, oid: int, lid: int, lista: str = Fo
 @app.get("/inicio", response_class=HTMLResponse)
 def inicio(request: Request, con=Depends(db)):
     rol = rol_de(request); hoy = datetime.date.today(); h = hoy.isoformat(); mes = hoy.strftime("%Y-%m")
-    activas = cargar_ordenes(con, {"estado": "activas"}, rol)
+    activas = [o for o in cargar_ordenes(con, {"estado": "activas"}, rol) if not o.get("espera_aviso")]   # las que esperan aviso del cliente no son del día
     c = {
         # también los de órdenes ya entregadas: el despachador anota un Pago Móvil en la puerta y hay que revisarlo
         "por_revisar": con.execute("SELECT COUNT(*) FROM ordenes WHERE estado_pago='por_confirmar' AND estado!='cancelada'").fetchone()[0],
@@ -1341,7 +1342,7 @@ def alertas(o):
     def horas(s):
         try: return (ahora - datetime.datetime.fromisoformat(str(s)[:16])).total_seconds() / 3600
         except ValueError: return 0
-    activa = o["estado"] == "pendiente"
+    activa = o["estado"] == "pendiente" and not (o["espera_aviso"] if "espera_aviso" in o.keys() else 0)   # esperando que el cliente avise: no está retrasada
     if activa and o["fecha_prometida"] and o["fecha_prometida"] < hoy:
         a.append(("retrasada", f"Retrasada · prometida {fmt_fecha(o['fecha_prometida'])}"))
     elif activa and not o["fecha_prometida"] and o.get("pagada_en") and horas(o["pagada_en"]) > 72:   # con fecha a futuro (reprogramada) no está retrasada
@@ -2020,19 +2021,26 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
     cambios = [f"{c}: '{o[c] or ''}' → '{f.get(c) or ''}'" for c in campos if (o[c] or "") != (f.get(c) or "")]
     con.execute(f"UPDATE ordenes SET {', '.join(c + '=?' for c in campos)} WHERE id=?", [f.get(c) or None for c in campos] + [oid])
+    if (o["fecha_prometida"] or "") != (f.get("fecha_prometida") or ""): con.execute("UPDATE ordenes SET espera_aviso=0 WHERE id=?", (oid,))   # ya tiene fecha
     fijar_pago_despachador(con, oid)
     if cambios: registrar(con, oid, uid_de(request), "entrega", "; ".join(cambios))
     con.commit(); return volver(oid, request)
 
 
 @app.post("/ordenes/{oid}/fecha")
-def reprogramar_orden(request: Request, oid: int, fecha: str = Form(""), con=Depends(db)):
-    """'Otro día' desde Operaciones: una orden que todavía no salió pasa a otra fecha. Lo demás de la entrega queda igual."""
+def reprogramar_orden(request: Request, oid: int, fecha: str = Form(""), espera: str = Form(""), con=Depends(db)):
+    """'Otro día' desde Operaciones: una orden que todavía no salió pasa a otra fecha. Lo demás de la entrega queda igual.
+    'Espera aviso': el cliente avisa cuándo; sale de Hoy, Retrasadas y el taller hasta que se le ponga fecha."""
     if "reprogramar" not in PERMISOS[rol_de(request)]: return volver(oid, request)
-    o = con.execute("SELECT estado, fecha_prometida FROM ordenes WHERE id=?", (oid,)).fetchone()
+    o = con.execute("SELECT estado, fecha_prometida, espera_aviso FROM ordenes WHERE id=?", (oid,)).fetchone()
     fecha = fecha.strip()
-    if o and o["estado"] == "pendiente" and fecha and fecha != o["fecha_prometida"]:
-        con.execute("UPDATE ordenes SET fecha_prometida=? WHERE id=?", (fecha, oid))
+    if o and o["estado"] == "pendiente" and espera:
+        if not o["espera_aviso"]:
+            con.execute("UPDATE ordenes SET espera_aviso=1 WHERE id=?", (oid,))
+            registrar(con, oid, uid_de(request), "entrega", "Espera que el cliente avise cuándo")
+            con.commit()
+    elif o and o["estado"] == "pendiente" and fecha and (fecha != o["fecha_prometida"] or o["espera_aviso"]):
+        con.execute("UPDATE ordenes SET fecha_prometida=?, espera_aviso=0 WHERE id=?", (fecha, oid))
         f = fmt_fecha(fecha)
         registrar(con, oid, uid_de(request), "entrega", f"Reprogramada para {f if f in ('hoy', 'mañana') else 'el ' + f}")
         con.commit()
@@ -2471,6 +2479,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     def es(o, k):
         if k == "con_saldo": return o["id"] in ids_saldo
         if o["estado"] not in ("pendiente", "en_ruta"): return False        # entregadas solo cuentan en "con saldo"
+        if o.get("espera_aviso") and k != "todo": return False             # espera que el cliente avise: solo en Todo, hasta que tenga fecha
         if k == "retrasadas": return any(a[0] == "retrasada" for a in o["alertas"])
         if k == "incidencias": return o["incidencias"] > 0
         if k == "sin_coordinar": return not o["coordinada"]
@@ -2559,13 +2568,13 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
         grupos = {k: v for k, v in grupos.items() if v}
     por_desp = {}
     for o in activas:
-        if o["despachador"] and o["fecha_op"] <= hoy and o["estado"] in ("pendiente", "en_ruta"):
+        if o["despachador"] and o["fecha_op"] <= hoy and o["estado"] in ("pendiente", "en_ruta") and not o.get("espera_aviso"):
             por_desp.setdefault(o["despachador"], []).append(resumen_despacho(cargar_orden(con, o["id"]), con_plata="ver_cobros" in PERMISOS[rol]))
     # envío nacional: pedidos que todavía nadie ha llevado a la oficina de la agencia
     por_llevar = con.execute("""SELECT o.id, o.numero, o.agencia, o.ciudad, o.estado, c.nombre cliente,
                                        COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha
                                 FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
-                                WHERE o.tipo_entrega='nacional' AND o.viaje_id IS NULL AND o.origen_excel=0
+                                WHERE o.tipo_entrega='nacional' AND o.viaje_id IS NULL AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0
                                   AND o.estado IN ('pendiente','en_ruta') AND """ + HAY_QUE_ENTREGAR() + """ ORDER BY o.agencia, o.id""").fetchall()
     por_agencia = {}
     for o in por_llevar: por_agencia.setdefault(o["agencia"] or "", []).append(o)
@@ -6647,7 +6656,7 @@ def ruta_despachador(con, nombre, hoy):
                             o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega,
                             NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
-                            WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND """ + HAY_QUE_ENTREGAR() + """
+                            WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0 AND """ + HAY_QUE_ENTREGAR() + """
                               AND o.tipo_entrega NOT IN ('pickup','distribuidor')
                               AND COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) <= ?
                             ORDER BY o.zona, o.id""", (nombre, hoy)):
@@ -7124,7 +7133,7 @@ def taller_hoy(request: Request, con=Depends(db)):
                             COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha,
                             (CASE WHEN o.estado_pago IN ('sin_pago','abonada','contra_entrega','rechazado') THEN 1 ELSE 0 END) falta_cobrar
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
-                            WHERE o.tipo_entrega='pickup' AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND """ + HAY_QUE_ENTREGAR()):
+                            WHERE o.tipo_entrega='pickup' AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0 AND """ + HAY_QUE_ENTREGAR()):
         pickups.append(dict(o) | {"tipo": "orden", "que_lleva": lo_que_lleva(con, o["id"], cuenta)[0], "accion": f"/taller/{o['id']}/entregado"})
     # retiros de pack que el cliente viene a buscar
     for k in cargar_packs(con):
@@ -7155,7 +7164,7 @@ def taller_hoy(request: Request, con=Depends(db)):
                                    (SELECT v.despachador FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL)) despachador,
                             o.tipo_entrega, o.agencia FROM ordenes o
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
-                              AND o.estado='pendiente' AND o.origen_excel=0   -- en ruta = ya salió del taller
+                              AND o.estado='pendiente' AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0   -- en ruta = ya salió del taller
                               AND """ + HAY_QUE_ENTREGAR() + """
                               -- con viaje a la agencia asignado, manda el día del viaje (el pedido puede decir hoy y el viaje ser mañana)
                               AND COALESCE((SELECT v.fecha FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL),

@@ -1931,6 +1931,32 @@ def _():
         con.close()
 
 
+@prueba("Espera aviso: el pedido sale de Hoy, Retrasadas, Inicio y el taller hasta que se le pone fecha; queda en Todo")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        ayer = (datetime.date.today() - datetime.timedelta(days=1)).isoformat(); manana = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        p = con.execute("SELECT id, nombre, precio, costo FROM productos WHERE tipo='producto' AND categoria NOT IN ('opcion','kit') LIMIT 1").fetchone()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Yuliana Prueba','Yuliana')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida)
+                             VALUES ('#EA1',?,'pendiente','pagada',24,0,'pickup',?)""", (cid, ayer)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,?,?,?)", (oid, p["id"], p["nombre"], p["precio"], p["costo"], p["precio"]))
+        con.commit()
+        sesion_de(c, "admin")
+        assert "#EA1" in c.get("/operaciones?cola=retrasadas").text
+        c.post(f"/ordenes/{oid}/fecha?volver=/operaciones", data={"espera": "1"}, follow_redirects=False)
+        assert con.execute("SELECT espera_aviso FROM ordenes WHERE id=?", (oid,)).fetchone()[0] == 1
+        for cola in ("hoy", "retrasadas"): assert "#EA1" not in c.get(f"/operaciones?cola={cola}").text, cola
+        assert "espera aviso" in c.get("/operaciones?cola=todo").text
+        assert "Yuliana" not in c.get("/inicio").text.split("Seguimientos")[0], "en el Inicio no sale como entrega del día"
+        sesion_de(c, "taller"); assert "Yuliana" not in c.get("/taller").text
+        sesion_de(c, "admin")
+        c.post(f"/ordenes/{oid}/fecha?volver=/operaciones", data={"fecha": manana}, follow_redirects=False)
+        assert tuple(con.execute("SELECT espera_aviso, fecha_prometida FROM ordenes WHERE id=?", (oid,)).fetchone()) == (0, manana)
+        assert "#EA1" in c.get("/operaciones?cola=manana").text
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
