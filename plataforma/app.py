@@ -682,6 +682,7 @@ async def puerta(request: Request, call_next):
 # Columnas que se fueron agregando con el tiempo y no están en modelo.sql.
 # Se aplican al arrancar, así una base nueva queda igual que la que está en uso.
 COLUMNAS = (
+    ("mascotas", "fallecida", "TEXT"),   # el día que se anotó que falleció: no se felicita, no sale en mensajes; si no le queda ninguna, se pausan los repuestos
     ("ordenes", "espera_aviso", "INTEGER NOT NULL DEFAULT 0"),   # el cliente avisa cuándo lo busca o lo recibe: no sale en el día a día
     ("abonos_produccion", "gasto_id", "INTEGER"),
     ("clientes", "origen", "TEXT"), ("clientes", "origen_nota", "TEXT"),
@@ -1619,7 +1620,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
     clientes = con.execute("""SELECT c.*, (SELECT direccion || CASE WHEN zona IS NULL OR lower(trim(zona))=lower(trim(direccion)) THEN '' ELSE ' · ' || zona END FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
                                      (SELECT zona FROM direcciones d WHERE d.cliente_id=c.id ORDER BY principal DESC, id LIMIT 1) dir_zona,
                                      (SELECT maps FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir_maps,
-                              (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
+                              (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')','') || CASE WHEN m.fallecida IS NOT NULL THEN ' 🕊️' ELSE '' END, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
                               (SELECT ROUND(COALESCE(SUM(k.monto),0),2) FROM credito_cliente k WHERE k.cliente_id=c.id) credito,
                               (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
                               FROM clientes c ORDER BY nombre""").fetchall()
@@ -3978,7 +3979,7 @@ def eventos_mes(con, anio, mes):
         pon(r["f"], "llega", f"Llega {r['faltan']:g} {r['nombre']}" + (f" · {r['responsable']}" if r["responsable"] else ""), "/produccion")
     cumples = {}   # un solo renglón por día con todos los perros, si no tapan el calendario
     for m in con.execute("""SELECT m.nombre, m.fecha_nacimiento, m.cumple_mes_dia FROM mascotas m JOIN clientes c ON c.id=m.cliente_id
-                            WHERE COALESCE(m.cumple_mes_dia,'')!='' OR COALESCE(m.fecha_nacimiento,'')!=''"""):
+                            WHERE m.fallecida IS NULL AND (COALESCE(m.cumple_mes_dia,'')!='' OR COALESCE(m.fecha_nacimiento,'')!='')"""):
         md = m["cumple_mes_dia"] or (m["fecha_nacimiento"] or "")[5:10]
         if len(md) == 5 and md[:2] == f"{mes:02d}":
             try: cumples.setdefault(datetime.date(anio, mes, int(md[3:])).isoformat(), []).append(m["nombre"])
@@ -4167,7 +4168,7 @@ def miembros(request: Request, q: str = "", ver: str = "todos", con=Depends(db))
         COALESCE(c.porche_tamano, GROUP_CONCAT(DISTINCT CASE WHEN p.sku='PRO-G' THEN 'Grande' WHEN p.sku='PRO-M' THEN 'Mediano' END)) tamanos,
         SUM(CASE WHEN p.categoria='repuesto' THEN l.cantidad * (CASE WHEN p.sku LIKE 'PACK3%' THEN 3 WHEN p.sku LIKE 'PACK4%' THEN 4 WHEN p.sku LIKE 'PACK8%' THEN 8 ELSE 1 END) ELSE 0 END) repuestos,
         MAX(CASE WHEN p.categoria='repuesto' THEN substr(o.creado_en,1,10) END) ultimo_repuesto,
-        (SELECT GROUP_CONCAT(m.nombre, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros
+        (SELECT GROUP_CONCAT(m.nombre || CASE WHEN m.fallecida IS NOT NULL THEN ' 🕊️' ELSE '' END, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros
       FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada'
       JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
       WHERE (c.nombre LIKE ? OR c.telefono LIKE ?)
@@ -4183,7 +4184,7 @@ def miembros(request: Request, q: str = "", ver: str = "todos", con=Depends(db))
         lista.append(d)
     # miembros que vienen de Airtable (Versión Porche = PRO) y todavía no tienen órdenes cargadas
     ids = {d["id"] for d in lista}
-    for r in con.execute("""SELECT c.id, c.nombre, c.telefono, c.ciudad, c.porche_tamano, (SELECT GROUP_CONCAT(m.nombre, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros
+    for r in con.execute("""SELECT c.id, c.nombre, c.telefono, c.ciudad, c.porche_tamano, (SELECT GROUP_CONCAT(m.nombre || CASE WHEN m.fallecida IS NOT NULL THEN ' 🕊️' ELSE '' END, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros
                             FROM clientes c WHERE c.porche_version='PRO' AND (c.nombre LIKE ? OR c.telefono LIKE ?)""", (f"%{q}%", f"%{q}%")):
         if r["id"] in ids: continue
         lista.append(dict(id=r["id"], nombre=r["nombre"], telefono=r["telefono"], ciudad=r["ciudad"], perros=r["perros"], desde=None, tamanos=r["porche_tamano"], repuestos=0, ultimo_repuesto=None, dias=None, situacion="sin historial", proximo=None))
@@ -5351,12 +5352,15 @@ def seguimientos_pendientes(con, umbral=None, ventana=1):
     hechos = {r["clave"]: r for r in con.execute("SELECT * FROM seguimientos")}
     def vivo(clave):
         r = hechos.get(clave); return (r is None) or (r["posponer_hasta"] and r["posponer_hasta"] <= h)
+    # tenía perros y fallecieron todos: no se le ofrece repuesto ni porche (vuelve solo si se le anota un perro nuevo)
+    sin_perro = {r[0] for r in con.execute("SELECT cliente_id FROM mascotas GROUP BY cliente_id HAVING SUM(fallecida IS NULL)=0")}
     for m in con.execute("""SELECT c.id, c.nombre, c.telefono,
         MAX(CASE WHEN p.sku LIKE 'PRO-%' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) porche,
         MAX(CASE WHEN p.sku='PRO-G' THEN 'Grande' WHEN p.sku='PRO-M' THEN 'Mediano' END) tamano,
         MAX(CASE WHEN p.categoria='repuesto' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) ult_rep
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
         GROUP BY c.id HAVING porche IS NOT NULL"""):
+        if m["id"] in sin_perro: continue
         # fechas de repuesto (compras + retiros de pack) → ritmo propio
         # Lo que cuenta es el día que el cliente RECIBIÓ un repuesto, no el día que lo pagó.
         # Por eso las líneas que quedaron prepagadas se excluyen aquí y entran abajo con su fecha de entrega.
@@ -5392,6 +5396,7 @@ def seguimientos_pendientes(con, umbral=None, ventana=1):
         MAX(CASE WHEN p.sku LIKE 'PRO-%' THEN 1 ELSE 0 END) tiene_pro
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
         GROUP BY c.id HAVING basico IS NOT NULL AND tiene_pro=0"""):
+        if b["id"] in sin_perro: continue
         dias = (hoy - datetime.date.fromisoformat(b["basico"][:10])).days
         if dias < CICLO_REPUESTO or dias > 120: continue
         clave = f"basico:{b['id']}:{b['basico'][:10]}"
@@ -5433,7 +5438,7 @@ def cumples_proximos(con, ventana=30):
     """Perros que cumplen años en los próximos días. Dos avisos independientes: 2 días antes (ofrecer regalo) y el mismo día (felicitar)."""
     hoy = datetime.date.today(); h = hoy.isoformat(); out = []
     hechos = {r["clave"]: r for r in con.execute("SELECT * FROM seguimientos WHERE tipo='cumple'")}
-    for m in con.execute("SELECT m.id mid, m.nombre perro, m.raza, m.fecha_nacimiento, m.cumple_mes_dia, c.id, c.nombre, c.telefono FROM mascotas m JOIN clientes c ON c.id=m.cliente_id WHERE (m.fecha_nacimiento IS NOT NULL AND m.fecha_nacimiento!='') OR (m.cumple_mes_dia IS NOT NULL AND m.cumple_mes_dia!='')"):
+    for m in con.execute("SELECT m.id mid, m.nombre perro, m.raza, m.fecha_nacimiento, m.cumple_mes_dia, c.id, c.nombre, c.telefono FROM mascotas m JOIN clientes c ON c.id=m.cliente_id WHERE m.fallecida IS NULL AND ((m.fecha_nacimiento IS NOT NULL AND m.fecha_nacimiento!='') OR (m.cumple_mes_dia IS NOT NULL AND m.cumple_mes_dia!=''))"):
         cumple, edad, _ = cumple_de(m, hoy)
         if not cumple: continue
         faltan = (cumple - hoy).days
@@ -5826,9 +5831,9 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
              (SELECT COALESCE(SUM(total),0) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') gastado,
              (SELECT MAX(creado_en) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') ultima,
              (SELECT MIN(creado_en) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') primera,
-             (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')',''), ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
-             (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id AND (m.raza='Pendiente' OR m.revisar=1)) perro_pend,
-             (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id) n_perros,
+             (SELECT GROUP_CONCAT(m.nombre || COALESCE(' (' || m.raza || ')','') || CASE WHEN m.fallecida IS NOT NULL THEN ' 🕊️' ELSE '' END, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros,
+             (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id AND m.fallecida IS NULL AND (m.raza='Pendiente' OR m.revisar=1)) perro_pend,
+             (SELECT COUNT(*) FROM mascotas m WHERE m.cliente_id=c.id AND m.fallecida IS NULL) n_perros,
              (SELECT COUNT(*) FROM direcciones d WHERE d.cliente_id=c.id AND trim(d.direccion) NOT IN ('', '(solo GPS)')) n_dir,   -- solo el GPS: falta la dirección escrita
              (SELECT COUNT(*) FROM notas_cliente nc WHERE nc.cliente_id=c.id) n_notas,
              (SELECT GROUP_CONCAT(nc.texto, ' · ') FROM notas_cliente nc WHERE nc.cliente_id=c.id) notas_txt,
@@ -5892,11 +5897,13 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
         for m in con.execute("""SELECT m.*, c.nombre cliente, c.telefono, c.ciudad FROM mascotas m JOIN clientes c ON c.id=m.cliente_id
                                 WHERE (? = '' OR m.nombre LIKE ? OR m.raza LIKE ? OR c.nombre LIKE ?) AND (? = '' OR m.raza = ?) ORDER BY m.nombre COLLATE NOCASE""", (q, f"%{q}%", f"%{q}%", f"%{q}%", raza, raza)):
             d = dict(m); cumple, edad, md = cumple_de(m, hoy)
+            if m["fallecida"]: cumple = None
             d["cumple"] = cumple.isoformat() if cumple else None; d["faltan"] = (cumple - hoy).days if cumple else None
             d["edad"] = (edad - (1 if cumple and cumple.year > hoy.year else 0)) if edad is not None else None
+            if m["fallecida"]: d["edad"] = None
             mascotas.append(d)
         rows = []
-    conteos["mascotas"] = con.execute("SELECT COUNT(*) FROM mascotas").fetchone()[0]
+    conteos["mascotas"] = con.execute("SELECT COUNT(*) FROM mascotas WHERE fallecida IS NULL").fetchone()[0]
     razas_top = con.execute("SELECT raza, COUNT(*) n FROM mascotas WHERE raza IS NOT NULL AND raza!='' AND raza!='Pendiente' GROUP BY raza ORDER BY raza COLLATE NOCASE").fetchall() if ver == "mascotas" else []
     return render(request, "clientes.html", falta=falta, falta_n=falta_n, FALTA_CLIENTE=FALTA_CLIENTE, seccion=("mascotas" if ver in ("mascotas", "cumples") else "clientes"), clientes=rows[:200], q=q, ver=ver, total=conteos["todos"], conteos=conteos, truncado=len(rows) > 200, cumples=cumples, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, TIPOS_CLIENTE=TIPOS_CLIENTE, ciudad=ciudad, ciudades=ciudades, estados_cl=estados_cl, origen=origen,
                   origenes=sorted({(r["origen"] or "Sin registrar") for r in con.execute("SELECT origen FROM clientes")}), mascotas=mascotas, razas_top=razas_top, raza=raza)
@@ -6055,7 +6062,7 @@ def mensajes_repuesto(con, s):
     """Mensajes para ofrecer el repuesto, con el nombre de la persona y de sus perros. Mismo tono que los de cumpleaños."""
     c = con.execute("SELECT nombre, nombre_pila FROM clientes WHERE id=?", (s["cliente_id"],)).fetchone()
     quien = (c["nombre_pila"] or (c["nombre"] or "").split(" ")[0]).strip() if c else ""
-    perros = [((r[0] or "").split() or [""])[0] for r in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? ORDER BY id", (s["cliente_id"],))]
+    perros = [((r[0] or "").split() or [""])[0] for r in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? AND fallecida IS NULL ORDER BY id", (s["cliente_id"],))]
     perros = [p for p in perros if p]
     de = (" y ".join([", ".join(perros[:-1]), perros[-1]]) if len(perros) > 1 else perros[0]) if perros else ""
     tam = (s.get("tamano") if s.get("tamano") not in (None, "—") else s.get("porche_tamano")) or ""   # los ya contactados traen el del cliente
@@ -6079,7 +6086,7 @@ def mensajes_repuesto(con, s):
 def oportunidades_de(con, cid):
     """Lo que se le puede ofrecer a este cliente (lo mismo que sale en su ficha). Para el cumpleaños de su perro."""
     c = con.execute("SELECT porche_version FROM clientes WHERE id=?", (cid,)).fetchone()
-    perros = [dict(m) for m in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? ORDER BY id", (cid,))]
+    perros = [dict(m) for m in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? AND fallecida IS NULL ORDER BY id", (cid,))]
     lineas = con.execute("""SELECT p.sku, p.categoria, SUM(l.cantidad) n FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
                             JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=? AND o.estado!='cancelada' GROUP BY p.id""", (cid,)).fetchall()
     return oportunidades_cliente(lineas, perros, ya_tiene_porche=bool(c and c["porche_version"] in ("PRO", "Básico")),
@@ -6092,9 +6099,11 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     if not c: return RedirectResponse("/clientes", 303)
     rol = rol_de(request); hoy = datetime.date.today()
     perros = [dict(m) for m in con.execute("SELECT * FROM mascotas WHERE cliente_id=? ORDER BY id", (cid,))]
+    perros.sort(key=lambda m: m["fallecida"] is not None)   # los que fallecieron, al final
     for m in perros:
         m["edad"] = m["cumple"] = m["faltan"] = None
         cumple, edad_cumple, md = cumple_de(m, hoy)
+        if m["fallecida"]: m["md"] = md; continue   # ni edad ni "cumple en…"
         if cumple:
             m["cumple"] = cumple.isoformat(); m["faltan"] = (cumple - hoy).days; m["md"] = md
             if edad_cumple is not None: m["edad"] = edad_cumple - 1 if cumple.year == hoy.year + 1 or (cumple > hoy) else edad_cumple
@@ -6192,7 +6201,7 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
                   refirio=refirio, lo_trajo=lo_trajo,
                   packs=packs, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
                   etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack, n_prepagados=prepagados,
-                  oportunidades=oportunidades_cliente(lineas, perros, ya_tiene_porche=(c["porche_version"] in ("PRO", "Básico")), tiene_basico=(c["porche_version"] == "Básico")), formas=formas, canales=canales, entregas_tipo=entregas_tipo,
+                  oportunidades=oportunidades_cliente(lineas, [m for m in perros if not m["fallecida"]], ya_tiene_porche=(c["porche_version"] in ("PRO", "Básico")), tiene_basico=(c["porche_version"] == "Básico")), formas=formas, canales=canales, entregas_tipo=entregas_tipo,
                   ENTREGA=ENTREGA, E_LABEL=E_LABEL, P_LABEL=P_LABEL, RESULTADOS=RESULTADOS)
 
 
@@ -6270,6 +6279,8 @@ async def cliente_perro(request: Request, cid: int, con=Depends(db)):
         fn, md = parsear_cumple(f.get("cumple"))
         con.execute("UPDATE mascotas SET nombre=?, raza=?, fecha_nacimiento=?, cumple_mes_dia=?, revisar=0, notas=? WHERE id=? AND cliente_id=?",
                     (f["nombre"].strip(), (f.get("raza") or "").strip() or None, fn, md, f.get("notas") or None, mid, cid))
+        con.execute("UPDATE mascotas SET fallecida=? WHERE id=? AND cliente_id=?",   # se guarda el día en que se anotó; desmarcarla la vuelve a la normalidad
+                    ((con.execute("SELECT fallecida FROM mascotas WHERE id=?", (mid,)).fetchone()[0] or datetime.date.today().isoformat()) if f.get("fallecida") else None, mid, cid))
     elif f.get("nombre", "").strip():
         fn, md = parsear_cumple(f.get("cumple"))
         con.execute("INSERT INTO mascotas (cliente_id,nombre,raza,fecha_nacimiento,cumple_mes_dia,notas) VALUES (?,?,?,?,?,?)",

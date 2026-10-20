@@ -1957,6 +1957,34 @@ def _():
         con.close()
 
 
+@prueba("Mascota que falleció: sale con 🕊️, no se felicita su cumpleaños, no sale en los mensajes; si era la única, se pausan los repuestos")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,porche_version) VALUES ('Lola Dueña Prueba','Ana','PRO')").lastrowid
+        mid = con.execute("INSERT INTO mascotas (cliente_id,nombre,raza,cumple_mes_dia) VALUES (?,'Lolita','Poodle',?)", (cid, hoy.strftime("%m-%d"))).lastrowid
+        pro = con.execute("SELECT id, nombre FROM productos WHERE sku='PRO-M'").fetchone()
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,fecha_entrega) VALUES ('#LO1',?,'entregada','pagada',88,0,?)",
+                          (cid, (hoy - datetime.timedelta(days=60)).isoformat())).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,88,0,88)", (oid, pro["id"], pro["nombre"]))
+        con.commit()
+        assert any(x["perro"] == "Lolita" for x in A.cumples_proximos(con, 0)), "viva: sale su cumpleaños"
+        assert any(s_["cliente_id"] == cid for s_ in A.seguimientos_pendientes(con)), "viva: le toca repuesto"
+        sesion_de(c, "admin")
+        c.post(f"/clientes/{cid}/perro", data={"id": str(mid), "nombre": "Lolita", "raza": "Poodle", "cumple": hoy.strftime("%d/%m"), "notas": "", "fallecida": "1"}, follow_redirects=False)
+        assert con.execute("SELECT fallecida FROM mascotas WHERE id=?", (mid,)).fetchone()[0] == hoy.isoformat()
+        assert not any(x["perro"] == "Lolita" for x in A.cumples_proximos(con, 0)), "no se felicita"
+        assert not any(s_["cliente_id"] == cid for s_ in A.seguimientos_pendientes(con)), "era su único perro: se pausan los repuestos"
+        assert "Lolita" not in " ".join(A.mensajes_repuesto(con, {"cliente_id": cid}))
+        assert "Lolita</b> 🕊️" in c.get(f"/clientes/{cid}").text
+        con.execute("INSERT INTO mascotas (cliente_id,nombre) VALUES (?,'Toby')", (cid,)); con.commit()
+        assert any(s_["cliente_id"] == cid for s_ in A.seguimientos_pendientes(con)), "perro nuevo: vuelven los repuestos"
+        c.post(f"/clientes/{cid}/perro", data={"id": str(mid), "nombre": "Lolita", "raza": "Poodle", "cumple": "", "notas": ""}, follow_redirects=False)
+        assert con.execute("SELECT fallecida FROM mascotas WHERE id=?", (mid,)).fetchone()[0] is None, "desmarcarla la vuelve a la normalidad"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
