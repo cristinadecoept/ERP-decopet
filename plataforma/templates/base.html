@@ -91,10 +91,12 @@ document.addEventListener('submit',async e=>{
  if(e.defaultPrevented||!main||(f.method||'').toLowerCase()!=='post'||!(main.contains(f)||f.closest('#pc')))return;
  e.preventDefault();
  let datos;try{datos=new FormData(f,e.submitter)}catch(_){datos=new FormData(f)}
+ // un botón con formaction (Deshacer recibido, Cancelar pedido…) manda a su propia dirección, no a la del formulario
+ const b=e.submitter,accion=b&&b.hasAttribute('formaction')?b.formAction:f.action;
  const h=document.documentElement;h.classList.add('guardando');
  try{
   let r;
-  try{r=await fetch(f.action,{method:'POST',body:datos,credentials:'same-origin'})}
+  try{r=await fetch(accion,{method:'POST',body:datos,credentials:'same-origin'})}
   catch(_){aviso('Sin conexión: revisa si se guardó',true);setTimeout(()=>location.reload(),1500);return;}
   if(!r.ok){aviso('No se pudo guardar',true);return;}
   const destino=new URL(r.url);
