@@ -1323,7 +1323,7 @@ def inicio(request: Request, con=Depends(db)):
                        FROM produccion pr WHERE pr.estado!='cancelado' AND pr.costo IS NOT NULL
                        AND pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0) > 0.009""").fetchone()
     c["prov_debe"] = d["monto"]; c["prov_n"] = d["n"]
-    return render(request, "inicio.html", seccion="inicio", c=c, v=v, prom=prom, disponible=disponible, fecha_larga=fecha_larga(), serie=serie, tipos=tipos, hoy_lista=hoy_lista, bajos=bajos, llega=llega, proximos=proximos, seg=seg_resumen, pagos_pend=pagos_pend, cuentas_act=cuentas_act, armados=armados, n_armados=n_armados, avisos_taller=avisos_taller, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, hoy_iso=datetime.date.today().isoformat())
+    return render(request, "inicio.html", seccion="inicio", c=c, v=v, prom=prom, disponible=disponible, fecha_larga=fecha_larga(), serie=serie, tipos=tipos, hoy_lista=hoy_lista, bajos=bajos, llega=llega, proximos=proximos, seg=seg_resumen, pagos_pend=pagos_pend, cuentas_act=cuentas_act, armados=armados, n_armados=n_armados, avisos_taller=avisos_taller, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, hoy_iso=datetime.date.today().isoformat(), err=request.query_params.get("err"))
 
 
 DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
@@ -2207,8 +2207,11 @@ def orden_ubicacion(request: Request, oid: int, maps: str = Form(""), volver: st
     """Pegar el link de Maps que mandó el cliente. Queda en la dirección del cliente a la que va el pedido (la habitual,
     si no va a otra), así sirve para sus próximos pedidos; si el pedido va a una dirección que no está guardada, queda en el pedido."""
     if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/inicio", status_code=303)
-    maps = maps.strip(); o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
-    if o and maps.lower().startswith("http"):
+    maps = link_de_maps(maps); o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+    destino = volver if volver.startswith("/") else "/inicio"
+    if o and not maps:   # pegó la dirección escrita: no se guarda (puede mandar al despachador a otro lado) y se avisa
+        return RedirectResponse(destino + ("&" if "?" in destino else "?") + "err=ubicacion", status_code=303)
+    if o:
         norm = lambda t: re.sub(r"\W+", "", (t or "").lower())
         dirs = con.execute("SELECT * FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id", (o["cliente_id"],)).fetchall()
         fila = (dirs[0] if dirs else None) if not _sirve(o["direccion"]) else next(
@@ -2216,7 +2219,17 @@ def orden_ubicacion(request: Request, oid: int, maps: str = Form(""), volver: st
         if fila: con.execute("UPDATE direcciones SET maps=? WHERE id=?", (maps, fila["id"]))
         else: con.execute("UPDATE ordenes SET maps=? WHERE id=?", (maps, oid))
         con.commit()
-    return RedirectResponse(volver if volver.startswith("/") else "/inicio", status_code=303)
+    return RedirectResponse(destino, status_code=303)
+
+
+def link_de_maps(t):
+    """El link de ubicación dentro de lo que se pegó: con o sin https://, con texto alrededor (lo que se copia de
+    WhatsApp) o solo las coordenadas. Una dirección escrita no es un link: devuelve ''."""
+    t = (t or "").strip()
+    m = re.search(r"https?://\S+", t) or re.search(r"(?:maps\.app\.goo\.gl|goo\.gl|(?:www\.)?google\.[a-z.]+/maps|maps\.google\.[a-z.]+)\S*", t, re.I)
+    if m: return m.group(0) if m.group(0).lower().startswith("http") else "https://" + m.group(0)
+    m = re.fullmatch(r"(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)", t)
+    return f"https://www.google.com/maps?q={m.group(1)},{m.group(2)}" if m else ""
 
 
 def ubicacion_de(con, cid, direccion, maps):

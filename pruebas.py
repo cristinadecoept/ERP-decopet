@@ -1462,6 +1462,25 @@ def _():
         assert f"/ordenes/{oid}/ubicacion" not in c.get("/inicio").text, "ya no falta"
         con.close()
 
+@prueba("Subir ubicación: sirve el link sin https:// o con texto alrededor; la dirección escrita no se guarda y se avisa")
+def _():
+    assert A.link_de_maps("maps.app.goo.gl/abc123") == "https://maps.app.goo.gl/abc123"
+    assert A.link_de_maps("Mi ubicación: https://maps.app.goo.gl/abc123 gracias") == "https://maps.app.goo.gl/abc123"
+    assert A.link_de_maps("10.4806, -66.9036") == "https://www.google.com/maps?q=10.4806,-66.9036"
+    assert A.link_de_maps("Res Isla de Aves, urb Manzanares, torre B") == ""
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (52,'Fer Prueba','Fer','04141112234')")
+        con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,principal) VALUES (52,'Principal','La Trinidad, calle 2',1)")
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,total,tipo_entrega) VALUES ('#78',52,'pendiente','pagada',24,29,'delivery')").lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        r = c.post(f"/ordenes/{oid}/ubicacion", data={"maps": "La Trinidad, calle 2, casa 5"})
+        assert "No se guardó" in r.text and f"/ordenes/{oid}/ubicacion" in r.text, "la dirección escrita no cuenta como ubicación"
+        c.post(f"/ordenes/{oid}/ubicacion", data={"maps": "maps.app.goo.gl/sinhttps"})
+        assert con.execute("SELECT maps FROM direcciones WHERE cliente_id=52").fetchone()[0] == "https://maps.app.goo.gl/sinhttps"
+        con.close()
+
 @prueba("Efectivo en la calle: lo que cobra un despachador queda a su nombre hasta que te lo entrega")
 def _():
     with erp_de_prueba() as c:

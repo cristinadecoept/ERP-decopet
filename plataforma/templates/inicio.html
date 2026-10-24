@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block titulo %}Inicio · Decopet{% endblock %}{% block cuerpo %}
 <div class="fila-titulo"><div><h1>Inicio</h1><div class="sub">{{ fecha_larga }}</div></div>
 <div style="display:flex;gap:8px"><a class="btn sec" href="/ordenes?abrir=0" onclick="sessionStorage.setItem('nuevaOrden','1')">+ Nueva orden</a>{% if rol=='admin' %}<a class="btn" href="/cashflow#nueva">+ Nueva línea de caja</a>{% endif %}</div></div>
+{% if err == 'ubicacion' %}<div class="cf-err">No se guardó: hay que pegar el link de Google Maps, no la dirección escrita.</div>{% endif %}
 
 {# ---------- 1 · AHORA: solo lo que existe #}
 {% set pend = [] %}
