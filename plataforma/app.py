@@ -1513,7 +1513,9 @@ def cargar_orden(con, oid):
                        FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id LEFT JOIN usuarios u ON u.id=o.creada_por WHERE o.id=?""", (oid,)).fetchone()
     if not o: return None
     o = dict(o); o["alertas"] = alertas(o); o["coordinada"] = coordinada(o)
-    o["lineas"] = con.execute("""SELECT l.*, k.id pack_id, k.unidades pack_unidades, k.entregadas_inicio pack_hoy FROM orden_lineas l
+    o["lineas"] = con.execute("""SELECT l.*, k.id pack_id, k.unidades pack_unidades, k.entregadas_inicio pack_hoy,
+                                 k.deliveries_prepagados pack_dprep, k.tarifa_prepagada pack_tarifa,
+                                 k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) pack_futuras FROM orden_lineas l
                                  LEFT JOIN packs k ON k.orden_id=l.orden_id AND k.producto_id=l.producto_id WHERE l.orden_id=?""", (oid,)).fetchall()
     o["pagos"] = con.execute("SELECT p.*, u.nombre confirmado_por_nombre FROM pagos p LEFT JOIN usuarios u ON u.id=p.confirmado_por WHERE orden_id=? ORDER BY id", (oid,)).fetchall()
     o["pagado"] = sum(p["monto_usd"] for p in o["pagos"] if p["estado"] == "confirmado")

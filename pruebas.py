@@ -1469,10 +1469,14 @@ def _():
         con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (53,'Karen Prueba','Karen','04141112235')")
         oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega) VALUES ('#79',53,'pendiente','pagada',60,7,67,'delivery')").lastrowid
         con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Binance USDT',67,67,'USD','2026-10-28','confirmado')", (oid,))
-        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,estado) VALUES (53,?,3,1,'activo')", (oid,)).lastrowid
+        prod = con.execute("SELECT id FROM productos WHERE sku='PACK3-M'").fetchone()
+        prod = prod[0] if prod else con.execute("INSERT INTO productos (sku,nombre,precio,activo) VALUES ('PACK3-M','Pack 3 Repuestos Mediano',60,1)").lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack 3 Repuestos Mediano',1,60,60)", (oid, prod))
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado) VALUES (53,?,?,3,1,'activo')", (oid, prod)).lastrowid
         con.commit()
         sesion_de(c, "admin")
         assert f"/packs/{pid}/prepagar-deliveries" in c.get("/clientes/53").text
+        assert f"/packs/{pid}/prepagar-deliveries" in c.get(f"/ordenes/{oid}/panel").text, "también desde la orden, debajo del pack"
         c.post(f"/packs/{pid}/prepagar-deliveries", data={"cuantos": "5", "tarifa": "7", "forma": "Binance USDT", "fecha": "2026-10-28"})
         k = con.execute("SELECT deliveries_prepagados, tarifa_prepagada FROM packs WHERE id=?", (pid,)).fetchone()
         assert (k[0], k[1]) == (2, 7), "quedan 2 entregas: no se prepagan más de las que faltan"
@@ -1480,6 +1484,7 @@ def _():
         assert o["total"] == 81 and o["estado_pago"] == "pagada", dict(o)
         assert con.execute("SELECT SUM(monto_usd) FROM pagos WHERE orden_id=?", (oid,)).fetchone()[0] == 81
         assert f"/packs/{pid}/prepagar-deliveries" not in c.get("/clientes/53").text, "ya no queda nada por prepagar"
+        assert "2 deliveries de las próximas entregas pagados" in c.get(f"/ordenes/{oid}/panel").text
         c.post(f"/packs/{pid}/programar", data={"fecha": "2026-11-15", "tipo_entrega": "delivery", "delivery": "7", "delivery_pagado": "0"})
         assert con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()[0] == 1, "la próxima entrega ya está pagada"
         con.close()
