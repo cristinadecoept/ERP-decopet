@@ -1492,6 +1492,23 @@ def _():
         assert con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()[0] == 1, "la próxima entrega ya está pagada"
         con.close()
 
+@prueba("Registro de ventas: con varios pagos el mismo día, el pack sale con la forma con que se pagó (unas fechas traen hora y otras no)")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (54,'Karen Registro','Karen','04141112236')")
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega,creado_en)
+                             VALUES ('#80',54,'pendiente','pagada',74,7,81,'delivery','2026-10-28 10:40:00')""").lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,total) VALUES (?,'Pack 3 Repuestos Mediano',1,60,60)", (oid,))
+        con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total,extra_en) VALUES (?,'Delivery prepagado',2,7,0,14,'2026-10-28')", (oid,))
+        for forma, monto, fecha in (("Binance USDT", 60, "2026-10-28 10:48:00"), ("Pago Móvil VES", 14, "2026-10-28"), ("Pago Móvil VES", 7, "2026-10-28 11:56:00")):
+            con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,?,?,?,'USD',?,'confirmado')", (oid, forma, monto, monto, fecha))
+        con.commit()
+        filas = {f["producto"]: f for f in A._entradas_de(con, oid)}
+        assert filas["Pack 3 Repuestos Mediano"]["forma"] == "Binance USDT", filas["Pack 3 Repuestos Mediano"]["forma"]
+        assert filas["Delivery"]["forma"] == "Pago Móvil VES" and filas["Delivery"]["linea"] == 21, filas["Delivery"]
+        con.close()
+
 @prueba("Subir ubicación: sirve el link sin https:// o con texto alrededor; la dirección escrita no se guarda y se avisa")
 def _():
     assert A.link_de_maps("maps.app.goo.gl/abc123") == "https://maps.app.goo.gl/abc123"

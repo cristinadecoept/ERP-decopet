@@ -175,7 +175,7 @@ def _entradas_de(con, oid):
     o = con.execute("SELECT o.*, c.nombre cliente FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?", (oid,)).fetchone()
     if not o or o["estado"] == "cancelada": return []
     pagos = con.execute("""SELECT id, substr(fecha,1,10) dia, monto_usd, forma FROM pagos WHERE orden_id=? AND estado='confirmado'
-                           AND fecha IS NOT NULL AND fecha!='' ORDER BY fecha, id""", (oid,)).fetchall()
+                           AND fecha IS NOT NULL AND fecha!='' ORDER BY substr(fecha,1,10), id""", (oid,)).fetchall()   # en el día, en el orden en que se anotaron: unas fechas traen hora y otras no
     if not pagos: return []
     dia_o = (o["creado_en"] or "")[:10]
     lineas = con.execute("SELECT * FROM orden_lineas WHERE orden_id=? ORDER BY id", (oid,)).fetchall()
