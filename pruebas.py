@@ -1485,6 +1485,9 @@ def _():
         assert con.execute("SELECT SUM(monto_usd) FROM pagos WHERE orden_id=?", (oid,)).fetchone()[0] == 81
         assert f"/packs/{pid}/prepagar-deliveries" not in c.get("/clientes/53").text, "ya no queda nada por prepagar"
         assert "2 deliveries de las próximas entregas pagados" in c.get(f"/ordenes/{oid}/panel").text
+        l = con.execute("SELECT cantidad, precio FROM orden_lineas WHERE orden_id=? AND nombre='Delivery prepagado'", (oid,)).fetchone()
+        assert l and (l[0], l[1]) == (2, 7), "en la orden se lee '2× Delivery prepagado'"
+        assert "Deliveries pagados · todos" in c.get("/packs").text, "el de hoy va en la orden: con los 2 que vienen ya están todos"
         c.post(f"/packs/{pid}/programar", data={"fecha": "2026-11-15", "tipo_entrega": "delivery", "delivery": "7", "delivery_pagado": "0"})
         assert con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()[0] == 1, "la próxima entrega ya está pagada"
         con.close()

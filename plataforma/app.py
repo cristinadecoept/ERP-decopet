@@ -2384,7 +2384,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         for li_d, k_d, m_d in deliv_pack:
             if li_d == li:   # queda anotado dentro de la orden, como lo que se cobra aparte del producto
                 con.execute("""INSERT INTO orden_lineas (orden_id, nombre, cantidad, precio, costo, total, extra_en)
-                               VALUES (?,?,?,?,0,?,?)""", (oid, f"Delivery de las próximas entregas del pack ({k_d * int(c)} × ${delivery:g})", k_d * int(c), delivery, m_d, hoy_d.isoformat()))
+                               VALUES (?,?,?,?,0,?,?)""", (oid, "Delivery prepagado", k_d * int(c), delivery, m_d, hoy_d.isoformat()))
         if prepago and (p["sku"] or "").startswith("REP-"):
             for _ in range(int(c)):
                 con.execute("INSERT INTO repuestos_prepagados (cliente_id,orden_id,linea_id,producto_id,tamano,pagado_en,usuario_id) VALUES (?,?,?,?,?,?,?)",
@@ -5634,6 +5634,7 @@ def cargar_packs(con):
     hoy = datetime.date.today(); lista = []
     for r in rows:
         d = dict(r)
+        d["futuras"] = d["unidades"] - d["entregadas_inicio"] - d["entregas_posteriores"]   # las entregas después de la compra: las que tienen delivery aparte
         # los que se lleva el día de la compra cuentan cuando esa orden se entrega, no antes
         if d.get("orden_estado") not in (None, "entregada"): d["entregadas_inicio"] = 0
         d["entregadas"] = d["entregadas_inicio"] + d["entregas_posteriores"]; d["saldo"] = d["unidades"] - d["entregadas"]
@@ -5824,7 +5825,9 @@ def pack_prepagar_deliveries(request: Request, pid: int, cuantos: str = Form("0"
     libres = k["unidades"] - k["entregadas_inicio"] - k["n"] - (k["deliveries_prepagados"] or 0)
     n = min(int(cuantos) if cuantos.isdigit() else 0, libres); t = round(float(cifra(tarifa) or 0), 2)
     if n > 0 and t > 0 and forma:
-        cobro_extra(con, k["orden_id"], f"Delivery de las próximas entregas del pack ({n} × ${t:g})", n * t, forma, fecha or None, uid_de(request))
+        cobro_extra(con, k["orden_id"], "Delivery prepagado", n * t, forma, fecha or None, uid_de(request))
+        # en la orden se lee como los productos: "2× Delivery prepagado", a $7 cada uno
+        con.execute("UPDATE orden_lineas SET cantidad=?, precio=? WHERE id=(SELECT MAX(id) FROM orden_lineas WHERE orden_id=? AND nombre='Delivery prepagado')", (n, t, k["orden_id"]))
         con.execute("UPDATE packs SET deliveries_prepagados=COALESCE(deliveries_prepagados,0)+?, tarifa_prepagada=? WHERE id=?", (n, t, pid))
         con.commit()
     return ir
