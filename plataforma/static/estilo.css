@@ -843,7 +843,7 @@ html{color-scheme:light}html.oscuro{color-scheme:dark}
 select{-webkit-appearance:none}html.oscuro select{background-color:#202723;color:var(--tinta)}
 
 /* un cuadro que se abre dentro de una tabla no puede quedar cortado */
-.tabla:has(details.cobro[open]){overflow:visible}
+.tabla:has(details.cobro[open]),.perfil-tabs:has(details.cobro[open]){overflow:visible}
 
 /* Pantalla de entrar: blanca y limpia, logo arriba a la izquierda, la frase a un lado y el formulario al otro.
    El verde es el de la marca y el naranja solo resalta (el campo en el que se escribe). */

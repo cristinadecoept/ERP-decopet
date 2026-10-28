@@ -1462,6 +1462,28 @@ def _():
         assert f"/ordenes/{oid}/ubicacion" not in c.get("/inicio").text, "ya no falta"
         con.close()
 
+@prueba("Pack ya creado: prepagar los deliveries de las próximas entregas entra a su orden y esas entregas no se cobran")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (53,'Karen Prueba','Karen','04141112235')")
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega) VALUES ('#79',53,'pendiente','pagada',60,7,67,'delivery')").lastrowid
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Binance USDT',67,67,'USD','2026-10-28','confirmado')", (oid,))
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,estado) VALUES (53,?,3,1,'activo')", (oid,)).lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        assert f"/packs/{pid}/prepagar-deliveries" in c.get("/clientes/53").text
+        c.post(f"/packs/{pid}/prepagar-deliveries", data={"cuantos": "5", "tarifa": "7", "forma": "Binance USDT", "fecha": "2026-10-28"})
+        k = con.execute("SELECT deliveries_prepagados, tarifa_prepagada FROM packs WHERE id=?", (pid,)).fetchone()
+        assert (k[0], k[1]) == (2, 7), "quedan 2 entregas: no se prepagan más de las que faltan"
+        o = con.execute("SELECT total, estado_pago FROM ordenes WHERE id=?", (oid,)).fetchone()
+        assert o["total"] == 81 and o["estado_pago"] == "pagada", dict(o)
+        assert con.execute("SELECT SUM(monto_usd) FROM pagos WHERE orden_id=?", (oid,)).fetchone()[0] == 81
+        assert f"/packs/{pid}/prepagar-deliveries" not in c.get("/clientes/53").text, "ya no queda nada por prepagar"
+        c.post(f"/packs/{pid}/programar", data={"fecha": "2026-11-15", "tipo_entrega": "delivery", "delivery": "7", "delivery_pagado": "0"})
+        assert con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()[0] == 1, "la próxima entrega ya está pagada"
+        con.close()
+
 @prueba("Subir ubicación: sirve el link sin https:// o con texto alrededor; la dirección escrita no se guarda y se avisa")
 def _():
     assert A.link_de_maps("maps.app.goo.gl/abc123") == "https://maps.app.goo.gl/abc123"

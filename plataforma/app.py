@@ -5810,6 +5810,24 @@ def retiro_cobrar_delivery(request: Request, rid: int, forma: str = Form(""), mo
     return ir
 
 
+@app.post("/packs/{pid}/prepagar-deliveries")
+def pack_prepagar_deliveries(request: Request, pid: int, cuantos: str = Form("0"), tarifa: str = Form(""), forma: str = Form(""),
+                             fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
+    """El pack ya existe y el cliente paga ahora los deliveries de sus próximas entregas (lo mismo que al crear la orden):
+    entra a la orden del pack el día que pagó y esas entregas ya no se le cobran. Al despachador se le sigue pagando su viaje."""
+    rol = rol_de(request); ir = RedirectResponse(volver_seguro(volver) or "/packs", status_code=303)
+    if "confirmar_pago" not in PERMISOS[rol] and "ver_cobros" not in PERMISOS[rol]: return ir
+    k = con.execute("""SELECT k.*, (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) n FROM packs k WHERE id=?""", (pid,)).fetchone()
+    if not k or not k["orden_id"]: return ir
+    libres = k["unidades"] - k["entregadas_inicio"] - k["n"] - (k["deliveries_prepagados"] or 0)
+    n = min(int(cuantos) if cuantos.isdigit() else 0, libres); t = round(float(cifra(tarifa) or 0), 2)
+    if n > 0 and t > 0 and forma:
+        cobro_extra(con, k["orden_id"], f"Delivery de las próximas entregas del pack ({n} × ${t:g})", n * t, forma, fecha or None, uid_de(request))
+        con.execute("UPDATE packs SET deliveries_prepagados=COALESCE(deliveries_prepagados,0)+?, tarifa_prepagada=? WHERE id=?", (n, t, pid))
+        con.commit()
+    return ir
+
+
 @app.post("/packs/{pid}/no-recibio")
 def pack_no_recibio(request: Request, pid: int, fue: str = Form(""), motivo: str = Form(""), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
     if rol_de(request) not in ("admin", "logistica"): return RedirectResponse("/operaciones", status_code=303)
@@ -6135,7 +6153,8 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
         if c_ not in [r[1] for r in con.execute("PRAGMA table_info(packs)")]: con.execute(f"ALTER TABLE packs ADD COLUMN {c_} {tp}")
     # los que se lleva el día de la compra cuentan cuando esa orden se entrega, no antes
     packs = [dict(r) | {"entregadas_inicio": r["ini_real"]} for r in con.execute("""SELECT k.*, (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregadas,
-                           (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ult, (CASE WHEN k.orden_id IS NULL OR (SELECT o_.estado FROM ordenes o_ WHERE o_.id=k.orden_id)='entregada' THEN k.entregadas_inicio ELSE 0 END) ini_real
+                           (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ult, (SELECT delivery FROM ordenes WHERE id=k.orden_id) delivery_orden,
+                           k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) futuras, (CASE WHEN k.orden_id IS NULL OR (SELECT o_.estado FROM ordenes o_ WHERE o_.id=k.orden_id)='entregada' THEN k.entregadas_inicio ELSE 0 END) ini_real
                            FROM packs k WHERE k.cliente_id=? ORDER BY k.id DESC""", (cid,))]
     entregas = con.execute("""SELECT e.*, k.tamano, k.unidades, k.id pack, o.numero orden,
                               (SELECT COUNT(*) FROM entregas_repuesto e2 WHERE e2.pack_id=e.pack_id AND (e2.fecha < e.fecha OR (e2.fecha = e.fecha AND e2.id <= e.id))) + k.entregadas_inicio n_retiro,
