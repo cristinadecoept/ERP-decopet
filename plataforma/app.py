@@ -2088,7 +2088,7 @@ def eliminar_cliente(request: Request, cid: int, confirmar: str = Form(""), con=
         return RedirectResponse(f"/clientes/{cid}?err=confirmar", status_code=303)
     for (oid,) in con.execute("SELECT id FROM ordenes WHERE cliente_id=?", (cid,)).fetchall(): borrar_orden(con, oid)
     con.execute("DELETE FROM entregas_repuesto WHERE pack_id IN (SELECT id FROM packs WHERE cliente_id=?)", (cid,))
-    for tb in ("packs", "repuestos_prepagados", "seguimientos", "fotos", "credito_cliente", "notas_cliente", "direcciones", "mascotas"):
+    for tb in ("packs", "repuestos_prepagados", "seguimientos", "seguimientos_integrados", "fotos", "credito_cliente", "notas_cliente", "direcciones", "mascotas"):
         con.execute(f"DELETE FROM {tb} WHERE cliente_id=?", (cid,))
     con.execute("UPDATE clientes SET referido_id=NULL WHERE referido_id=?", (cid,))   # a quienes recomendó no se les borra nada
     con.execute("DELETE FROM clientes WHERE id=?", (cid,)); con.commit()
@@ -2137,6 +2137,9 @@ def cerrar_incidencia(request: Request, oid: int, iid: int, resolucion: str = Fo
 CICLO_REPUESTO = 21   # regla Decopet: se hace seguimiento cada 21 días; si el cliente compra más seguido, se usa su ritmo
                       # (valor de arranque: lo reemplaza cargar_ajustes() con lo que haya en Configuración)
 
+VIEJOS_POR_DIA = 10            # clientes viejos que se suman cada día a 'Hoy' en Seguimientos (Configuración)
+INTEGRAR_DESDE = "2026-10-29"  # lo que ya estaba vencido y no salía en Seguimientos antes de esta fecha entra de a poco
+
 def ciclo_de(ritmo):
     """Cada cuántos días tocarle: su ritmo si compra más seguido que 21 días; si se tarda más, igual se le escribe a los 21."""
     return min(ritmo, CICLO_REPUESTO) if ritmo else CICLO_REPUESTO
@@ -2172,13 +2175,14 @@ def arrancar_respaldo():
 def cargar_ajustes():
     """Trae de Configuración las reglas que antes estaban clavadas en el código.
     Se llama al arrancar y cada vez que Cristina guarda, para que el cambio valga sin reiniciar."""
-    global CICLO_REPUESTO, IVA
+    global CICLO_REPUESTO, IVA, VIEJOS_POR_DIA
     con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
     try:
-        r = con.execute("SELECT clave, valor FROM config WHERE clave IN ('ciclo_repuesto','iva')").fetchall()
+        r = con.execute("SELECT clave, valor FROM config WHERE clave IN ('ciclo_repuesto','iva','viejos_por_dia')").fetchall()
         v = {x["clave"]: x["valor"] for x in r}
         if v.get("ciclo_repuesto"): CICLO_REPUESTO = int(float(v["ciclo_repuesto"]))
         if v.get("iva"): IVA = float(v["iva"])
+        if v.get("viejos_por_dia"): VIEJOS_POR_DIA = int(float(v["viejos_por_dia"]))
     except sqlite3.OperationalError:
         pass
     finally:
@@ -3126,7 +3130,7 @@ def configuracion(request: Request, con=Depends(db), ok: str = "", err: str = ""
                       "SELECT categoria, subcategoria, COUNT(*) FROM gastos GROUP BY categoria, subcategoria")},
                   cats_uso_cat={r[0]: r[1] for r in con.execute(
                       "SELECT categoria, COUNT(*) FROM gastos GROUP BY categoria")},
-                  ciclo=CICLO_REPUESTO, iva=round(IVA * 100, 2),
+                  ciclo=CICLO_REPUESTO, viejos=VIEJOS_POR_DIA, iva=round(IVA * 100, 2),
                   clave=val("clave_resultados"), ventas_auto=val("ventas_auto", "0") == "1",
                   cashflow_desde=val("cashflow_desde"),
                   respaldos=lista_respaldos(), ok=ok, err=err)
@@ -3268,6 +3272,8 @@ async def configuracion_guardar(request: Request, con=Depends(db)):
     if bloque == "reglas":
         c = cifra(f.get("ciclo", "")) or 0
         if 1 <= c <= 365: poner("ciclo_repuesto", str(int(c)))
+        vd = cifra(f.get("viejos", ""))
+        if vd is not None and 0 <= vd <= 200: poner("viejos_por_dia", str(int(vd)))
         i = cifra(f.get("iva", ""))
         if i is not None and 0 <= i <= 100: poner("iva", str(round(i / 100, 4)))
         # el viaje a la agencia se edita en Logística › Tarifas, no aquí
@@ -5361,20 +5367,29 @@ def estado_seg(r, hoy):
 def seguimientos_pendientes(con, umbral=None, ventana=1):
     """Seguimientos personalizados: cada miembro PRO se activa según SU fecha de entrega (del porche o del último repuesto)
     más su intervalo propio (cada cuánto compra repuesto; si no hay historial, 21 días). Es 'hoy' solo el día exacto
-    (Cristina, 3 oct 2026); desde el día siguiente, si no se contactó, pasa a 'atrasado' (se ve en Seguimientos, no en Inicio)."""
+    (Cristina, 3 oct 2026); desde el día siguiente, si no se contactó, pasa a 'atrasado' (se ve en Seguimientos, no en Inicio).
+    Entran también los clientes viejos de Airtable (ficha PRO o Básico, sin el porche como pedido, o solo en el Registro
+    de ventas) y nadie sale de la lista por llevar mucho sin comprar: se deja de escribirle solo si se marca 'Ya no lo usa'.
+    Los que ya estaban vencidos antes de INTEGRAR_DESDE no entran de golpe: cada día se suman VIEJOS_POR_DIA a 'Hoy',
+    primero los que compraron hace menos y más veces. El que no se contactó el día que le tocaba sigue en 'Hoy' los días
+    siguientes con la marca 'Atrasado' (Cristina, 29 oct 2026: antes pasaba a la pestaña Atrasados y se perdía de vista)."""
     if umbral is None: umbral = CICLO_REPUESTO
-    hoy = datetime.date.today(); h = hoy.isoformat(); out = []
+    hoy = datetime.date.today(); h = hoy.isoformat(); out = []; viejos = []
     hechos = {r["clave"]: r for r in con.execute("SELECT * FROM seguimientos")}
+    def es_viejo(ref, intervalo):
+        """¿Ya estaba vencido antes de INTEGRAR_DESDE? Entonces entra de a poco, no de golpe."""
+        return (datetime.date.fromisoformat(ref[:10]) + datetime.timedelta(days=intervalo)).isoformat() < INTEGRAR_DESDE
     def vivo(clave):
         r = hechos.get(clave); return (r is None) or (r["posponer_hasta"] and r["posponer_hasta"] <= h)
     # tenía perros y fallecieron todos: no se le ofrece repuesto ni porche (vuelve solo si se le anota un perro nuevo)
     sin_perro = {r[0] for r in con.execute("SELECT cliente_id FROM mascotas GROUP BY cliente_id HAVING SUM(fallecida IS NULL)=0")}
-    for m in con.execute("""SELECT c.id, c.nombre, c.telefono,
+    for m in con.execute("""SELECT c.id, c.nombre, c.telefono, c.porche_tamano ficha_tamano,
         MAX(CASE WHEN p.sku LIKE 'PRO-%' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) porche,
         MAX(CASE WHEN p.sku='PRO-G' THEN 'Grande' WHEN p.sku='PRO-M' THEN 'Mediano' END) tamano,
         MAX(CASE WHEN p.categoria='repuesto' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) ult_rep
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
-        GROUP BY c.id HAVING porche IS NOT NULL"""):
+        GROUP BY c.id HAVING porche IS NOT NULL OR (c.porche_version='PRO' AND ult_rep IS NOT NULL)"""):
+        # ficha PRO de Airtable sin el porche como pedido: se cuenta desde su último repuesto
         if m["id"] in sin_perro: continue
         # fechas de repuesto (compras + retiros de pack) → ritmo propio
         # Lo que cuenta es el día que el cliente RECIBIÓ un repuesto, no el día que lo pagó.
@@ -5391,35 +5406,81 @@ def seguimientos_pendientes(con, umbral=None, ventana=1):
         intervalo = ciclo_de(ritmo)
         saldo_pack = con.execute("SELECT COALESCE(SUM(k.unidades - (CASE WHEN k.orden_id IS NULL OR (SELECT o_.estado FROM ordenes o_ WHERE o_.id=k.orden_id)='entregada' THEN k.entregadas_inicio ELSE 0 END) - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id)),0) FROM packs k WHERE k.cliente_id=?", (m["id"],)).fetchone()[0]
         ult = max(fechas) if fechas else None
-        ref = max([x for x in (ult, m["porche"]) if x]); dias = (hoy - datetime.date.fromisoformat(ref[:10])).days
-        if dias < intervalo or dias > 120: continue
-        primero = ult is None or ult < m["porche"]
+        fechas_ref = [x for x in (ult, m["porche"]) if x]
+        if not fechas_ref: continue
+        ref = max(fechas_ref); dias = (hoy - datetime.date.fromisoformat(ref[:10])).days
+        if dias < intervalo: continue
+        primero = ult is None or (m["porche"] is not None and ult < m["porche"])
         clave = f"seg:{m['id']}:{ref[:10]}"
         if not vivo(clave): continue
         prepag = con.execute("SELECT COUNT(*) FROM repuestos_prepagados WHERE cliente_id=? AND entregado_en IS NULL", (m["id"],)).fetchone()[0]
         atraso = dias - intervalo
-        out.append(dict(cliente_id=m["id"], cliente=m["nombre"], telefono=m["telefono"], tamano=m["tamano"] or "—", clave=clave, dias=dias, intervalo=intervalo, atraso=atraso,
+        (viejos if es_viejo(ref, intervalo) else out).append(dict(
+                        cliente_id=m["id"], cliente=m["nombre"], telefono=m["telefono"], tamano=m["tamano"] or m["ficha_tamano"] or "—", clave=clave, dias=dias, intervalo=intervalo, atraso=atraso,
+                        que=f"Repuesto {m['tamano'] or m['ficha_tamano'] or '—'}", _ult=ref[:10], _n=len(fechas),
                         fase=("hoy" if atraso < ventana else "atrasado"),
                         tipo="primer_repuesto" if primero else ("prepagado" if prepag else "repuesto"),
                         tipo_txt=("Le toca primer repuesto" if primero else (f"Tiene {prepag} repuesto{'s' if prepag > 1 else ''} pagado · coordinar entrega" if prepag else ("Le toca repuesto del pack" if saldo_pack > 0 else "Le toca repuesto"))) + (f" · cada {intervalo} d" if intervalo != CICLO_REPUESTO else ""),
                         estado=estado_seg(hechos.get(clave), hoy)))
-    for s in out: s["que"] = f"Repuesto {s['tamano']}"
     out.sort(key=lambda s: (s["fase"] != "hoy", s["atraso"]))
+    # PRO de Airtable sin ningún pedido en el ERP: su última compra sale del Registro de ventas, cruzando por el nombre.
+    # Solo sirve para saber cuándo escribirle; el ritmo de compra sigue saliendo de las órdenes.
+    registro = {k: (u, n) for k, u, n in con.execute("SELECT lower(trim(cliente)), MAX(substr(fecha,1,10)), COUNT(*) FROM registro_ventas GROUP BY 1")}
+    for c_ in con.execute("""SELECT c.id, c.nombre, c.telefono, c.porche_tamano FROM clientes c
+        WHERE c.porche_version='PRO' AND NOT EXISTS (SELECT 1 FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada')"""):
+        ult, n = registro.get((c_["nombre"] or "").strip().lower(), (None, 0))
+        if c_["id"] in sin_perro or not ult: continue
+        r = dict(c_, ult=ult, n=n)
+        dias = (hoy - datetime.date.fromisoformat(r["ult"])).days
+        if dias < CICLO_REPUESTO: continue
+        clave = f"seg:{r['id']}:{r['ult']}"
+        if not vivo(clave): continue
+        atraso = dias - CICLO_REPUESTO
+        (viejos if es_viejo(r["ult"], CICLO_REPUESTO) else out).append(dict(
+            cliente_id=r["id"], cliente=r["nombre"], telefono=r["telefono"], tamano=r["porche_tamano"] or "—", que=f"Repuesto {r['porche_tamano'] or '—'}",
+            clave=clave, dias=dias, intervalo=CICLO_REPUESTO, atraso=atraso, fase=("hoy" if atraso < ventana else "atrasado"), _ult=r["ult"], _n=r["n"],
+            tipo="repuesto", tipo_txt="Le toca repuesto", estado=estado_seg(hechos.get(clave), hoy)))
     # Porche Básico: no compra repuestos. A los 21 días se le pregunta cómo le fue y se le ofrece pasar a la Versión PRO.
+    ya_pro = {s["cliente_id"] for s in out + viejos}   # ficha PRO que también compró un Básico: ya sale arriba por sus repuestos
+    # Ficha Básico de Airtable sin el porche como pedido: se cuenta desde su último pedido.
     for b in con.execute("""SELECT c.id, c.nombre, c.telefono,
-        MAX(CASE WHEN p.sku LIKE 'BAS%' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END) basico,
+        MAX(CASE WHEN p.sku LIKE 'BAS%' THEN 1 ELSE 0 END) bas_orden,
+        COALESCE(MAX(CASE WHEN p.sku LIKE 'BAS%' THEN COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) END),
+                 CASE WHEN c.porche_version='Básico' THEN MAX(COALESCE(o.fecha_entrega, substr(o.creado_en,1,10))) END) basico,
         MAX(CASE WHEN p.sku LIKE 'PRO-%' THEN 1 ELSE 0 END) tiene_pro
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
         GROUP BY c.id HAVING basico IS NOT NULL AND tiene_pro=0"""):
-        if b["id"] in sin_perro: continue
+        if b["id"] in sin_perro or b["id"] in ya_pro: continue
         dias = (hoy - datetime.date.fromisoformat(b["basico"][:10])).days
-        if dias < CICLO_REPUESTO or dias > 120: continue
+        if dias < CICLO_REPUESTO: continue
         clave = f"basico:{b['id']}:{b['basico'][:10]}"
         if not vivo(clave): continue
         atraso = dias - CICLO_REPUESTO
-        out.append(dict(cliente_id=b["id"], cliente=b["nombre"], telefono=b["telefono"], tamano="", clave=clave, dias=dias, intervalo=CICLO_REPUESTO, atraso=atraso,
-                        fase=("hoy" if atraso < ventana else "atrasado"), tipo="basico", que="Porche Básico",
+        (viejos if es_viejo(b["basico"], CICLO_REPUESTO) else out).append(dict(
+                        cliente_id=b["id"], cliente=b["nombre"], telefono=b["telefono"], tamano="", clave=clave, dias=dias, intervalo=CICLO_REPUESTO, atraso=atraso,
+                        _ult=b["basico"][:10], _n=1, fase=("hoy" if atraso < ventana else "atrasado"), tipo="basico", que="Porche Básico",
                         tipo_txt="¿Cómo le fue con el Básico? · ofrecer Versión PRO", estado=estado_seg(hechos.get(clave), hoy)))
+
+    # Clientes viejos: cada día entran VIEJOS_POR_DIA nuevos a 'Hoy' (los del día quedan anotados para que no cambien).
+    # Desde el día siguiente, si no se contactaron, pasan a 'atrasado' como cualquier otro.
+    integrados = dict(con.execute("SELECT cliente_id, dia FROM seguimientos_integrados").fetchall())
+    cupo = VIEJOS_POR_DIA - sum(1 for d_ in integrados.values() if d_ == h)
+    viejos.sort(key=lambda s: (s["_ult"], s["_n"]), reverse=True)
+    for s in viejos:
+        if s["cliente_id"] not in integrados:
+            if cupo <= 0: continue
+            con.execute("INSERT OR IGNORE INTO seguimientos_integrados (cliente_id, dia) VALUES (?,?)", (s["cliente_id"], h))
+            integrados[s["cliente_id"]] = h; cupo -= 1
+        s["fase"] = "hoy" if integrados[s["cliente_id"]] == h else "atrasado"
+        if s["fase"] == "atrasado": s["atraso"] = (hoy - datetime.date.fromisoformat(integrados[s["cliente_id"]])).days
+        out.append(s)
+    con.commit()
+    # el que no se contactó el día que le tocaba sigue en 'Hoy' con la marca 'Atrasado' (y cuántos días)
+    for s in out:
+        if s["fase"] != "atrasado": continue
+        s["fase"] = "hoy"; s["tarde"] = max(s["atraso"], 1)
+        if s["clave"] not in hechos: s["estado"] = f"Atrasado · {s['tarde']} d"
+    out.sort(key=lambda s: -s.get("tarde", 0))   # los atrasados primero, para que no se vuelvan a quedar
 
     for o in con.execute("""SELECT o.id, o.numero, o.total, o.fecha_entrega, o.creado_en, c.id cid, c.nombre, c.telefono,
                             (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') pagado
@@ -5477,8 +5538,8 @@ def seguimientos(request: Request, ver: str = "pendientes", tipo: str = "", q: s
     sincronizar_packs(con)
     todos = [dict(x, mensajes=mensajes_repuesto(con, x)) if x.get("tipo") in ("primer_repuesto", "repuesto", "prepagado") and x.get("cliente_id") else x
              for x in seguimientos_pendientes(con)]
-    n_atr = sum(1 for s in todos if s.get("fase") == "atrasado")
-    pend = [s for s in todos if (s.get("fase", "hoy") == "atrasado") == (ver == "atrasados")] if ver != "hechos" else todos
+    n_atr = sum(1 for s in todos if s.get("tarde"))
+    pend = [s for s in todos if s.get("tarde") or ver != "atrasados"]   # Atrasados: solo los que siguen en Hoy porque no se contactaron
     if tipo: pend = [s for s in (todos if ver != "hechos" else pend) if s["tipo"] == tipo]   # al filtrar por tipo se ven de una vez los de hoy y los atrasados
     if q: pend = [s for s in pend if q.lower() in (s["cliente"] or "").lower() or q in (s["telefono"] or "")]
     hechos = con.execute("SELECT s.*, c.nombre cliente, c.telefono, u.nombre usuario FROM seguimientos s JOIN clientes c ON c.id=s.cliente_id LEFT JOIN usuarios u ON u.id=s.usuario_id ORDER BY s.hecho_en DESC LIMIT 200").fetchall()

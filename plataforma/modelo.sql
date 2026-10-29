@@ -125,6 +125,11 @@ CREATE TABLE IF NOT EXISTS seguimientos (
   intentos INTEGER NOT NULL DEFAULT 1,
   usuario_id INTEGER REFERENCES usuarios(id), hecho_en TEXT DEFAULT (datetime('now','localtime')));
 
+-- clientes viejos que se van sumando a Seguimientos de a poco: el día en que entró cada uno
+CREATE TABLE IF NOT EXISTS seguimientos_integrados (
+  cliente_id INTEGER PRIMARY KEY REFERENCES clientes(id) ON DELETE CASCADE,
+  dia TEXT NOT NULL);
+
 -- ---------- PRODUCTOS: inventario y galería
 CREATE TABLE IF NOT EXISTS mov_inventario (
   id INTEGER PRIMARY KEY, producto_id INTEGER NOT NULL REFERENCES productos(id), fecha TEXT NOT NULL,

@@ -2051,6 +2051,74 @@ def _():
         con.close()
 
 
+def _seguimientos_viejos():
+    """Una base con clientes de Airtable: Alesia (repuesto hace 71 días), uno de hace 300, un Básico, uno solo en el
+    Registro de ventas, uno sin porche y uno normal del ERP (porche hace 21 días: le toca hoy)."""
+    con = base_limpia(); hoy = datetime.date.today()
+    for sku, nombre, cat in (("REP-G", "Repuesto Grande", "repuesto"), ("REP-M", "Repuesto Mediano", "repuesto"), ("PRO-M", "Porche PRO Mediano", "porche")):
+        con.execute("INSERT INTO productos (sku,nombre,categoria) VALUES (?,?,?)", (sku, nombre, cat))
+    def pedido(cid, sku, hace):
+        p_ = con.execute("SELECT id, nombre FROM productos WHERE sku=?", (sku,)).fetchone()
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,fecha_entrega) VALUES (?,?,'entregada','pagada',27,0,?)",
+                          (f"#AT{cid}{hace}", cid, (hoy - datetime.timedelta(days=hace)).isoformat())).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,27,0,27)", (oid, p_["id"], p_["nombre"]))
+    ids = {}
+    for k, nombre, version, tam in (("alesia", "Alesia Prueba", "PRO", "Grande"), ("vieja", "Vieja Prueba", "PRO", None), ("basico", "Básico Prueba", "Básico", None),
+                                    ("registro", "Registro Prueba", "PRO", "Mediano"), ("sin_ficha", "Sin Porche Prueba", None, None), ("normal", "Normal Prueba", None, None)):
+        ids[k] = con.execute("INSERT INTO clientes (nombre,nombre_pila,porche_version,porche_tamano) VALUES (?,?,?,?)", (nombre, nombre.split()[0], version, tam)).lastrowid
+    pedido(ids["alesia"], "REP-G", 140); pedido(ids["alesia"], "REP-G", 71)
+    pedido(ids["vieja"], "REP-M", 300)
+    pedido(ids["basico"], "REP-M", 60)
+    pedido(ids["sin_ficha"], "REP-M", 40)
+    pedido(ids["normal"], "PRO-M", 21)
+    con.execute("INSERT INTO registro_ventas (fecha,cliente,producto,precio,cantidad) VALUES (?,' registro prueba','Repuesto',24,1)", ((hoy - datetime.timedelta(days=200)).isoformat(),))
+    con.commit()
+    return con, ids
+
+
+def _con_ajustes(viejos_por_dia):
+    antes = (A.VIEJOS_POR_DIA, A.INTEGRAR_DESDE)
+    A.VIEJOS_POR_DIA, A.INTEGRAR_DESDE = viejos_por_dia, datetime.date.today().isoformat()   # como si se publicara hoy
+    return antes
+
+
+@prueba("Seguimientos: los clientes viejos de Airtable entran (ficha PRO, Básico, solo en el Registro de ventas), aunque lleven meses sin comprar; el que no tiene porche no")
+def _():
+    antes = _con_ajustes(10)
+    try:
+        con, ids = _seguimientos_viejos()
+        segs = {s_["cliente_id"]: s_ for s_ in A.seguimientos_pendientes(con)}
+        assert segs[ids["alesia"]]["tipo"] == "repuesto" and segs[ids["alesia"]]["que"] == "Repuesto Grande", segs.get(ids["alesia"])
+        assert ids["vieja"] in segs, "300 días sin comprar: igual hay que escribirle"
+        assert segs[ids["basico"]]["tipo"] == "basico", "ficha Básico: se le pregunta cómo le fue"
+        assert segs[ids["registro"]]["que"] == "Repuesto Mediano", "sin pedidos en el ERP: su última compra sale del Registro de ventas"
+        assert ids["sin_ficha"] not in segs, "sin porche ni ficha: no es miembro"
+        con.execute("INSERT INTO seguimientos (cliente_id,tipo,clave,resultado,intentos) VALUES (?,?,?,'ya_no_usa',1)", (ids["vieja"], "repuesto", segs[ids["vieja"]]["clave"]))
+        con.commit()
+        assert ids["vieja"] not in {s_["cliente_id"] for s_ in A.seguimientos_pendientes(con)}, "'Ya no lo usa': deja de salir"
+    finally:
+        A.VIEJOS_POR_DIA, A.INTEGRAR_DESDE = antes
+
+
+@prueba("Seguimientos: los clientes viejos entran de a poco a 'Hoy' (los que compraron hace menos primero); los del día no cambian y al día siguiente siguen en Hoy marcados 'Atrasado'")
+def _():
+    antes = _con_ajustes(2)
+    try:
+        con, ids = _seguimientos_viejos()
+        hoy_ = lambda: [s_["cliente_id"] for s_ in A.seguimientos_pendientes(con) if s_.get("fase") == "hoy"]
+        primeros = hoy_()
+        assert ids["normal"] in primeros, "el cliente normal del ERP no cuenta en el cupo"
+        viejos_hoy = [c_ for c_ in primeros if c_ != ids["normal"]]
+        assert viejos_hoy == [ids["basico"], ids["alesia"]], f"2 por día, el que compró hace menos primero (60 y 71 días): {viejos_hoy}"
+        assert hoy_() == primeros, "al volver a abrir no se suman otros"
+        ayer = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        con.execute("UPDATE seguimientos_integrados SET dia=?", (ayer,)); con.commit()   # como si hubieran entrado ayer
+        segs = {s_["cliente_id"]: s_ for s_ in A.seguimientos_pendientes(con)}
+        assert segs[ids["alesia"]]["fase"] == "hoy" and segs[ids["alesia"]]["estado"] == "Atrasado · 1 d", "no se contactó ayer: sigue en Hoy, marcado Atrasado"
+        assert segs[ids["registro"]]["fase"] == "hoy" and segs[ids["vieja"]]["fase"] == "hoy", "hoy entran los 2 siguientes"
+    finally:
+        A.VIEJOS_POR_DIA, A.INTEGRAR_DESDE = antes
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
