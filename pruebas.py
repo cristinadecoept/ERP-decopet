@@ -2240,6 +2240,10 @@ def _():
         crear(pid=otro, cant="1", forma="Efectivo USD", monto="500", pedido_viejo="1")
         o = ultima()
         assert (o["estado_pago"], o["monto_contra_entrega"], o["total"]) == ("pagada", 0, 500), "en efectivo también ya entró; pagó más que hoy: sin saldo a favor"
+        inv = con.execute("SELECT COUNT(*) FROM mov_inventario").fetchone()[0]
+        lid = con.execute("SELECT id FROM orden_lineas WHERE orden_id=?", (o["id"],)).fetchone()[0]
+        c.post(f"/ordenes/{o['id']}/editar", data={f"cant_{lid}": "1", f"precio_{lid}": "500", "descuento": "0", "delivery": "0"})
+        assert con.execute("SELECT COUNT(*) FROM mov_inventario").fetchone()[0] == inv, "editarlo tampoco descuenta inventario"
         assert A.credito_de(con, cid) == 0
         con.close()
 

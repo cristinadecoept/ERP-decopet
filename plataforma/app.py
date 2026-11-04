@@ -1861,7 +1861,7 @@ async def editar_orden(request: Request, oid: int, con=Depends(db)):
                  round(total * 0.06, 2) if o["canal"] == "cashea" else (o["comision"] or 0), oid))
     # el inventario: se rehacen las salidas de esta orden con lo que quedó
     con.execute("DELETE FROM mov_inventario WHERE orden_id=? AND tipo='salida'", (oid,))
-    descontar_inventario(con, oid, uid)
+    if o["origen_excel"] != PEDIDO_VIEJO: descontar_inventario(con, oid, uid)   # lo de un pedido viejo salió en su momento
     pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
     if o["estado_pago"] not in ("por_cobrar", "reembolsada", "por_confirmar", "contra_entrega") or pagado >= total - 0.01:
         con.execute("UPDATE ordenes SET estado_pago=? WHERE id=? AND estado_pago NOT IN ('por_cobrar','reembolsada')", (estado_pago_de(pagado, total), oid))
