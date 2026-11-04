@@ -104,6 +104,9 @@ def cifra(v):
     except ValueError: return 0.0
 
 
+PEDIDO_VIEJO = 3   # origen_excel de una orden vieja que Cristina carga a mano: la venta ya está en el Excel y la plata ya entró
+
+
 def cobro_extra(con, oid, concepto, monto, forma, fecha, uid, referencia=None, nota=None, pago="confirmado"):
     """El cliente le agrega algo a una orden que ya existe (delivery de un retiro, personalización, propina…).
     Entra dentro de la orden: sube su total y queda anotado el día en que entró, que es cuando cuenta como venta
@@ -239,6 +242,7 @@ def _entradas_de(con, oid):
                 out.append(dict(comun, producto=l["nombre"], precio=l["total"], cantidad=0 if es_deliv(l) else l["cantidad"], linea=l["total"],
                                 forma=l["forma_pago"] or forma, color=l["color"], malla=l["malla"], personalizacion=l["personalizacion"],
                                 lid=l["id"], tipo="extra", fecha=dia))
+    if o["origen_excel"] == PEDIDO_VIEJO: out = [x for x in out if x["tipo"] != "pedido"]   # lo que se le cobre después sí cuenta el día que entre
     return out
 
 
@@ -2379,11 +2383,20 @@ async def crear_orden(request: Request, con=Depends(db)):
     # forma elegida con monto 0: todavía no pagó, pero ya se sabe cómo va a pagar
     formas_elegidas = list(dict.fromkeys([fo for fo, _, _ in pagos_in] + [fo for fo in f.getlist("pago_forma") if fo]))
     fp_in = (f.get("fecha_pago") or "").strip() if pagos_in else ""   # no pagó nada: la fecha de pago la pone el cobro
+    viejo = f.get("pedido_viejo") == "1" and solo_admin(request)   # ya se vendió y se cobró antes: solo queda anotado
+    motivo_desc = f.get("motivo_descuento") or None
+    if viejo:
+        if not pagos_in: con.rollback(); return _falta("Un pedido viejo necesita lo que pagó el cliente.")
+        if not fp_in or fp_in >= hoy_d.isoformat(): con.rollback(); return _falta("Un pedido viejo necesita la fecha real en que pagó.")
+        pagado_v = round(sum(m for _, m, _ in pagos_in), 2); ajuste = round(total - pagado_v, 2)   # el precio de entonces no es el de hoy
+        if ajuste > 0: descuento = round(descuento + ajuste, 2); motivo_desc = "Precio de entonces"
+        else: subtotal = round(subtotal - ajuste, 2)
+        total = pagado_v
     cur = con.execute("""INSERT INTO ordenes (numero,tipo,cliente_id,canal,creada_por,ref_externa,estado,estado_pago,subtotal,descuento,motivo_descuento,iva,delivery,total,tasa_bcv,comision,
                          tipo_entrega,direccion,zona,ciudad,receptor_nombre,receptor_telefono,fecha_prometida,franja,notas_entrega,notas,costo_productos,forma_pago_prevista,modalidad_envio,maps)
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (f"#{ultimo + 1}", f.get("tipo") or "venta", cid, canal, uid, f.get("ref_externa") or None, "pendiente",
-                       "pagada", subtotal, descuento, f.get("motivo_descuento") or None, iva, delivery, total, tasa,
+                       "pagada", subtotal, descuento, motivo_desc, iva, delivery, total, tasa,
                        round(total * 0.06, 2) if canal == "cashea" else 0, f.get("tipo_entrega") or None, f.get("direccion") or None, f.get("zona") or None, f.get("ciudad") or None,
                        f.get("receptor_nombre") or None, f.get("receptor_telefono") or None, fecha_auto, f.get("franja") or None, f.get("notas_entrega") or None, f.get("notas") or None, costo,
                        " + ".join(formas_elegidas) or ("BNC" if canal == "cashea" else None), f.get("modalidad_envio") or ("cobro_destino" if f.get("tipo_entrega") == "nacional" else None), f.get("maps") or None))
@@ -2401,11 +2414,11 @@ async def crear_orden(request: Request, con=Depends(db)):
         for li_d, k_d, m_d in deliv_pack:
             if li_d == li:   # queda anotado dentro de la orden, como lo que se cobra aparte del producto
                 con.execute("""INSERT INTO orden_lineas (orden_id, nombre, cantidad, precio, costo, total, extra_en)
-                               VALUES (?,?,?,?,0,?,?)""", (oid, "Delivery prepagado", k_d * int(c), delivery, m_d, hoy_d.isoformat()))
+                               VALUES (?,?,?,?,0,?,?)""", (oid, "Delivery prepagado", k_d * int(c), delivery, m_d, fp_in if viejo else hoy_d.isoformat()))
         if prepago and (p["sku"] or "").startswith("REP-"):
             for _ in range(int(c)):
                 con.execute("INSERT INTO repuestos_prepagados (cliente_id,orden_id,linea_id,producto_id,tamano,pagado_en,usuario_id) VALUES (?,?,?,?,?,?,?)",
-                            (cid, oid, cur_l.lastrowid, p["id"], "Grande" if p["sku"] == "REP-G" else "Mediano", hoy_d.isoformat(), uid))
+                            (cid, oid, cur_l.lastrowid, p["id"], "Grande" if p["sku"] == "REP-G" else "Mediano", fp_in if viejo else hoy_d.isoformat(), uid))
     if canal == "cashea" or f.get("factura") == "1": con.execute("UPDATE ordenes SET requiere_factura=1 WHERE id=?", (oid,))
     desp = f.get("despachador") or ""
     if desp == "__otro__": desp = (f.get("despachador_otro") or "").strip()
@@ -2417,7 +2430,9 @@ async def crear_orden(request: Request, con=Depends(db)):
             if c_ not in cols: con.execute(f"ALTER TABLE ordenes ADD COLUMN {c_} TEXT")
         con.execute("UPDATE ordenes SET receptor_correo=?, receptor_cedula=? WHERE id=?", ((f.get("receptor_correo") or "").strip() or None, normalizar_cedula(f.get("receptor_cedula")) or None, oid))
     con.execute("UPDATE ordenes SET despachador=COALESCE(NULLIF(?,''),despachador), agencia=COALESCE(NULLIF(?,''),agencia), guia=COALESCE(NULLIF(?,''),guia) WHERE id=?", (desp, f.get("agencia") or "", f.get("guia") or "", oid))
-    if f.get("status") == "entregada":
+    if viejo:   # no pasa por Operaciones, ni por facturas, ni por el Registro: lo que dejó para después sí queda por activar
+        con.execute("UPDATE ordenes SET origen_excel=?, estado='entregada', fecha_entrega=?, fecha_prometida=?, factura_hecha=COALESCE(requiere_factura,0) WHERE id=?", (PEDIDO_VIEJO, fp_in, fp_in, oid))
+    elif f.get("status") == "entregada":
         fe = (f.get("fecha_entrega") or hoy_d.isoformat()).strip()
         con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=?, fecha_prometida=? WHERE id=?", (fe, fe, oid)); registrar(con, oid, uid, "estado", f"Entregada el {fe} (registrada al crear)")
     fp = fp_in   # vacía = contra entrega o todavía no pagó: se llena sola el día que se cobra
@@ -2425,15 +2440,15 @@ async def crear_orden(request: Request, con=Depends(db)):
     if fp and fp != hoy_d.isoformat():   # fecha de pago distinta a hoy: la orden se fecha ese día (como en Airtable)
         con.execute("UPDATE ordenes SET creado_en=? || ' 12:00:00', fecha_prometida=COALESCE(fecha_prometida, ?) WHERE id=?", (fp, fp, oid))
         con.execute("UPDATE pagos SET fecha=? WHERE orden_id=?", (fp, oid))
-    registrar(con, oid, uid, "creada", f"Orden creada por canal {canal}")
-    descontar_inventario(con, oid, uid)
-    ahora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); tasa_v = tasa
+    registrar(con, oid, uid, "creada", f"Pedido viejo cargado · pagado el {fp}" if viejo else f"Orden creada por canal {canal}")
+    if not viejo: descontar_inventario(con, oid, uid)
+    ahora = f"{fp} 12:00" if viejo else datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); tasa_v = tasa
     confirma = "confirmar_pago" in PERMISOS[rol]
-    al_libro = f.get("en_cashflow") == "1" and solo_admin(request) and not ventas_automaticas(con)   # Cristina marcó que entre a Cash flow
+    al_libro = f.get("en_cashflow") == "1" and solo_admin(request) and not ventas_automaticas(con) and not viejo   # Cristina marcó que entre a Cash flow
     digital = sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo"))
     efectivo = sum(m for fo, m, _ in pagos_in if fo.startswith("Efectivo"))
     for fo, m, ref in pagos_in:
-        if fo.startswith("Efectivo"): continue  # el efectivo se registra al entregar
+        if fo.startswith("Efectivo") and not viejo: continue  # el efectivo se registra al entregar
         if fo == SALDO_FAVOR:   # no entra plata nueva a ninguna caja: se gasta la que ya había entrado
             con.execute("""INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado,confirmado_por,confirmado_en)
                            VALUES (?,?,?,?,'USD',?,'confirmado',?,?)""", (oid, SALDO_FAVOR, m, m, ahora, uid, ahora))
@@ -2458,15 +2473,16 @@ async def crear_orden(request: Request, con=Depends(db)):
     # El seguimiento de las cuotas de Cashea queda para más adelante.
     por_revisar = 0 if confirma else sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo") and fo != SALDO_FAVOR)
     if por_revisar > 0.009: ep = "por_confirmar"
-    elif digital >= total - 0.01: ep = "pagada"
+    elif viejo or digital >= total - 0.01: ep = "pagada"
     elif digital + efectivo >= total - 0.01: ep = "contra_entrega"
     else: ep = estado_pago_de(digital, total)
     con.execute("UPDATE ordenes SET estado_pago=?, monto_contra_entrega=? WHERE id=?", (ep, round(efectivo, 2) if ep == "contra_entrega" else 0, oid))
     if len(pagos_in) > 1: registrar(con, oid, uid, "pago", "Pago mixto: " + ", ".join(f"{fo} {fmt_usd(m)}" for fo, m, _ in pagos_in))
     sobra = sobrante_a_favor(con, oid, uid, fp or None)   # pagó de más al crear la orden (no había vuelto)
     if sobra: registrar(con, oid, uid, "pago", f"Pagó {fmt_usd(sobra)} de más: le quedan a favor")
-    actualizar_porche_cliente(con, oid); fijar_pago_despachador(con, oid)
-    pasar_entrega_a_prepagado(con, oid, uid)
+    actualizar_porche_cliente(con, oid)
+    if not viejo:
+        fijar_pago_despachador(con, oid); pasar_entrega_a_prepagado(con, oid, uid)
     con.commit(); return RedirectResponse(volver_tras_crear(oid, request), status_code=303)
 
 

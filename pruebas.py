@@ -2190,6 +2190,60 @@ def _():
         con.close()
 
 
+@prueba("Pedido viejo: queda en la ficha con su fecha y lo pagado, sin tocar ventas, Registro, cajas ni inventario; lo que se cobre después sí cuenta")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('ventas_auto','0')")
+        con.execute("INSERT OR IGNORE INTO cuentas (codigo,nombre,moneda,tipo,activa,orden) VALUES ('001','Efectivo USD','USD','operativa',1,1)")
+        con.commit(); A.cargar_formas_pago()
+        hoy_ = datetime.date.today(); hoy_s = hoy_.isoformat(); dia = (hoy_ - datetime.timedelta(days=36)).isoformat()
+        rep = con.execute("SELECT id FROM productos WHERE sku='REP-G'").fetchone()["id"]
+        otro = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        cid = con.execute("SELECT MIN(id) FROM clientes").fetchone()[0]
+        fo = con.execute("SELECT nombre FROM cuentas WHERE activa=1 AND COALESCE(cobra,1)=1 AND nombre NOT LIKE 'Efectivo%' ORDER BY orden, codigo LIMIT 1 OFFSET 1").fetchone()[0]
+        con.commit()
+        def crear(pid=rep, cant="2", forma=fo, monto="51.04", fecha=dia, **extra):
+            return c.post("/ordenes/nueva", data={"cliente_id": str(cid), "canal": "cashea", "producto_id": str(pid), "cantidad": cant, "personalizacion": "", "color": "", "malla": "0",
+                          "prepagar": "1" if pid == rep else "0", "tipo_entrega": "pickup", "pago_forma": [forma], "pago_monto": [monto], "pago_ref": [""], "fecha_pago": fecha, **extra})
+        ultima = lambda: con.execute("SELECT * FROM ordenes WHERE cliente_id=? ORDER BY id DESC LIMIT 1", (cid,)).fetchone()
+        ventas = lambda d: A.ventas_por_dia(con, d, d).get(d, (0, 0))[0]
+        registro = lambda oid: [r for r in A._historial_rows(con, "", "", "") if r.get("oid") == oid]
+        sesion_de(c, "logistica")
+        assert 'name="pedido_viejo"' not in c.get("/ordenes/nueva/panel").text, "logística no la ve"
+        crear(pedido_viejo="1")
+        assert ultima()["origen_excel"] == 0, "aunque llegue marcada, de logística es una orden normal"
+        sesion_de(c, "admin")
+        assert 'name="pedido_viejo"' in c.get("/ordenes/nueva/panel").text
+        n = con.execute("SELECT COUNT(*) FROM ordenes").fetchone()[0]
+        assert crear(pedido_viejo="1", fecha=hoy_s).status_code >= 400, "con fecha de hoy no es viejo"
+        assert con.execute("SELECT COUNT(*) FROM ordenes").fetchone()[0] == n
+        v_hoy, v_dia = ventas(hoy_s), ventas(dia)
+        inv = con.execute("SELECT COUNT(*) FROM mov_inventario").fetchone()[0]
+        crear(pedido_viejo="1", en_cashflow="1")
+        o = ultima(); oid = o["id"]
+        assert (o["origen_excel"], o["estado"], o["estado_pago"], o["total"]) == (A.PEDIDO_VIEJO, "entregada", "pagada", 51.04), dict(o)
+        assert (o["creado_en"][:10], o["fecha_pago"], o["fecha_entrega"], o["factura_hecha"]) == (dia, dia, dia, 1), dict(o)
+        assert [p["fecha"][:10] for p in con.execute("SELECT fecha FROM pagos WHERE orden_id=?", (oid,))] == [dia]
+        assert (ventas(hoy_s), ventas(dia)) == (v_hoy, v_dia), "no suma ni hoy ni el día viejo"
+        assert not registro(oid), "no se copia en el Registro"
+        assert con.execute("SELECT COUNT(*) FROM movimientos WHERE concepto LIKE ?", (f"%{o['numero']}%",)).fetchone()[0] == 0, "no entra a Cash flow"
+        assert con.execute("SELECT COUNT(*) FROM mov_inventario").fetchone()[0] == inv, "no descuenta inventario"
+        assert A.credito_de(con, cid) == 0, "el precio de hoy no deja saldo a favor ni deuda"
+        assert o["numero"] in c.get(f"/clientes/{cid}").text, "queda en la ficha"
+        reps = con.execute("SELECT * FROM repuestos_prepagados WHERE orden_id=? AND entregado_en IS NULL", (oid,)).fetchall()
+        assert len(reps) == 2 and reps[0]["pagado_en"] == dia, [dict(r) for r in reps]
+        con.execute("UPDATE repuestos_prepagados SET delivery=5, tipo_entrega='delivery' WHERE id=?", (reps[0]["id"],)); con.commit()
+        c.post(f"/prepagados/{reps[0]['id']}/cobrar-delivery", data={"forma": fo, "monto_usd": "5"})
+        assert ventas(hoy_s) == round(v_hoy + 5, 2) and ventas(dia) == v_dia, "el delivery de hoy sí es venta de hoy"
+        assert [(r["fecha"], r["linea"]) for r in registro(oid)] == [(hoy_s, 5)], "y entra al Registro ese día"
+        crear(pid=otro, cant="1", forma="Efectivo USD", monto="500", pedido_viejo="1")
+        o = ultima()
+        assert (o["estado_pago"], o["monto_contra_entrega"], o["total"]) == ("pagada", 0, 500), "en efectivo también ya entró; pagó más que hoy: sin saldo a favor"
+        assert A.credito_de(con, cid) == 0
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
