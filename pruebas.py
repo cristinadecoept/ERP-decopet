@@ -2304,6 +2304,30 @@ def _():
         con.close()
 
 
+@prueba("Ficha del despachador: los viajes a la agencia por llevar salen en 'Lo que le toca hoy' y en su mensaje, sin cédula ni correo; el de otro día y el ya llevado no")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today(); hoy_s = hoy_.isoformat(); despues = (hoy_ + datetime.timedelta(days=2)).isoformat()
+        d = con.execute("SELECT id, nombre FROM despachadores LIMIT 1").fetchone()
+        cid = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono,cedula,correo) VALUES ('Paquete','Paquete Prueba','04141234567','V-99887766','paquete@prueba.test')").lastrowid
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 LIMIT 1").fetchone()["id"]
+        def viaje(agencia, fecha, num, llevado=None):
+            v = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,monto,pedidos,llevado_en) VALUES (?,?,?,5,1,?)", (fecha, d["nombre"], agencia, llevado)).lastrowid
+            o = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,total,tipo_entrega,ciudad,viaje_id) VALUES (?,?,'whatsapp','pendiente','pagada',10,'nacional','Maracay',?)", (num, cid, v)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,10,10)", (o, p))
+        con.execute("UPDATE despachadores SET telefono='04141112233' WHERE id=?", (d["id"],))
+        viaje("AgenciaHoy", hoy_s, "#78001"); viaje("AgenciaDespues", despues, "#78002"); viaje("AgenciaLista", hoy_s, "#78003", hoy_s + " 10:00")
+        con.commit(); sesion_de(c, "admin")
+        h = c.get(f"/despachadores/{d['id']}").text
+        h = h[h.index("Lo que le toca hoy"):h.index("Llevando ahora")]
+        assert "AgenciaHoy" in h and "Mandárselo por WhatsApp" in h, h[:500]
+        assert "AgenciaDespues" not in h and "AgenciaLista" not in h
+        assert "Llevar a AgenciaHoy" in h and "Paquete Prueba" in h and "Maracay" in h
+        assert "V-99887766" not in h and "paquete@prueba.test" not in h, "la cédula y el correo no van en el mensaje"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

@@ -6534,19 +6534,7 @@ def mis_entregas(request: Request, con=Depends(db)):
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
     hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre, vigentes=True), key=lambda h: h["fecha"] or "", reverse=True)
-    viajes_pend = con.execute("""SELECT v.*, (SELECT group_concat(COALESCE(NULLIF(c.nombre_pila,''), c.nombre) || ' ' || o.numero, ' · ') FROM ordenes o
-                                 LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=v.id) cuales
-                                 FROM viajes_agencia v WHERE v.despachador=? AND v.llevado_en IS NULL ORDER BY v.fecha""", (nombre,)).fetchall()
-    # lo que la agencia le va a pedir por cada paquete: a quién va, cédula, teléfono, a qué oficina y qué lleva
-    viajes_pend = [dict(v) for v in viajes_pend]
-    for v in viajes_pend:
-        v["paquetes"] = []
-        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
-                                c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
-            o = dict(o)
-            if (o["recibe"] or "").startswith("otra persona"): o["recibe"] = None   # texto genérico de la migración, no es un nombre
-            o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
-            v["paquetes"].append(o)
+    viajes_pend = viajes_por_llevar(con, nombre)
     # "Lo que has entregado" es solo lo que ya hizo: lo pendiente o en ruta está en "Lo que te toca hoy"
     hist_todo = [h for h in hist_todo if h["estado"] not in ("pendiente", "en_ruta")]
     # lo que le toca mañana, para que se organice (Cristina, 6 oct): solo para mirar, se marca el día que toca
@@ -6795,6 +6783,23 @@ def viajes_hist(con, nombre, vigentes=False):
     return out
 
 
+def viajes_por_llevar(con, nombre):
+    """Los viajes a la agencia que tiene asignados y no ha llevado, con lo que la agencia le va a pedir por cada paquete:
+    a quién va, cédula, teléfono, a qué oficina y qué lleva."""
+    viajes = [dict(v) for v in con.execute("""SELECT v.*, (SELECT group_concat(COALESCE(NULLIF(c.nombre_pila,''), c.nombre) || ' ' || o.numero, ' · ') FROM ordenes o
+                                              LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=v.id) cuales
+                                              FROM viajes_agencia v WHERE v.despachador=? AND v.llevado_en IS NULL ORDER BY v.fecha""", (nombre,))]
+    for v in viajes:
+        v["paquetes"] = []
+        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
+                                c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
+            o = dict(o)
+            if (o["recibe"] or "").startswith("otra persona"): o["recibe"] = None   # texto genérico de la migración, no es un nombre
+            o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
+            v["paquetes"].append(o)
+    return viajes
+
+
 def ruta_despachador(con, nombre, hoy):
     """La lista que se le manda al despachador por WhatsApp: a quién, dónde y qué lleva.
     Va el nombre de pila, la dirección y el teléfono — sin eso no puede entregar. No va cédula,
@@ -6850,8 +6855,8 @@ def ruta_despachador(con, nombre, hoy):
     return filas
 
 
-def texto_ruta(filas, hoy):
-    """El mensaje tal cual se le manda por WhatsApp."""
+def texto_ruta(filas, hoy, viajes=()):
+    """El mensaje tal cual se le manda por WhatsApp. De los viajes a la agencia va a quién y qué: la cédula y el correo los ve en Mis entregas."""
     out = [f"Decopet · {fecha_larga(hoy)}", ""]
     for i, f in enumerate(filas, 1):
         out.append(f"{i}. {f['quien']}")
@@ -6865,6 +6870,12 @@ def texto_ruta(filas, hoy):
         for t in f.get("indicaciones") or []: out.append(f"   📌 {t}")
         if f["cobrar"]: out.append(f"   COBRAR ${f['cobrar']:,.2f}" + (f" · por {f['cobrar_forma']}" if f.get("cobrar_forma") else ""))
         for t in f.get("tambien_cobrar") or []: out.append(f"   COBRAR ${t['saldo']:,.2f} · {t['que']}")
+        out.append("")
+    for i, v in enumerate(viajes, len(filas) + 1):
+        out.append(f"{i}. Llevar a {v['agencia'] or 'la agencia'}" + (f" {v['oficina']}" if v["oficina"] else ""))
+        for o in v["paquetes"]:
+            out.append(f"   {o['recibe'] or o['nombre']} · {o['direccion'] or o['ciudad'] or 'falta la oficina'}")
+            out.append("   " + re.sub(r"<[^>]+>", "", o["lleva"] or ""))
         out.append("")
     cobros = sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in filas)
     if cobros: out.append(f"Total a cobrar: ${cobros:,.2f}")
@@ -6893,6 +6904,7 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                               WHERE f.despachador=? AND f.pagado=0 AND f.por_aprobar=0 ORDER BY f.fecha DESC, f.id DESC""", (d["nombre"],)).fetchall()
     dil_aprobar = con.execute("SELECT * FROM viajes_despachador WHERE despachador=? AND por_aprobar=1 ORDER BY fecha, id", (d["nombre"],)).fetchall()
     ruta = ruta_despachador(con, d["nombre"], hoy.isoformat())
+    viajes_ruta = [v for v in viajes_por_llevar(con, d["nombre"]) if (v["fecha"] or "")[:10] <= hoy.isoformat()]   # el de otro día no es de hoy; el atrasado sí
     # su récord: todo lo que ha entregado, pagado o no. Sin esto, al marcar pagado se perdía el rastro.
     hist = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
                           COALESCE(o.delivery,0) pago, o.zona, o.ciudad, o.estado, o.despachador_pagado,
@@ -6929,7 +6941,7 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     efectivo = efectivo_que_tiene(con, d["nombre"])
     return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO, efectivo=efectivo, efectivo_total=round(sum(p["monto_usd"] or 0 for p in efectivo), 2),
                   CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,
-                  tarifas_dil=tarifas_diligencia(con), ruta=ruta, ruta_texto=texto_ruta(ruta, hoy), ruta_cobrar=sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in ruta),
+                  tarifas_dil=tarifas_diligencia(con), ruta=ruta, viajes_ruta=viajes_ruta, ruta_texto=texto_ruta(ruta, hoy, viajes_ruta), ruta_cobrar=sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in ruta),
                   hist=hist, record=record)
 
 
