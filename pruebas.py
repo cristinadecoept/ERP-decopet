@@ -2279,6 +2279,31 @@ def _():
         con.close()
 
 
+@prueba("Ficha del despachador: 'Llevando ahora' es solo lo que ya salió; un pedido pendiente para otro día o un pack sin nada que llevar no salen")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today(); manana = (hoy_ + datetime.timedelta(days=2)).isoformat()
+        d = con.execute("SELECT id, nombre FROM despachadores LIMIT 1").fetchone()
+        cid = con.execute("SELECT MIN(id) FROM clientes").fetchone()[0]
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 LIMIT 1").fetchone()["id"]
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        def orden(num, estado, fecha, prod):
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,total,tipo_entrega,despachador,fecha_prometida) VALUES (?,?,?,?,?,?,?,?,?)",
+                              (num, cid, "whatsapp", estado, "pagada", 10, "delivery", d["nombre"], fecha)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'x',1,10,10)", (oid, prod))
+            return oid
+        orden("#77001", "en_ruta", hoy_.isoformat(), p)
+        orden("#77002", "pendiente", manana, p)
+        o3 = orden("#77003", "en_ruta", hoy_.isoformat(), pk)
+        con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado) VALUES (?,?,?,3,0,'activo')", (cid, o3, pk))
+        con.commit(); sesion_de(c, "admin")
+        h = c.get(f"/despachadores/{d['id']}").text
+        h = h[h.index("Llevando ahora"):h.index("Por pagar")]
+        assert "#77001" in h and "#77002" not in h and "#77003" not in h, h[:600]
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

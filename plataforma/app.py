@@ -6880,8 +6880,9 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     pendientes = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha, COALESCE(o.delivery, 0) pago, o.zona, o.ciudad, o.estado, c.nombre cliente
                                 FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                                 WHERE o.despachador=? AND o.estado='entregada' AND o.despachador_pagado=0 AND o.origen_excel=0 ORDER BY fecha DESC, o.id DESC""", (d["nombre"],)).fetchall()
-    en_curso = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha, o.delivery, o.zona, o.ciudad, o.estado, c.nombre cliente
-                              FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') ORDER BY fecha""", (d["nombre"],)).fetchall()
+    # solo lo que ya salió: lo de hoy está en 'Lo que le toca hoy', lo de otro día todavía no lo lleva, y un pack que no se llevó nada al comprarse va por su retiro
+    en_curso = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha, o.delivery, o.zona, o.ciudad, o.estado, c.nombre cliente
+                              FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.despachador=? AND o.estado='en_ruta' AND o.origen_excel=0 AND """ + HAY_QUE_ENTREGAR() + """ ORDER BY fecha""", (d["nombre"],)).fetchall()
     pagos = con.execute("SELECT * FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC, id DESC LIMIT 30", (d["nombre"],)).fetchall()
     zonas_todas = con.execute("""SELECT COALESCE(NULLIF(zona,''), 'Sin zona') z, COUNT(*) n, SUM(COALESCE(delivery, 0)) monto FROM ordenes
                                  WHERE despachador=? AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 ORDER BY 2 DESC""", (d["nombre"],)).fetchall()
