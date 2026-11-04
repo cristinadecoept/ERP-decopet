@@ -683,6 +683,7 @@ async def puerta(request: Request, call_next):
 # Se aplican al arrancar, así una base nueva queda igual que la que está en uso.
 COLUMNAS = (
     ("mascotas", "fallecida", "TEXT"),   # el día que se anotó que falleció: no se felicita, no sale en mensajes; si no le queda ninguna, se pausan los repuestos
+    ("ordenes", "paga_el", "TEXT"),   # el cliente dijo que paga ese día: hasta entonces no sale en "con saldo pendiente"
     ("ordenes", "espera_aviso", "INTEGER NOT NULL DEFAULT 0"),   # el cliente avisa cuándo lo busca o lo recibe: no sale en el día a día
     ("abonos_produccion", "gasto_id", "INTEGER"),
     ("clientes", "origen", "TEXT"), ("clientes", "origen_nota", "TEXT"),
@@ -1154,7 +1155,8 @@ def inicio(request: Request, con=Depends(db)):
     }
     # lo que falta cobrar a clientes, también lo que se paga al entregar: así sale en el Inicio para cobrarlo
     deudas = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(total - (SELECT COALESCE(SUM(monto_usd),0) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado')),0) s
-                            FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado','contra_entrega')""").fetchone()
+                            FROM ordenes o WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado','contra_entrega')
+                            AND COALESCE(paga_el,'')<=?""", (datetime.date.today().isoformat(),)).fetchone()
     c["con_saldo"], c["saldo_total"] = deudas["n"], deudas["s"]
     c["personalizar"] = por_personalizar(con)
     c["incid_lista"] = [dict(r) for r in con.execute("""SELECT i.id, i.orden_id, i.tipo, i.descripcion, i.responsable, o.numero,
@@ -1498,7 +1500,7 @@ def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", form
     conteos["todas"] = sum(conteos.values())
     conteos["activas"] = sum(v for k, v in conteos.items() if k not in ("entregada", "cancelada", "todas"))
     conteos["por_revisar"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado_pago='por_confirmar'").fetchone()[0]
-    conteos["con_saldo"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado','contra_entrega')").fetchone()[0]
+    conteos["con_saldo"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado!='cancelada' AND estado_pago IN ('abonada','sin_pago','rechazado','contra_entrega') AND COALESCE(paga_el,'')<=?", (datetime.date.today().isoformat(),)).fetchone()[0]
     conteos["pack_pend"] = con.execute("""SELECT COUNT(DISTINCT k.orden_id) FROM packs k WHERE k.orden_id IS NOT NULL
         AND k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) > 0""").fetchone()[0]
     conteos["repuesto_pend"] = con.execute("SELECT COUNT(DISTINCT orden_id) FROM repuestos_prepagados WHERE orden_id IS NOT NULL AND entregado_en IS NULL").fetchone()[0]
@@ -2030,6 +2032,17 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     con.commit(); return volver(oid, request)
 
 
+@app.post("/ordenes/{oid}/paga-el")
+def paga_otro_dia(request: Request, oid: int, fecha: str = Form(""), con=Depends(db)):
+    """'Paga otro día': el cliente dijo cuándo paga. No sale en 'con saldo pendiente' hasta ese día; la deuda y la entrega no cambian."""
+    if "ver_cobros" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    try: dia = datetime.date.fromisoformat(fecha.strip()).isoformat()
+    except ValueError: dia = None     # vacía = se quita la fecha y vuelve a la lista
+    con.execute("UPDATE ordenes SET paga_el=? WHERE id=?", (dia, oid))
+    registrar(con, oid, uid_de(request), "pago", f"Paga el {fmt_fecha(dia)}" if dia else "Se quitó el día en que paga")
+    con.commit(); return volver(oid, request)
+
+
 @app.post("/ordenes/{oid}/fecha")
 def reprogramar_orden(request: Request, oid: int, fecha: str = Form(""), espera: str = Form(""), con=Depends(db)):
     """'Otro día' desde Operaciones: una orden que todavía no salió pasa a otra fecha. Lo demás de la entrega queda igual.
@@ -2496,6 +2509,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     activas = cargar_ordenes(con, {"estado": "activas"}, rol)
     # logística también cobra (ve los pagos de los pedidos), así que ve la cola de saldos
     con_saldo = cargar_ordenes(con, {"estado": "con_saldo"}, rol) if "ver_cobros" in PERMISOS[rol] else []
+    con_saldo = [o for o in con_saldo if (o.get("paga_el") or "") <= datetime.date.today().isoformat()]   # dijo que paga otro día: vuelve ese día
     for o in con_saldo:
         if o["id"] not in {a["id"] for a in activas}: activas.append(o)
     for o in activas:

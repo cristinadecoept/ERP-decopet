@@ -2157,6 +2157,39 @@ def _():
         con.close()
 
 
+@prueba("Paga otro día: la orden sale de 'Con saldo pendiente' y del aviso de Inicio hasta ese día; sigue debiendo, la entrega no cambia y el despachador no puede marcarlo")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today(); viernes = (hoy_ + datetime.timedelta(days=2)).isoformat()
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (71,'Marianna Prueba','Marianna')")
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega,fecha_prometida) VALUES ('#71',71,'pendiente','sin_pago',24,5,29,'delivery',?)", (viernes,)).lastrowid
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,'Repuesto Grande',1,24,0,24)", (oid, p))
+        con.commit()
+        sesion_de(c, "admin")
+        avisos = lambda: int(re.search(r"(\d+) ordene?s? con saldo pendiente", c.get("/inicio").text).group(1))
+        n_antes = avisos()
+        h = c.get("/operaciones?cola=con_saldo").text
+        assert "Marianna Prueba" in h and "Paga otro día" in h
+        c.post(f"/ordenes/{oid}/paga-el", data={"fecha": viernes})
+        o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+        assert (o["paga_el"], o["fecha_prometida"], o["estado_pago"]) == (viernes, viernes, "sin_pago"), dict(o)
+        assert "Marianna Prueba" not in c.get("/operaciones?cola=con_saldo").text, "no sale hasta el viernes"
+        assert avisos() == n_antes - 1, "ni en el aviso de Inicio"
+        h = c.get("/operaciones?cola=todo").text
+        assert "Marianna Prueba" in h and "Paga el" in h, "en Todo sigue, con su día de pago"
+        assert "Paga el" in c.get(f"/ordenes/{oid}/panel").text, "al abrir el pedido se ve y se puede cambiar"
+        con.execute("UPDATE ordenes SET paga_el=? WHERE id=?", (hoy_.isoformat(),oid)); con.commit()
+        assert "Marianna Prueba" in c.get("/operaciones?cola=con_saldo").text, "llegó el día: vuelve sola"
+        c.post(f"/ordenes/{oid}/paga-el", data={"fecha": viernes}); c.post(f"/ordenes/{oid}/paga-el", data={"fecha": ""})
+        assert con.execute("SELECT paga_el FROM ordenes WHERE id=?", (oid,)).fetchone()[0] is None, "Quitar la devuelve a la lista"
+        sesion_de(c, "despachador")
+        c.post(f"/ordenes/{oid}/paga-el", data={"fecha": viernes})
+        assert con.execute("SELECT paga_el FROM ordenes WHERE id=?", (oid,)).fetchone()[0] is None, "el despachador no puede"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
