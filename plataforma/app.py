@@ -2385,6 +2385,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     fp_in = (f.get("fecha_pago") or "").strip() if pagos_in else ""   # no pagó nada: la fecha de pago la pone el cobro
     viejo = f.get("pedido_viejo") == "1" and solo_admin(request)   # ya se vendió y se cobró antes: solo queda anotado
     motivo_desc = f.get("motivo_descuento") or None
+    dia_pago = fp_in if fp_in and fp_in < hoy_d.isoformat() else hoy_d.isoformat()   # se anotó tarde: lo pagado cuenta el día que se pagó, no hoy
     if viejo:
         if not pagos_in: con.rollback(); return _falta("Un pedido viejo necesita lo que pagó el cliente.")
         if not fp_in or fp_in >= hoy_d.isoformat(): con.rollback(); return _falta("Un pedido viejo necesita la fecha real en que pagó.")
@@ -2414,11 +2415,11 @@ async def crear_orden(request: Request, con=Depends(db)):
         for li_d, k_d, m_d in deliv_pack:
             if li_d == li:   # queda anotado dentro de la orden, como lo que se cobra aparte del producto
                 con.execute("""INSERT INTO orden_lineas (orden_id, nombre, cantidad, precio, costo, total, extra_en)
-                               VALUES (?,?,?,?,0,?,?)""", (oid, "Delivery prepagado", k_d * int(c), delivery, m_d, fp_in if viejo else hoy_d.isoformat()))
+                               VALUES (?,?,?,?,0,?,?)""", (oid, "Delivery prepagado", k_d * int(c), delivery, m_d, dia_pago))
         if prepago and (p["sku"] or "").startswith("REP-"):
             for _ in range(int(c)):
                 con.execute("INSERT INTO repuestos_prepagados (cliente_id,orden_id,linea_id,producto_id,tamano,pagado_en,usuario_id) VALUES (?,?,?,?,?,?,?)",
-                            (cid, oid, cur_l.lastrowid, p["id"], "Grande" if p["sku"] == "REP-G" else "Mediano", fp_in if viejo else hoy_d.isoformat(), uid))
+                            (cid, oid, cur_l.lastrowid, p["id"], "Grande" if p["sku"] == "REP-G" else "Mediano", dia_pago, uid))
     if canal == "cashea" or f.get("factura") == "1": con.execute("UPDATE ordenes SET requiere_factura=1 WHERE id=?", (oid,))
     desp = f.get("despachador") or ""
     if desp == "__otro__": desp = (f.get("despachador_otro") or "").strip()
@@ -2442,7 +2443,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         con.execute("UPDATE pagos SET fecha=? WHERE orden_id=?", (fp, oid))
     registrar(con, oid, uid, "creada", f"Pedido viejo cargado · pagado el {fp}" if viejo else f"Orden creada por canal {canal}")
     if not viejo: descontar_inventario(con, oid, uid)
-    ahora = f"{fp} 12:00" if viejo else datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); tasa_v = tasa
+    ahora = f"{dia_pago} 12:00" if dia_pago != hoy_d.isoformat() else datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); tasa_v = tasa
     confirma = "confirmar_pago" in PERMISOS[rol]
     al_libro = f.get("en_cashflow") == "1" and solo_admin(request) and not ventas_automaticas(con) and not viejo   # Cristina marcó que entre a Cash flow
     digital = sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo"))

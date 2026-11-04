@@ -2244,6 +2244,37 @@ def _():
         con.close()
 
 
+@prueba("Orden anotada tarde: lo pagado cuenta el día de la fecha de pago, no hoy; sale en el Registro ese día y las ventas de hoy no cambian")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today(); hoy_s = hoy_.isoformat(); dia = (hoy_ - datetime.timedelta(days=3)).isoformat()
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        con.execute("UPDATE productos SET precio=100 WHERE id=?", (p,))
+        rep = con.execute("SELECT id FROM productos WHERE sku='REP-G'").fetchone()["id"]
+        cid = con.execute("SELECT MIN(id) FROM clientes").fetchone()[0]
+        fo = con.execute("SELECT nombre FROM cuentas WHERE activa=1 AND COALESCE(cobra,1)=1 AND nombre NOT LIKE 'Efectivo%' ORDER BY orden, codigo LIMIT 1 OFFSET 1").fetchone()[0]
+        con.commit()
+        def crear(fecha, pid=p, monto="100", **extra):
+            c.post("/ordenes/nueva", data={"cliente_id": str(cid), "canal": "whatsapp", "producto_id": str(pid), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+                   "tipo_entrega": "pickup", "pago_forma": [fo], "pago_monto": [monto], "pago_ref": [""], "fecha_pago": fecha, **extra})
+            return con.execute("SELECT * FROM ordenes WHERE cliente_id=? ORDER BY id DESC LIMIT 1", (cid,)).fetchone()
+        ventas = lambda d: A.ventas_por_dia(con, d, d).get(d, (0, 0))[0]
+        sesion_de(c, "admin")
+        v_hoy, v_dia = ventas(hoy_s), ventas(dia)
+        o = crear(dia)
+        assert con.execute("SELECT substr(fecha,1,10) FROM pagos WHERE orden_id=?", (o["id"],)).fetchone()[0] == dia
+        assert (ventas(hoy_s), ventas(dia)) == (v_hoy, round(v_dia + 100, 2)), "cuenta su día, no hoy"
+        assert [r["fecha"] for r in A._historial_rows(con, "", "", "") if r.get("oid") == o["id"]] == [dia], "y en el Registro también"
+        o = crear(hoy_s)
+        assert con.execute("SELECT substr(fecha,1,10) FROM pagos WHERE orden_id=?", (o["id"],)).fetchone()[0] == hoy_s
+        assert ventas(hoy_s) == round(v_hoy + 100, 2), "la de hoy sigue contando hoy"
+        precio = con.execute("SELECT precio FROM productos WHERE id=?", (rep,)).fetchone()[0]
+        o = crear(dia, pid=rep, monto=str(precio), prepagar="1")
+        assert con.execute("SELECT pagado_en FROM repuestos_prepagados WHERE orden_id=?", (o["id"],)).fetchone()[0] == dia
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
