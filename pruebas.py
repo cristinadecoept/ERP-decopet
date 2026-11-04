@@ -2328,6 +2328,31 @@ def _():
         con.close()
 
 
+@prueba("Envío nacional: va la cédula de quien retira en la agencia; si es un tercero, nunca la del cliente; una entrega normal no lleva cédula")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono,cedula,correo) VALUES ('Vero','Vero Prueba','04141234567','V-22222222','vero@prueba.test')").lastrowid
+        v = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,monto,pedidos) VALUES (date('now'),'Ingrid','Zoom',5,3)").lastrowid
+        def orden(num, tipo="nacional", recibe=None, ced=None, correo=None):
+            return con.execute("""INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,total,tipo_entrega,direccion,ciudad,viaje_id,receptor_nombre,receptor_cedula,receptor_correo)
+                                  VALUES (?,?,'whatsapp','pendiente','pagada',10,?,'Oficina','Maracay',?,?,?,?)""", (num, cid, tipo, v if tipo == "nacional" else None, recibe, ced, correo)).lastrowid
+        tercero = orden("#79001", recibe="Desiree", ced="V-11111111", correo="desiree@prueba.test")
+        sin_ced = orden("#79002", recibe="Otra Persona")
+        cliente = orden("#79003"); normal = orden("#79004", tipo="delivery")
+        con.commit()
+        res = lambda oid: A.resumen_despacho(A.cargar_orden(con, oid))
+        assert "C.I. V-11111111" in res(tercero) and "V-22222222" not in res(tercero)
+        assert "Falta la cédula" in res(sin_ced) and "V-22222222" not in res(sin_ced), "un tercero sin cédula no toma la del cliente"
+        assert "C.I. V-22222222" in res(cliente), "si retira el cliente, la suya"
+        assert "C.I." not in res(normal) and "Falta la cédula" not in res(normal)
+        p = {o["numero"]: o for o in A.viajes_por_llevar(con, "Ingrid")[0]["paquetes"]}
+        assert (p["#79001"]["cedula"], p["#79001"]["correo"]) == ("V-11111111", "desiree@prueba.test")
+        assert (p["#79002"]["cedula"], p["#79002"]["correo"]) == (None, None), "faltan, y la pantalla lo avisa"
+        assert (p["#79003"]["cedula"], p["#79003"]["correo"]) == ("V-22222222", "vero@prueba.test")
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

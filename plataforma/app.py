@@ -1514,7 +1514,7 @@ def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", form
 
 
 def cargar_orden(con, oid):
-    o = con.execute("""SELECT o.*, c.nombre cliente, c.telefono, c.correo, c.ciudad cliente_ciudad, u.nombre creada_por_nombre,
+    o = con.execute("""SELECT o.*, c.nombre cliente, c.telefono, c.correo, c.cedula, c.ciudad cliente_ciudad, u.nombre creada_por_nombre,
                        (SELECT MIN(COALESCE(confirmado_en, fecha)) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado') pagada_en
                        FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id LEFT JOIN usuarios u ON u.id=o.creada_por WHERE o.id=?""", (oid,)).fetchone()
     if not o: return None
@@ -1584,6 +1584,12 @@ def tel_wa(t):
     return f"+58 {d[:3]} {d[3:]}" if len(d) == 10 else (t or "").strip()
 
 
+def cedula_de_quien_retira(recibe, cedula_tercero, cedula_cliente):
+    """La agencia le entrega a quien retira: si es un tercero, su cédula, nunca la del cliente."""
+    ced = cedula_tercero if _sirve(cedula_tercero) else (None if _sirve(recibe) and not recibe.startswith("otra persona") else cedula_cliente)
+    return ced if _sirve(ced) else None
+
+
 def resumen_despacho(o, con_plata=True):
     L = [f"📦 {o['numero']} — {o['cliente']}"]
     if tel_wa(o["telefono"]): L.append(f"📞 {tel_wa(o['telefono'])}")   # en su propia línea: así WhatsApp deja tocarlo
@@ -1606,6 +1612,9 @@ def resumen_despacho(o, con_plata=True):
             try: mp = ubicacion_de(c, o["cliente_id"], o["direccion"], mp)
             finally: c.close()
         if mp: L.append(f"🗺 {mp}")
+    if o["tipo_entrega"] == "nacional":
+        ced = cedula_de_quien_retira(o.get("receptor_nombre"), o.get("receptor_cedula"), o.get("cedula"))
+        L.append(f"🪪 C.I. {ced}" if ced else "🪪 Falta la cédula")
     if not con_plata:   # para quien no ve dinero: qué hacer, sin montos (el despachador ve el suyo en su pantalla)
         if o["estado_pago"] in ("contra_entrega", "abonada", "sin_pago", "rechazado"): L.append("💵 Falta pagar")
         else: L.append("✅ Pagado, no cobrar nada")
@@ -6792,9 +6801,12 @@ def viajes_por_llevar(con, nombre):
     for v in viajes:
         v["paquetes"] = []
         for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
+                                o.receptor_cedula, NULLIF(TRIM(o.receptor_correo),'') receptor_correo,
                                 c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
             o = dict(o)
             if (o["recibe"] or "").startswith("otra persona"): o["recibe"] = None   # texto genérico de la migración, no es un nombre
+            o["cedula"] = cedula_de_quien_retira(o["recibe"], o["receptor_cedula"], o["cedula"])
+            if o["recibe"]: o["correo"] = o["receptor_correo"]   # los datos del cliente no sirven para un tercero: mejor que diga que falta
             o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
             v["paquetes"].append(o)
     return viajes
