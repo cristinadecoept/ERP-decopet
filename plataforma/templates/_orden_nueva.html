@@ -74,6 +74,7 @@
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px"><button type="button" class="no-link" onclick="agregarPago()">+ Otra forma de pago</button><span class="mini" id="p-falta"></span></div>
 <div class="no-saldo"><span>Monto pagado</span><b id="p-pagado">$0.00</b><span id="p-saldo-t">Saldo pendiente</span><b id="p-saldo">$0.00</b></div>
 <div class="nota-log" id="p-efectivo" hidden style="margin-top:10px"></div>
+{% if rol == 'admin' and not ventas_auto %}<label class="chk" style="margin-top:12px"><input type="checkbox" name="en_cashflow" value="1"> Registrar en Cash flow</label>{% endif %}
 </section>
 
 <div class="no-pie"><div class="no-tot"><div><span>Subtotal</span><b id="t-sub">$0.00</b></div><div id="r-iva" hidden><span>IVA 16 %</span><b id="t-iva">$0.00</b></div><div id="r-deliv" hidden><span>Delivery</span><b id="t-deliv">$0.00</b></div><div id="r-dpack" hidden><span id="t-dpack-n">Deliveries próximas entregas</span><b id="t-dpack">$0.00</b></div><div id="r-desc" hidden><span>Descuento</span><b id="t-desc">$0.00</b></div><div class="g"><span>Total</span><b id="t-tot">$0.00</b></div><div class="mini" id="t-bs"></div></div><button class="btn no-crear">Crear orden</button></div>

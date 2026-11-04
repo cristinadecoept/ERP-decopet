@@ -1627,7 +1627,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
                               (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
                               FROM clientes c ORDER BY nombre""").fetchall()
     pre = con.execute("SELECT nombre FROM clientes WHERE id=?", (cliente,)).fetchone() if cliente else None
-    return render(request, "_orden_nueva.html", productos=productos, ciudades_vl=ciudades_conocidas(con), opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", tarifas=con.execute("SELECT zona, tarifa, fuera_caracas FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
+    return render(request, "_orden_nueva.html", productos=productos, ciudades_vl=ciudades_conocidas(con), opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", ventas_auto=ventas_automaticas(con), tarifas=con.execute("SELECT zona, tarifa, fuera_caracas FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
 
 
 @app.get("/ordenes/{oid}/panel", response_class=HTMLResponse)
@@ -2416,6 +2416,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     descontar_inventario(con, oid, uid)
     ahora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M"); tasa_v = tasa
     confirma = "confirmar_pago" in PERMISOS[rol]
+    al_libro = f.get("en_cashflow") == "1" and solo_admin(request) and not ventas_automaticas(con)   # Cristina marcó que entre a Cash flow
     digital = sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo"))
     efectivo = sum(m for fo, m, _ in pagos_in if fo.startswith("Efectivo"))
     for fo, m, ref in pagos_in:
@@ -2429,9 +2430,17 @@ async def crear_orden(request: Request, con=Depends(db)):
             continue
         # si lo registra alguien que no confirma pagos (Logística), queda por revisar hasta que Cristina lo vea
         est = "confirmado" if confirma else "por_confirmar"
-        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur_p = con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     (oid, fo, m, round(m * tasa_v, 2) if es_bolivares(fo) else m, "VES" if es_bolivares(fo) else "USD", tasa_v if es_bolivares(fo) else None, FORMA_CUENTA.get(fo), ref or None, ahora, est,
                      uid if confirma else None, ahora if confirma else None))
+        caja = con.execute("SELECT id FROM cuentas WHERE nombre=?", (FORMA_CUENTA.get(fo),)).fetchone() if al_libro else None
+        if caja:   # igual que al confirmar un pago: la venta entra a su caja sin anotarla otra vez
+            od = con.execute("SELECT o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?", (oid,)).fetchone()
+            con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_destino_id, monto_usd, monto_real, moneda, concepto, categoria, notas, usuario_id)
+                           VALUES (?,'entrada',?,?,?,'USD',?,'Ventas',?,?)""",
+                        (fp or hoy_d.isoformat(), caja[0], m, m, f"Ventas · {od['numero']} · {od['cliente'] or ''} · {fo}", "Registrado al crear la orden", uid))
+            con.execute("UPDATE pagos SET en_cashflow=1 WHERE id=?", (cur_p.lastrowid,))
+            registrar(con, oid, uid, "pago", f"{fo} {fmt_usd(m)} anotado en Cash flow")
     # Cashea se trata como cualquier canal: si Cristina marca el pago completo, la orden queda pagada.
     # El seguimiento de las cuotas de Cashea queda para más adelante.
     por_revisar = 0 if confirma else sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo") and fo != SALDO_FAVOR)

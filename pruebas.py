@@ -2119,6 +2119,44 @@ def _():
     finally:
         A.VIEJOS_POR_DIA, A.INTEGRAR_DESDE = antes
 
+@prueba("Crear orden: la casilla 'Registrar en Cash flow' solo la tiene Cristina; anota cada pago en su caja con la fecha de pago, y el efectivo no entra")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('ventas_auto','0')")
+        con.execute("INSERT OR IGNORE INTO cuentas (codigo,nombre,moneda,tipo,activa,orden) VALUES ('001','Efectivo USD','USD','operativa',1,1)")
+        con.commit(); A.cargar_formas_pago()
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        con.execute("UPDATE productos SET precio=100 WHERE id=?", (p,))
+        cid = con.execute("SELECT MIN(id) FROM clientes").fetchone()[0]
+        fo = con.execute("SELECT nombre FROM cuentas WHERE activa=1 AND COALESCE(cobra,1)=1 AND nombre NOT LIKE 'Efectivo%' ORDER BY orden, codigo LIMIT 1 OFFSET 1").fetchone()[0]
+        con.commit()
+        def crear(**extra):
+            c.post("/ordenes/nueva", data={"cliente_id": str(cid), "canal": "whatsapp", "producto_id": str(p), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+                   "tipo_entrega": "pickup", "pago_forma": [fo, "Efectivo USD"], "pago_monto": ["60", "40"], "pago_ref": ["", ""], "fecha_pago": "2026-10-08", **extra})
+            return con.execute("SELECT * FROM ordenes WHERE cliente_id=? ORDER BY id DESC LIMIT 1", (cid,)).fetchone()
+        libro = lambda: con.execute("SELECT m.*, k.nombre caja FROM movimientos m JOIN cuentas k ON k.id=m.cuenta_destino_id WHERE m.categoria='Ventas'").fetchall()
+        sesion_de(c, "admin")
+        assert 'name="en_cashflow"' in c.get("/ordenes/nueva/panel").text
+        crear()
+        assert not libro(), "sin marcar no entra nada"
+        o = crear(en_cashflow="1")
+        ms = libro()
+        assert len(ms) == 1 and (ms[0]["caja"], ms[0]["monto_usd"], ms[0]["fecha"]) == (fo, 60, "2026-10-08"), [dict(m) for m in ms]
+        assert o["numero"] in ms[0]["concepto"] and fo in ms[0]["concepto"], ms[0]["concepto"]
+        assert con.execute("SELECT en_cashflow FROM pagos WHERE orden_id=? AND forma=?", (o["id"], fo)).fetchone()[0] == 1
+        sesion_de(c, "logistica")
+        assert 'name="en_cashflow"' not in c.get("/ordenes/nueva/panel").text, "logística no la ve"
+        crear(en_cashflow="1")
+        assert len(libro()) == 1, "aunque llegue marcada, de logística no entra"
+        sesion_de(c, "admin")
+        con.execute("UPDATE config SET valor='1' WHERE clave='ventas_auto'"); con.commit()
+        assert 'name="en_cashflow"' not in c.get("/ordenes/nueva/panel").text, "si las ventas entran solas, no hace falta"
+        crear(en_cashflow="1")
+        assert len(libro()) == 1, "no se cuenta dos veces"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
