@@ -144,9 +144,9 @@ def _():
     con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle',72,72,'USD','2026-06-01','confirmado')")
     con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,2)")
     con.commit()
-    A.pack_programar(None, 1, fecha="2026-10-10", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
+    A.pack_programar(None, 1, fecha="2026-10-10", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", retira_pregunta="", retira_nombre="", retira_cedula="", retira_telefono="", retira_correo="", con=con)
     for _ in range(2):   # reprogramar con "Sí" ya elegido tampoco lo vuelve a cobrar
-        A.pack_programar(None, 1, fecha="2026-10-11", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="1", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
+        A.pack_programar(None, 1, fecha="2026-10-11", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="1", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", retira_pregunta="", retira_nombre="", retira_cedula="", retira_telefono="", retira_correo="", con=con)
     assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 72
     assert con.execute("SELECT COUNT(*) FROM pagos").fetchone()[0] == 1
     A.entregar_pack(con, 1, 1, "2026-10-11", "1", "", "", "5", "Pago Móvil VES"); con.commit()   # aunque al entregar digan que cobró, no entra otra vez
@@ -163,7 +163,7 @@ def _():
     con.commit()
     hoy = datetime.date.today().isoformat()
     A.pack_programar(None, 1, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="",
-                     diferencia="", diferencia_pagada="0", volver="", direccion="Oficina nueva, piso 3", maps="https://maps.app.goo.gl/nueva", con=con)
+                     diferencia="", diferencia_pagada="0", volver="", direccion="Oficina nueva, piso 3", maps="https://maps.app.goo.gl/nueva", agencia="", destino="", retira_pregunta="", retira_nombre="", retira_cedula="", retira_telefono="", retira_correo="", con=con)
     f = [x for x in A.ruta_despachador(con, "Juan", hoy) if x["kind"] == "pack"][0]
     assert (f["direccion"], f["maps"]) == ("Oficina nueva, piso 3", "https://maps.app.goo.gl/nueva"), f
     assert "Oficina nueva, piso 3" in A.texto_aviso(f["quien"], "Juan", f["que_lleva"], False, f["direccion"], f["maps"])
@@ -1753,7 +1753,7 @@ def _():
         pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,3,1)", (cid, oid)).lastrowid
         con.commit()
         A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="",
-                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", retira_pregunta="", retira_nombre="", retira_cedula="", retira_telefono="", retira_correo="", con=con)
         sesion_de(c, "logistica")
         assert f'action="/packs/{pid}/campo"' in c.get("/operaciones").text, "la entrega del pack tiene su lista de despachadores"
         c.post(f"/packs/{pid}/campo", data={"despachador": "Ingrid", "volver": "/operaciones"}, follow_redirects=False)
@@ -1777,7 +1777,7 @@ def _():
         pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,3,1)", (cid, oid)).lastrowid
         con.commit()
         A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="0", notas="", pago_forma="",
-                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", retira_pregunta="", retira_nombre="", retira_cedula="", retira_telefono="", retira_correo="", con=con)
         sesion_de(c, "logistica")
         assert f'action="/packs/{pid}/cobrar-delivery' in c.get("/operaciones").text, "logística ve el botón para cobrar el delivery"
         c.post(f"/packs/{pid}/cobrar-delivery", data={"forma": "Zelle", "monto_usd": "5", "referencia": "123", "volver": "/operaciones"}, follow_redirects=False)
@@ -1856,7 +1856,7 @@ def _():
         pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,4,2)", (cid, oid)).lastrowid
         con.commit()
         A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery_fuera", despachador="Cristina", retiro="1", delivery="10", delivery_pagado="antes", notas="", pago_forma="",
-                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", retira_pregunta="", retira_nombre="", retira_cedula="", retira_telefono="", retira_correo="", con=con)
         sesion_de(c, "logistica")
         h = c.get("/operaciones").text
         assert f'action="/packs/{pid}/campo" class="cobro-f"' in h and "Otro día" in h
@@ -2549,6 +2549,64 @@ def _():
         con.execute("UPDATE packs SET fecha_programada=?, retiro_programado=1 WHERE id=?", (hoy, pid)); con.commit()   # programado desde Seguimientos: solo la fecha
         sesion_de(c, "admin"); h = c.get("/operaciones").text
         assert "Mérida · MRW Centro" in h and "<option selected>MRW</option>" in h, "va a donde fue la compra"
+        con.close()
+
+
+@prueba("Repuesto de pack por envío nacional: entra a 'Llevar a la agencia' junto con los pedidos; 'Ya los llevé' lo deja entregado sin pagar delivery y el siguiente queda aparte")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        d = con.execute("SELECT id, nombre FROM despachadores WHERE nombre=?", (A.DESPACHADORES[0],)).fetchone()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,cedula,telefono,correo) VALUES ('Rita Prueba','Rita','V-111','0414','rita@prueba.test')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,agencia,ciudad,receptor_nombre,receptor_cedula)
+                             VALUES ('#PK8',?,'entregada','pagada',72,0,'nacional','MRW','Mérida · MRW Centro','Tercero Prueba','V-222')""", (cid,)).lastrowid
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,tamano) VALUES (?,?,3,0,'Mediano')", (cid, oid)).lastrowid
+        otra = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,agencia) VALUES ('#OT1',?,'pendiente','pagada',10,0,'nacional','Tealca')", (cid,)).lastrowid
+        pr = con.execute("SELECT id, nombre, precio FROM productos WHERE sku NOT LIKE 'PACK%' AND COALESCE(tipo,'producto')!='opcion' LIMIT 1").fetchone()
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,?,0,?)", (otra, pr["id"], pr["nombre"], pr["precio"], pr["precio"]))
+        con.commit(); sesion_de(c, "admin")
+        por_llevar = lambda: int((re.search(r"(\d+) pedidos? por llevar a la agencia", c.get("/").text) or [0, 0])[1])
+        antes = por_llevar()
+        c.post(f"/packs/{pid}/programar", data={"fecha": hoy, "tipo_entrega": "nacional", "retiro": "1", "agencia": "Tealca", "destino": "Tealca Mérida Norte"}, follow_redirects=False)
+        assert A.packs_por_llevar(con)[0]["pack_id"] == pid
+        h = c.get("/operaciones?tipo=nacional").text
+        assert f'name="pack_id" value="{pid}"' in h and f'name="orden_id" value="{otra}"' in h
+        assert por_llevar() == antes + 1, "Inicio cuenta el repuesto"
+        datos = {"despachador": d["nombre"], "agencia": "Tealca", "oficina": list(A.oficinas_agencia(con).get("Tealca") or {"": 0})[0], "monto": "10", "fecha": hoy, "orden_id": str(otra), "pack_id": str(pid), "volver": "/operaciones"}
+        c.post("/viajes/crear", data=datos, follow_redirects=False)
+        v = con.execute("SELECT id, pedidos, monto FROM viajes_agencia ORDER BY id DESC LIMIT 1").fetchone()
+        assert (v["pedidos"], v["monto"]) == (2, 10), "un solo viaje con los dos"
+        assert con.execute("SELECT viaje_id FROM packs WHERE id=?", (pid,)).fetchone()[0] == v["id"] and not A.packs_por_llevar(con)
+        p = {o["numero"]: o for o in A.viajes_por_llevar(con, d["nombre"])[0]["paquetes"]}
+        assert p["#PK8"]["recibe"] == "Tercero Prueba" and p["#PK8"]["cedula"] == "V-222" and p["#PK8"]["direccion"] == "Tealca Mérida Norte", p["#PK8"]
+        assert "1× Repuesto Mediano" in p["#PK8"]["lleva"] and "1/3" in p["#PK8"]["lleva"]
+        assert "Tealca Mérida Norte" in A.texto_ruta([], datetime.date.today(), A.viajes_por_llevar(con, d["nombre"]))
+        assert "Repuesto Mediano" in c.get("/taller").text
+        assert "Tealca Mérida Norte" in c.get(f"/despachadores/{d['id']}").text
+        sesion_de(c, "despachador"); h = c.get("/mis-entregas").text
+        assert "Tealca Mérida Norte" in h and "1× Repuesto Mediano" in h and "V-222" in h, "datos de quien retira"
+        sesion_de(c, "admin")
+        ficha = c.get(f"/clientes/{cid}").text
+        assert 'name="retira_nombre" value="Tercero Prueba"' in ficha and 'name="retira_cedula" value="V-222"' in ficha, "propone quien retiró la compra"
+        esta = {"fecha": hoy, "tipo_entrega": "nacional", "retiro": "1", "agencia": "Tealca", "destino": "Tealca Valencia", "retira_pregunta": "1"}
+        c.post(f"/packs/{pid}/programar", data=esta | {"retira_nombre": "Otra Gente", "retira_cedula": "V-333", "retira_telefono": "0412", "retira_correo": "otra@prueba.test"}, follow_redirects=False)
+        p = {o["numero"]: o for o in A.viajes_por_llevar(con, d["nombre"])[0]["paquetes"]}["#PK8"]
+        assert (p["recibe"], p["cedula"], p["recibe_tel"], p["correo"], p["direccion"]) == ("Otra Gente", "V-333", "0412", "otra@prueba.test", "Tealca Valencia"), p
+        assert con.execute("SELECT viaje_id FROM packs WHERE id=?", (pid,)).fetchone()[0] == v["id"], "cambiar los datos no lo saca del viaje"
+        c.post(f"/packs/{pid}/programar", data=esta | {"retira_nombre": "", "retira_cedula": "V-333"}, follow_redirects=False)
+        p = {o["numero"]: o for o in A.viajes_por_llevar(con, d["nombre"])[0]["paquetes"]}["#PK8"]
+        assert (p["recibe"], p["cedula"], p["correo"]) == (None, "V-111", "rita@prueba.test"), "vacío = retira el cliente, con sus datos"
+        c.post(f"/viajes/{v['id']}/borrar", data={"volver": "/operaciones"}, follow_redirects=False)
+        assert con.execute("SELECT viaje_id FROM packs WHERE id=?", (pid,)).fetchone()[0] is None and A.packs_por_llevar(con), "al deshacer vuelve a la lista"
+        c.post("/viajes/crear", data=datos, follow_redirects=False)
+        v = con.execute("SELECT id FROM viajes_agencia ORDER BY id DESC LIMIT 1").fetchone()
+        c.post(f"/viajes/{v['id']}/llevado", data={"volver": "/operaciones"}, follow_redirects=False)
+        e = con.execute("SELECT tipo_entrega, despachador FROM entregas_repuesto WHERE pack_id=?", (pid,)).fetchall()
+        assert [tuple(x) for x in e] == [("nacional", d["nombre"])], "queda entregado"
+        assert con.execute("SELECT fecha_programada, viaje_id, agencia_programada, retira_nombre FROM packs WHERE id=?", (pid,)).fetchone()[:] == (None, None, None, None)
+        assert con.execute("SELECT COUNT(*) FROM viajes_despachador WHERE pack_id=?", (pid,)).fetchone()[0] == 0, "se le paga el viaje, no un delivery"
+        assert con.execute("SELECT estado FROM ordenes WHERE id=?", (otra,)).fetchone()[0] == "entregada"
         con.close()
 
 
