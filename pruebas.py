@@ -2353,7 +2353,8 @@ def _():
         crear(pedido_viejo="1")
         assert ultima()["origen_excel"] == 0, "aunque llegue marcada, de logística es una orden normal"
         sesion_de(c, "admin")
-        assert 'name="pedido_viejo"' in c.get("/ordenes/nueva/panel").text
+        pantalla = c.get("/ordenes/nueva/panel").text
+        assert 'name="pedido_viejo"' not in pantalla and "Pedido viejo" not in pantalla and 'name="en_cashflow"' in pantalla, "Cristina la quitó de la pantalla; Registrar en Cash flow sigue"
         n = con.execute("SELECT COUNT(*) FROM ordenes").fetchone()[0]
         assert crear(pedido_viejo="1", fecha=hoy_s).status_code >= 400, "con fecha de hoy no es viejo"
         assert con.execute("SELECT COUNT(*) FROM ordenes").fetchone()[0] == n
