@@ -7131,15 +7131,20 @@ async def viaje_crear(request: Request, con=Depends(db)):
 
 @app.post("/viajes/{vid}/llevado")
 def viaje_llevado(request: Request, vid: int, volver: str = Form(""), con=Depends(db)):
-    """Ya los llevó a la agencia: recién aquí el viaje cuenta como hecho y se le debe."""
+    """Ya los llevó a la agencia: recién aquí el viaje cuenta como hecho y se le debe. La orden que ya está pagada completa
+    queda entregada ese día; la que tiene algo por cobrar sigue pendiente, para que Cristina la cierre con su cobro."""
     u = quien_es(request); yo = (u or {}).get("despachador")
     v = con.execute("SELECT * FROM viajes_agencia WHERE id=?", (vid,)).fetchone()
     es_admin = rol_de(request) == "admin" or (u and u["rol"] == "admin")   # Cristina probando "ver como"
     puede = es_admin or "coordinar" in PERMISOS[rol_de(request)] or (yo and v and v["despachador"] == yo)
     if v and puede and not v["llevado_en"]:
         con.execute("UPDATE viajes_agencia SET llevado_en=datetime('now','localtime') WHERE id=?", (vid,))
-        for o in con.execute("SELECT id FROM ordenes WHERE viaje_id=?", (vid,)).fetchall():
+        ahora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        for o in con.execute("SELECT id, estado, estado_pago FROM ordenes WHERE viaje_id=?", (vid,)).fetchall():
             registrar(con, o["id"], uid_de(request), "despachador", f"{v['despachador']} lo llevó a {v['agencia'] or 'la agencia'}")
+            if o["estado"] in ("pendiente", "en_ruta") and o["estado_pago"] == "pagada":
+                con.execute("UPDATE ordenes SET estado='entregada', fecha_entrega=?, actualizado_en=datetime('now','localtime') WHERE id=?", (ahora, o["id"]))
+                registrar(con, o["id"], uid_de(request), "estado", f"{E_LABEL[o['estado']]} → {E_LABEL['entregada']}")
         con.commit()
     return RedirectResponse(volver or ("/mis-entregas" if yo else "/operaciones?cola=todo&tipo=nacional"), status_code=303)
 

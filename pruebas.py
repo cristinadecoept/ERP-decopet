@@ -1939,6 +1939,46 @@ def _():
         con.close()
 
 
+@prueba("Viaje a la agencia: 'Ya los llevé' deja entregada la orden pagada, sin mover dinero; la que tiene algo por cobrar sigue pendiente y ya entregada o cancelada no se toca")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Juan Agencia','Juan')").lastrowid
+        vid = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,monto,pedidos) VALUES (date('now'),?,'MRW',5,6)", (A.DESPACHADORES[0],)).lastrowid
+        pro = con.execute("SELECT id, nombre FROM productos WHERE sku='PRO-M'").fetchone()
+        def orden(n, estado, pago):
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,agencia,viaje_id,fecha_entrega)
+                                 VALUES (?,?,?,?,50,0,'nacional','MRW',?,?)""", (n, cid, estado, pago, vid, "2026-10-01" if estado == "entregada" else None)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,50,0,50)", (oid, pro["id"], pro["nombre"]))
+            return oid
+        pagada, en_ruta = orden("#V1", "pendiente", "pagada"), orden("#V2", "en_ruta", "pagada")
+        debe, contra = orden("#V3", "pendiente", "abonada"), orden("#V4", "pendiente", "contra_entrega")
+        vieja, cancelada = orden("#V5", "entregada", "pagada"), orden("#V6", "cancelada", "pagada")
+        con.commit()
+        dinero = lambda: [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("pagos", "movimientos", "mov_inventario")]
+        antes = dinero()
+        sesion_de(c, "admin")
+        pantalla = c.get("/operaciones?cola=todo&tipo=nacional").text
+        assert "#V1" in pantalla and "#V3" in pantalla, "antes de llevarlos salen las dos"
+        sesion_de(c, "despachador")   # lo toca el despachador desde su pantalla
+        c.post(f"/viajes/{vid}/llevado", data={"volver": "/mis-entregas"}, follow_redirects=False)
+        sesion_de(c, "admin")
+        pantalla = c.get("/operaciones?cola=todo&tipo=nacional").text
+        assert "#V1" not in pantalla and "#V3" in pantalla, "la pagada deja de salirle a Cristina; la que debe sigue"
+        fila = lambda oid: con.execute("SELECT estado, estado_pago, fecha_entrega FROM ordenes WHERE id=?", (oid,)).fetchone()
+        hoy = datetime.date.today().isoformat()
+        for oid in (pagada, en_ruta):
+            assert fila(oid)["estado"] == "entregada" and fila(oid)["estado_pago"] == "pagada" and fila(oid)["fecha_entrega"].startswith(hoy), tuple(fila(oid))
+            assert con.execute("SELECT COUNT(*) FROM historial WHERE orden_id=? AND detalle LIKE '%llevó a MRW%'", (oid,)).fetchone()[0] == 1
+        assert tuple(fila(debe))[:2] == ("pendiente", "abonada") and tuple(fila(contra))[:2] == ("pendiente", "contra_entrega"), "con algo por cobrar la cierra Cristina"
+        assert tuple(fila(vieja)) == ("entregada", "pagada", "2026-10-01"), "la fecha de una ya entregada no cambia"
+        assert fila(cancelada)["estado"] == "cancelada"
+        assert dinero() == antes, "no se mueve dinero ni inventario"
+        c.post(f"/viajes/{vid}/llevado", data={"volver": "/operaciones"}, follow_redirects=False)
+        assert con.execute("SELECT COUNT(*) FROM historial WHERE orden_id=? AND detalle LIKE '%llevó a MRW%'", (pagada,)).fetchone()[0] == 1, "tocarlo dos veces no repite nada"
+        con.close()
+
+
 @prueba("Taller: un repuesto con malla dice '+ malla' en lo que se lleva cada despachador y en los pick-ups")
 def _():
     with erp_de_prueba() as c:
