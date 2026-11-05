@@ -2078,6 +2078,34 @@ def _():
     con.close()
 
 
+@prueba("Operaciones: Pick-up no lleva despachador; si retira otra persona sale su nombre; el delivery sigue con su despachador")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Linda Pickup','Linda')").lastrowid
+        pro = con.execute("SELECT id, nombre FROM productos WHERE sku='PRO-M'").fetchone()
+        def orden(n, tipo, receptor=None):
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,receptor_nombre,fecha_prometida)
+                                 VALUES (?,?,'pendiente','pagada',50,0,?,?,date('now'))""", (n, cid, tipo, receptor)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,50,0,50)", (oid, pro["id"], pro["nombre"]))
+        orden("#P1", "pickup"); orden("#P2", "pickup", "Rosa Vecina")
+        con.commit()
+        sesion_de(c, "admin")
+        solo = c.get("/operaciones?cola=todo&tipo=pickup").text
+        assert "#P1" in solo and "#P2" in solo, "salen los pick-ups"
+        tabla = solo[solo.index('class="ops-t'):]
+        assert "<th>Despachador</th>" not in tabla and 'data-t="Despachador"' not in tabla and "retira el cliente" not in tabla, "sin despachador en Pick-up"
+        assert "retira Rosa Vecina" in tabla, "el que retira por el cliente no se pierde"
+        orden("#P3", "delivery"); con.commit()
+        juntos = c.get("/operaciones?cola=todo").text
+        grupos = re.findall(r'op-card-h"><b>([^<]+)', juntos)
+        assert "Pick-up" in grupos and "Delivery Caracas" in grupos and "#P3" in juntos, grupos
+        assert juntos.count("<th>Despachador</th>") == len(grupos) - 1, "todos con su columna, menos Pick-up"
+        por_status = c.get("/operaciones?cola=todo&vista=status").text
+        assert "<th>Despachador</th>" in por_status and "retira el cliente" not in por_status, "en una tabla mezclada el pick-up queda vacío"
+        con.close()
+
+
 @prueba("Taller: un repuesto con malla dice '+ malla' en lo que se lleva cada despachador y en los pick-ups")
 def _():
     with erp_de_prueba() as c:
