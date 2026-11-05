@@ -2626,6 +2626,11 @@ def _():
         c.post(f"/packs/{pid}/campo", data={"destino": "Tealca Mérida Norte", "volver": "/operaciones"}, follow_redirects=False)
         h = c.get("/operaciones?tipo=nacional").text
         assert "Tealca Mérida Norte" in h and "Cargar oficina" not in h
+        # la compra solo dice la ciudad: esta entrega sigue sin oficina, aunque la fila muestre 'Mérida'
+        con.execute("UPDATE ordenes SET tipo_entrega='nacional', agencia='Tealca', ciudad='Mérida' WHERE id=?", (oid,))
+        con.execute("UPDATE packs SET direccion_programada=NULL, tipo_programado=NULL WHERE id=?", (pid,)); con.commit()
+        h = c.get("/operaciones?tipo=nacional").text
+        assert "Cargar oficina" in h and 'name="destino" required value="Mérida"' in h
         con.close()
 
 
