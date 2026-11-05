@@ -2610,6 +2610,25 @@ def _():
         con.close()
 
 
+@prueba("Entrega de pack por envío nacional sin oficina: Operaciones ofrece 'Cargar oficina' y al guardarla sale el destino; el taller no puede")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,ciudad) VALUES ('Rita Prueba','Rita','Mérida')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#PK9',?,'entregada','pagada',72,0)", (cid,)).lastrowid
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,tamano,fecha_programada,tipo_programado,retiro_programado) VALUES (?,?,3,1,'Mediano',?,'nacional',1)", (cid, oid, hoy)).lastrowid
+        con.commit(); sesion_de(c, "taller")
+        c.post(f"/packs/{pid}/campo", data={"destino": "Tealca Mérida"}, follow_redirects=False)
+        assert con.execute("SELECT direccion_programada FROM packs WHERE id=?", (pid,)).fetchone()[0] is None, "el taller no coordina"
+        sesion_de(c, "logistica"); h = c.get("/operaciones?tipo=nacional").text
+        assert "Cargar oficina" in h
+        c.post(f"/packs/{pid}/campo", data={"destino": "Tealca Mérida Norte", "volver": "/operaciones"}, follow_redirects=False)
+        h = c.get("/operaciones?tipo=nacional").text
+        assert "Tealca Mérida Norte" in h and "Cargar oficina" not in h
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

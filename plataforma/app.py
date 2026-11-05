@@ -2618,7 +2618,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             lista.append(dict(id=None, es_pack=True, pack_id=k["id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
                               fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_pack(k, con), pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
                               receptor_nombre=None, agencia=ag_k, guia=None, distribuidor=None, despachador=k["despachador_programado"],
-                              ciudad=dest_k or (d["ciudad"] if d else k["ciudad"]), zona=None,
+                              ciudad=dest_k or (d["ciudad"] if d else k["ciudad"]), falta_oficina=te == "nacional" and not dest_k, zona=None,
                               direccion=k["direccion_programada"] or (d["direccion"] if d else None), maps=(k["maps_programado"] if k["direccion_programada"] or k["maps_programado"] else (d["maps"] if d else None)), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), delivery_ya_pagado=bool(k["delivery_pagado"]), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup" or ag_k), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
     if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
         dia_ref = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
@@ -5944,12 +5944,13 @@ def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
 
 
 @app.post("/packs/{pid}/campo")
-def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), agencia: str = Form(None), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
+def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), agencia: str = Form(None), destino: str = Form(None), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
     """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, por cuál agencia, otro día, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
     if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     if fecha.strip(): reprogramar_retiro(con, "pack", pid, fecha.strip(), uid_de(request))
     if despachador is not None: con.execute("UPDATE packs SET despachador_programado=? WHERE id=?", (despachador.strip() or None, pid))
     if agencia is not None: con.execute("UPDATE packs SET agencia_programada=? WHERE id=?", (agencia.strip() or None, pid))
+    if destino is not None: con.execute("UPDATE packs SET direccion_programada=? WHERE id=?", (destino.strip() or None, pid))
     if en_ruta: con.execute("UPDATE packs SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, pid))
     con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
 
