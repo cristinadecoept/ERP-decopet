@@ -2067,7 +2067,10 @@ def _():
     assert not any(x in todos for x in ("está aquí", "apart", "esperando", "fastidiar", "cariño")), todos
     # el Básico no compra repuestos: esto no le cambia su mensaje
     assert A.mensajes_repuesto(con, dict(base, tipo="basico")) == A.mensajes_repuesto(con, dict(base, tipo="basico", intento=1))
-    # primer intento
+    # primer intento: lo que se cambia es el repuesto, también en 'Otra versión'
+    primeros = A.mensajes_repuesto(con, dict(base, tipo="repuesto", intento=1))
+    assert not any("grama" in m or "de el " in m for m in primeros), primeros
+    assert "cambiar el repuesto del porche de Toby y Luna" in primeros[2], primeros[2]
     assert A.mensajes_repuesto(con, dict(base, tipo="repuesto", intento=1))[0].startswith("¡Hola Lyndia! 👋 ¿Cómo van Toby y Luna con el porche? Ya van 5 semanas, así que seguro ya toca cambiar el repuesto 🌱 ¿Te preparamos el grande? 💚")
     assert A.intento_seg(None) == 1
     assert A.intento_seg({"tipo": "repuesto", "resultado": "mensaje", "posponer_hasta": "2026-11-04", "intentos": 3}) == 4

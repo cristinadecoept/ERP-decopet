@@ -6258,12 +6258,12 @@ def mensajes_repuesto(con, s):
     if s.get("tipo") == "prepagado":
         return [f"{hola} Ya te toca el repuesto{tam} que tienes pagado 🌱 ¿Qué día te lo llevamos? 💚"]
     porche = f"el porche de {de}" if de else "el porche"
-    al_porche = "al" + porche[2:]
+    al_porche = "al" + porche[2:]; del_porche = "del" + porche[2:]
     va = "van" if len(perros) > 1 else "va"
     v = [f"{hola} ¿Cómo {va} {de or 'todo'} con el porche? Ya van {sem} semanas, así que seguro ya toca cambiar el repuesto 🌱 ¿Te preparamos {f'el{tam}' if tam else 'uno'}? 💚" if sem >= 2 else
          f"{hola} ¿Cómo {va} {de or 'todo'} con el porche? 🌱 ¿Te preparamos el repuesto{tam}? 💚",
-         f"{hola} Ya le toca grama nueva {al_porche} 🌱 ¿Te enviamos el repuesto{tam}? 💚",
-         f"{hola} Pasamos a recordarte que ya es buen momento para cambiar la grama de {porche} 🌿 Si quieres, te lo coordinamos esta semana 💚"]
+         f"{hola} Ya le toca repuesto nuevo {al_porche} 🌱 ¿Te enviamos {f'el{tam}' if tam else 'uno'}? 💚",
+         f"{hola} Pasamos a recordarte que ya es buen momento para cambiar el repuesto {del_porche} 🌿 Si quieres, te lo coordinamos esta semana 💚"]
     if s.get("tipo") != "primer_repuesto":
         v.append(f"{hola} Ya va tocando repuesto para {porche} 🌱 Si te sirve, el pack de 3 sale mejor y te olvidas por un tiempo 😉💚")
     return v
