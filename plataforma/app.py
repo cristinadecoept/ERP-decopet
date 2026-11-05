@@ -5399,7 +5399,12 @@ RESULTADOS = {"compro": "Compró", "mensaje": "Mensaje enviado", "fecha": "Lo qu
               "lo_pensara": "Lo pensará", "no_responde": "No responde", "otro": "Otro"}   # los 3 últimos: solo para leer registros viejos
 # qué opciones se ofrecen según el tipo de seguimiento
 RESULTADOS_POR_TIPO = {"primer_repuesto": ["compro", "mensaje", "fecha", "no_se_adapto", "ya_no_usa"], "cumple": ["felicitado"], "cobro": ["pago", "mensaje"], "basico": ["paso_pro", "otro_basico", "mensaje", "fecha", "no_le_interesa"], "*": ["compro", "mensaje", "fecha", "ya_no_usa"]}
-REINTENTO_DIAS = 3   # "Mensaje enviado" sin respuesta → vuelve a aparecer a los 3 días
+REINTENTO_DIAS = 3   # cobro: "Mensaje enviado" sin respuesta → vuelve a aparecer a los 3 días
+PAUSAS_SEG = [3, 7, 14, 60]   # los demás: 2º a los 3 días, 3º a la semana, 4º a las 2 semanas; sin respuesta descansa 2 meses y empieza de nuevo
+
+def pausa_seg(tipo, intentos):
+    """Días hasta que vuelve a salir, con los intentos ya hechos contando el de hoy."""
+    return REINTENTO_DIAS if tipo == "cobro" else PAUSAS_SEG[(intentos - 1) % len(PAUSAS_SEG)]
 
 def estado_resultado(r):
     """Texto del resultado elegido en Contactado: 'Mensaje enviado', 'Compró', 'Lo quiere el jue 25/09'..."""
@@ -5411,7 +5416,14 @@ def estado_seg(r, hoy):
     if not r: return "Pendiente"
     if r["resultado"] == "fecha" and r["posponer_hasta"]:
         return "Lo quiere hoy" if r["posponer_hasta"] == hoy.isoformat() else f"Lo quería el {fmt_dia(r['posponer_hasta'])}"
-    return f"{r['intentos'] + 1}º intento"
+    n = intento_seg(r)
+    return f"{n}º intento" if n > 1 else "Pendiente"
+
+def intento_seg(r):
+    """Qué intento toca, el mismo número de la pastilla. El que pidió otro día no es un intento: se le escribe como la primera vez.
+    Después del descanso de 2 meses la cuenta vuelve a empezar; el cobro sigue contando."""
+    if not r or (r["resultado"] == "fecha" and r["posponer_hasta"]): return 1
+    return r["intentos"] + 1 if r["tipo"] == "cobro" else r["intentos"] % len(PAUSAS_SEG) + 1
 
 def seguimientos_pendientes(con, umbral=None, ventana=1):
     """Seguimientos personalizados: cada miembro PRO se activa según SU fecha de entrega (del porche o del último repuesto)
@@ -5468,7 +5480,7 @@ def seguimientos_pendientes(con, umbral=None, ventana=1):
                         cliente_id=m["id"], cliente=m["nombre"], telefono=m["telefono"], tamano=m["tamano"] or m["ficha_tamano"] or "—", clave=clave, dias=dias, intervalo=intervalo, atraso=atraso,
                         que=f"Repuesto {m['tamano'] or m['ficha_tamano'] or '—'}", _ult=ref[:10], _n=len(fechas),
                         fase=("hoy" if atraso < ventana else "atrasado"),
-                        tipo="primer_repuesto" if primero else ("prepagado" if prepag else "repuesto"),
+                        tipo="primer_repuesto" if primero else ("prepagado" if prepag else "repuesto"), pack=not primero and not prepag and saldo_pack > 0,
                         tipo_txt=("Le toca primer repuesto" if primero else (f"Tiene {prepag} repuesto{'s' if prepag > 1 else ''} pagado · coordinar entrega" if prepag else ("Le toca repuesto del pack" if saldo_pack > 0 else "Le toca repuesto"))) + (f" · cada {intervalo} d" if intervalo != CICLO_REPUESTO else ""),
                         estado=estado_seg(hechos.get(clave), hoy)))
     out.sort(key=lambda s: (s["fase"] != "hoy", s["atraso"]))
@@ -5526,6 +5538,7 @@ def seguimientos_pendientes(con, umbral=None, ventana=1):
     con.commit()
     # el que no se contactó el día que le tocaba sigue en 'Hoy' con la marca 'Atrasado' (y cuántos días)
     for s in out:
+        s["intento"] = intento_seg(hechos.get(s["clave"]))
         if s["fase"] != "atrasado": continue
         s["fase"] = "hoy"; s["tarde"] = max(s["atraso"], 1)
         if s["clave"] not in hechos: s["estado"] = f"Atrasado · {s['tarde']} d"
@@ -5599,7 +5612,10 @@ def seguimientos(request: Request, ver: str = "pendientes", tipo: str = "", q: s
 def seguimiento_hecho(request: Request, clave: str = Form(...), cliente_id: int = Form(...), tipo: str = Form(...), resultado: str = Form(...), nota: str = Form(""), fecha: str = Form(""), volver: str = Form("/seguimientos"), corrige: str = Form(""), con=Depends(db)):
     hoy = datetime.date.today()
     hasta = None
-    if resultado == "mensaje": hasta = (hoy + datetime.timedelta(days=REINTENTO_DIAS)).isoformat()
+    prev = con.execute("SELECT intentos FROM seguimientos WHERE clave=?", (clave,)).fetchone()
+    if resultado == "mensaje":
+        hechos = (prev["intentos"] if prev else 0) + (0 if corrige and prev else 1)
+        hasta = (hoy + datetime.timedelta(days=pausa_seg(tipo, hechos))).isoformat()
     elif resultado == "fecha":
         hasta = fecha or hoy.isoformat()   # vuelve a salir ese día: "lo quiere para hoy"
         # si tiene pack con saldo o repuesto prepagado, se programa el retiro para esa fecha y ya sale en Operaciones
@@ -5608,7 +5624,6 @@ def seguimiento_hecho(request: Request, clave: str = Form(...), cliente_id: int 
         else:
             r = next((r for r in cargar_prepagados(con) if r["cliente_id"] == cliente_id and not r["fecha_programada"]), None)
             if r: con.execute("UPDATE repuestos_prepagados SET fecha_programada=?, notas=? WHERE id=?", (hasta, nota or None, r["id"]))
-    prev = con.execute("SELECT intentos FROM seguimientos WHERE clave=?", (clave,)).fetchone()
     if corrige and prev:   # se equivocó al marcarlo (desde Contactados): se corrige, sin contar otro intento ni cambiar cuándo se hizo
         con.execute("UPDATE seguimientos SET resultado=?, nota=?, posponer_hasta=?, usuario_id=? WHERE clave=?", (resultado, nota or None, hasta, uid_de(request), clave))
         con.commit(); return RedirectResponse(volver_seguro(volver) or "/seguimientos?ver=hechos", status_code=303)
@@ -6204,8 +6219,23 @@ def mensajes_cumple(perro, edad, ofrecer):
     return [(s.format(p=perro, e=e) + (" " + ofertas[i % len(ofertas)] if ofertas else "")).strip() for i, s in enumerate(SALUDOS_CUMPLE)]
 
 
+# Cuando el cliente no respondió: del 2º intento en adelante se le escribe distinto, corto y como habla una persona.
+# Cada lista va en orden (2º, 3º, 4º) y luego vuelve a empezar, así nunca recibe dos veces seguidas lo mismo.
+REINTENTOS_OFRECER = [
+    "¡Hooola{n}! {sigue} con el porche? 🐾 Cualquier cosa me dices 💚",
+    "¡Buenas{n}! Sin apuro 😊 Tenemos la grama fresca, cuando quieras me avisas y te hacemos el repuesto{tam}{para} 💚",
+    "¡Epa{n}! ¿Todo bien por allá? 😊 Ya sabes, {cuando} el repuesto{tam} me pegas un grito 💚",
+]
+REINTENTOS_PAGADO = [   # pack con saldo o repuesto prepagado. Los repuestos se hacen al pedir: nada de "está aquí" ni "te lo aparto"
+    "¡Hooola{n}! {sigue}? 🐾 Tenemos la grama fresca, avísame y te hacemos el repuesto{tam} {cual} 💚",
+    "¡Buenas{n}! Sin apuro 😊 Cuando quieras el repuesto{tam} {cual}{para}, me avisas y te lo hacemos 💚",
+    "¡Epa{n}! ¿Todo bien por allá? 😊 Ya sabes, {cuando} el repuesto{tam} {cual} me pegas un grito 💚",
+]
+
+
 def mensajes_repuesto(con, s):
-    """Mensajes para ofrecer el repuesto, con el nombre de la persona y de sus perros. Mismo tono que los de cumpleaños."""
+    """Mensajes para ofrecer el repuesto, con el nombre de la persona y de sus perros. Mismo tono que los de cumpleaños.
+    El primero es el que abre el WhatsApp; del 2º intento en adelante es el que le toca a ese intento."""
     c = con.execute("SELECT nombre, nombre_pila FROM clientes WHERE id=?", (s["cliente_id"],)).fetchone()
     quien = (c["nombre_pila"] or (c["nombre"] or "").split(" ")[0]).strip() if c else ""
     perros = [((r[0] or "").split() or [""])[0] for r in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? AND fallecida IS NULL ORDER BY id", (s["cliente_id"],))]
@@ -6214,13 +6244,23 @@ def mensajes_repuesto(con, s):
     tam = (s.get("tamano") if s.get("tamano") not in (None, "—") else s.get("porche_tamano")) or ""   # los ya contactados traen el del cliente
     tam = tam.lower(); tam = f" {tam}" if tam in ("mediano", "grande") else ""
     sem = round((s.get("dias") or 0) / 7)
+    intento = s.get("intento") or 1
+    if intento >= 2 and s.get("tipo") in ("primer_repuesto", "repuesto", "prepagado"):
+        cual = "que tienes pagado" if s.get("tipo") == "prepagado" else "de tu pack" if s.get("pack") else ""
+        textos = REINTENTOS_PAGADO if cual else REINTENTOS_OFRECER
+        vuelta = (intento - 2) % len(textos)
+        varios = len(perros) > 1
+        sigue = f"¿Cómo {'siguen' if varios else 'sigue'} {de}" if de else "¿Cómo sigue todo"
+        cuando = f"cuando {de} {'necesiten' if varios else 'necesite'}" if de else "cuando necesites"
+        return [t.format(n=f" {quien}" if quien else "", sigue=sigue, cuando=cuando, tam=tam, cual=cual, para=f" para {de}" if de else "")
+                for t in textos[vuelta:] + textos[:vuelta]]
     hola = f"¡Hola {quien}! 👋" if quien else "¡Hola! 👋"
     if s.get("tipo") == "prepagado":
         return [f"{hola} Ya te toca el repuesto{tam} que tienes pagado 🌱 ¿Qué día te lo llevamos? 💚"]
     porche = f"el porche de {de}" if de else "el porche"
     al_porche = "al" + porche[2:]
     va = "van" if len(perros) > 1 else "va"
-    v = [f"{hola} ¿Cómo {va} {de or 'todo'} con el porche? Ya van {sem} semanas, así que la grama seguro está pidiendo cambio 🌱 ¿Te preparamos el repuesto{tam}? 💚" if sem >= 2 else
+    v = [f"{hola} ¿Cómo {va} {de or 'todo'} con el porche? Ya van {sem} semanas, así que seguro ya toca cambiar el repuesto 🌱 ¿Te preparamos {f'el{tam}' if tam else 'uno'}? 💚" if sem >= 2 else
          f"{hola} ¿Cómo {va} {de or 'todo'} con el porche? 🌱 ¿Te preparamos el repuesto{tam}? 💚",
          f"{hola} Ya le toca grama nueva {al_porche} 🌱 ¿Te enviamos el repuesto{tam}? 💚",
          f"{hola} Pasamos a recordarte que ya es buen momento para cambiar la grama de {porche} 🌿 Si quieres, te lo coordinamos esta semana 💚"]

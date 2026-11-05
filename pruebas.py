@@ -6,7 +6,7 @@ de datos de mentira. Correrlas antes y después de cualquier cambio:
 
     ./.venv/bin/python pruebas.py
 """
-import os, re, time, sqlite3, datetime, tempfile, pathlib, traceback
+import os, re, html, time, sqlite3, datetime, tempfile, pathlib, traceback
 os.environ["DECOPET_PRUEBAS"] = "1"
 
 import plataforma.app as A
@@ -1977,6 +1977,102 @@ def _():
         c.post(f"/viajes/{vid}/llevado", data={"volver": "/operaciones"}, follow_redirects=False)
         assert con.execute("SELECT COUNT(*) FROM historial WHERE orden_id=? AND detalle LIKE '%llevó a MRW%'", (pagada,)).fetchone()[0] == 1, "tocarlo dos veces no repite nada"
         con.close()
+
+
+def _cliente_con_repuesto_vencido(con, sku="PRO-M"):
+    """Andrea, con Milo, que recibió su porche hace 40 días: le toca el primer repuesto."""
+    cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,porche_version) VALUES ('Andrea Mazhar','Andrea','04145539011','PRO')").lastrowid
+    con.execute("INSERT INTO mascotas (cliente_id,nombre) VALUES (?,'Milo')", (cid,))
+    pro = con.execute("SELECT id, nombre FROM productos WHERE sku=?", (sku,)).fetchone()
+    entrega = (datetime.date.today() - datetime.timedelta(days=40)).isoformat()
+    oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,fecha_entrega) VALUES ('#AN1',?,'entregada','pagada',88,0,?)", (cid, entrega)).lastrowid
+    con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,88,0,88)", (oid, pro["id"], pro["nombre"]))
+    con.commit()
+    return cid, f"seg:{cid}:{entrega}"
+
+
+@prueba("Seguimientos: cada intento abre un WhatsApp distinto, con su nombre y el de la mascota; después del descanso vuelve a empezar desde el primero")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid, clave = _cliente_con_repuesto_vencido(con)
+        sesion_de(c, "admin")
+        def el_mensaje():
+            return next(s_ for s_ in A.seguimientos_pendientes(con) if s_["cliente_id"] == cid)
+        vistos = []
+        for intentos in (0, 1, 2, 3, 4, 5):
+            if intentos:
+                con.execute("INSERT OR REPLACE INTO seguimientos (cliente_id,tipo,clave,resultado,posponer_hasta,intentos) VALUES (?,'primer_repuesto',?,'mensaje',?,?)",
+                            (cid, clave, datetime.date.today().isoformat(), intentos))
+                con.commit()
+            s_ = el_mensaje()
+            toca = intentos % 4 + 1
+            assert s_["intento"] == toca and s_["estado"] == (f"{toca}º intento" if toca > 1 else "Pendiente"), s_
+            m = A.mensajes_repuesto(con, s_)
+            vistos.append(m[0])
+            pagina = html.unescape(c.get("/seguimientos").text)
+            assert f'data-msj="{m[0]}"' in pagina, f"el botón de WhatsApp abre el del intento {intentos + 1}"
+            if toca > 1:
+                assert "Andrea" in m[0] and "Milo" in m[0], m[0]
+                assert len(set(m)) == 3, "'Otra versión' ofrece los tres"
+            if toca > 2: assert "mediano" in m[0], m[0]
+        assert len(set(vistos[:4])) == 4, "1º, 2º, 3º y 4º son distintos"
+        assert vistos[4] == vistos[0] and vistos[5] == vistos[1], "después del descanso empieza de nuevo"
+        con.close()
+
+
+@prueba("Seguimientos: sin respuesta sale a los 3 días, a la semana y a las 2 semanas; luego descansa 2 meses. El cobro sigue cada 3 días y corregir no cuenta otro intento")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid, clave = _cliente_con_repuesto_vencido(con)
+        sesion_de(c, "admin")
+        hoy = datetime.date.today()
+        def marcar(clave_, tipo, **extra):
+            c.post("/seguimientos/hecho", data=dict(clave=clave_, cliente_id=cid, tipo=tipo, resultado="mensaje", **extra), follow_redirects=False)
+            r = con.execute("SELECT posponer_hasta, intentos FROM seguimientos WHERE clave=?", (clave_,)).fetchone()
+            return (datetime.date.fromisoformat(r["posponer_hasta"]) - hoy).days, r["intentos"]
+        assert [marcar(clave, "primer_repuesto")[0] for _ in range(5)] == [3, 7, 14, 60, 3]
+        assert marcar(clave, "primer_repuesto", corrige="1") == (3, 5), "corregir no cuenta otro intento"
+        assert [marcar("cobro:1:2026-10-01", "cobro")[0] for _ in range(5)] == [3, 3, 3, 3, 3]
+        assert A.estado_seg({"tipo": "cobro", "resultado": "mensaje", "posponer_hasta": "2026-11-04", "intentos": 4}, hoy) == "5º intento"
+        con.close()
+
+
+@prueba("Seguimientos: el mensaje de reintento se adapta a pack, prepagado, varios perros y datos que faltan; el que pidió otro día vuelve al primero")
+def _():
+    con = base_limpia()
+    cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Lyndia Perez','Lyndia')").lastrowid
+    con.execute("INSERT INTO mascotas (cliente_id,nombre) VALUES (?,'Toby')", (cid,))
+    con.execute("INSERT INTO mascotas (cliente_id,nombre) VALUES (?,'Luna')", (cid,))
+    base = {"cliente_id": cid, "tamano": "Grande", "dias": 35, "intento": 2}
+    pack = A.mensajes_repuesto(con, dict(base, tipo="repuesto", pack=True))[0]
+    assert "¿Cómo siguen Toby y Luna?" in pack and "repuesto grande de tu pack" in pack and "Lyndia" in pack, pack
+    pagado = A.mensajes_repuesto(con, dict(base, tipo="prepagado"))[0]
+    assert "repuesto grande que tienes pagado" in pagado, pagado
+    cuarto = A.mensajes_repuesto(con, dict(base, tipo="repuesto", pack=True, intento=4))[0]
+    assert "cuando Toby y Luna necesiten el repuesto grande de tu pack" in cuarto, cuarto
+    normal = A.mensajes_repuesto(con, dict(base, tipo="repuesto", pack=False))[0]
+    assert "pack" not in normal and "pagado" not in normal and "  " not in normal, normal
+    assert "pack" not in A.mensajes_repuesto(con, dict(base, tipo="primer_repuesto"))[0]
+    # sin nombre, sin perro y sin tamaño la frase sigue bien escrita
+    vacio = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('','')").lastrowid
+    for t in A.mensajes_repuesto(con, {"cliente_id": vacio, "tipo": "repuesto", "tamano": "—", "intento": 3}):
+        assert " ," not in t and "  " not in t and " para " not in t.replace(" para ver", "") and "{" not in t, t
+    assert A.mensajes_repuesto(con, {"cliente_id": vacio, "tipo": "repuesto", "tamano": "—", "intento": 2})[1].startswith("¡Buenas!")
+    # nada de malla ni cinta, y el corazón siempre verde
+    todos = " ".join(A.REINTENTOS_OFRECER + A.REINTENTOS_PAGADO).lower()
+    assert not any(x in todos for x in ("malla", "cinta", "❤")), todos
+    # los repuestos se hacen al pedir: no están guardados ni se apartan
+    assert not any(x in todos for x in ("está aquí", "apart", "esperando", "fastidiar", "cariño")), todos
+    # el Básico no compra repuestos: esto no le cambia su mensaje
+    assert A.mensajes_repuesto(con, dict(base, tipo="basico")) == A.mensajes_repuesto(con, dict(base, tipo="basico", intento=1))
+    # primer intento
+    assert A.mensajes_repuesto(con, dict(base, tipo="repuesto", intento=1))[0].startswith("¡Hola Lyndia! 👋 ¿Cómo van Toby y Luna con el porche? Ya van 5 semanas, así que seguro ya toca cambiar el repuesto 🌱 ¿Te preparamos el grande? 💚")
+    assert A.intento_seg(None) == 1
+    assert A.intento_seg({"tipo": "repuesto", "resultado": "mensaje", "posponer_hasta": "2026-11-04", "intentos": 3}) == 4
+    assert A.intento_seg({"tipo": "repuesto", "resultado": "fecha", "posponer_hasta": "2026-11-04", "intentos": 3}) == 1, "dijo qué día lo quiere: no es insistirle"
+    con.close()
 
 
 @prueba("Taller: un repuesto con malla dice '+ malla' en lo que se lleva cada despachador y en los pick-ups")
