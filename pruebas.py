@@ -144,9 +144,9 @@ def _():
     con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (1,'Zelle',72,72,'USD','2026-06-01','confirmado')")
     con.execute("INSERT INTO packs (id,cliente_id,orden_id,unidades,entregadas_inicio) VALUES (1,1,1,3,2)")
     con.commit()
-    A.pack_programar(None, 1, fecha="2026-10-10", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+    A.pack_programar(None, 1, fecha="2026-10-10", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
     for _ in range(2):   # reprogramar con "Sí" ya elegido tampoco lo vuelve a cobrar
-        A.pack_programar(None, 1, fecha="2026-10-11", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="1", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+        A.pack_programar(None, 1, fecha="2026-10-11", tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="1", notas="", pago_forma="", diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
     assert con.execute("SELECT total FROM ordenes WHERE id=1").fetchone()[0] == 72
     assert con.execute("SELECT COUNT(*) FROM pagos").fetchone()[0] == 1
     A.entregar_pack(con, 1, 1, "2026-10-11", "1", "", "", "5", "Pago Móvil VES"); con.commit()   # aunque al entregar digan que cobró, no entra otra vez
@@ -1753,7 +1753,7 @@ def _():
         pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,3,1)", (cid, oid)).lastrowid
         con.commit()
         A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="antes", notas="", pago_forma="",
-                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
         sesion_de(c, "logistica")
         assert f'action="/packs/{pid}/campo"' in c.get("/operaciones").text, "la entrega del pack tiene su lista de despachadores"
         c.post(f"/packs/{pid}/campo", data={"despachador": "Ingrid", "volver": "/operaciones"}, follow_redirects=False)
@@ -1777,7 +1777,7 @@ def _():
         pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,3,1)", (cid, oid)).lastrowid
         con.commit()
         A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery", despachador="Juan", retiro="1", delivery="5", delivery_pagado="0", notas="", pago_forma="",
-                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
         sesion_de(c, "logistica")
         assert f'action="/packs/{pid}/cobrar-delivery' in c.get("/operaciones").text, "logística ve el botón para cobrar el delivery"
         c.post(f"/packs/{pid}/cobrar-delivery", data={"forma": "Zelle", "monto_usd": "5", "referencia": "123", "volver": "/operaciones"}, follow_redirects=False)
@@ -1856,7 +1856,7 @@ def _():
         pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio) VALUES (?,?,4,2)", (cid, oid)).lastrowid
         con.commit()
         A.pack_programar(None, pid, fecha=hoy, tipo_entrega="delivery_fuera", despachador="Cristina", retiro="1", delivery="10", delivery_pagado="antes", notas="", pago_forma="",
-                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", con=con)
+                         diferencia="", diferencia_pagada="0", volver="", direccion="", maps="", agencia="", destino="", con=con)
         sesion_de(c, "logistica")
         h = c.get("/operaciones").text
         assert f'action="/packs/{pid}/campo" class="cobro-f"' in h and "Otro día" in h
@@ -2518,6 +2518,37 @@ def _():
         assert (p["#79001"]["cedula"], p["#79001"]["correo"]) == ("V-11111111", "desiree@prueba.test")
         assert (p["#79002"]["cedula"], p["#79002"]["correo"]) == (None, None), "faltan, y la pantalla lo avisa"
         assert (p["#79003"]["cedula"], p["#79003"]["correo"]) == ("V-22222222", "vero@prueba.test")
+        con.close()
+
+
+@prueba("Entrega de pack por envío nacional: pide agencia y destino, sale igual que un pedido en Operaciones y al entregarla se limpia")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,ciudad) VALUES ('Rita Prueba','Rita','Mérida')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,agencia,ciudad) VALUES ('#PK7',?,'entregada','pagada',72,0,'nacional','MRW','Mérida · MRW Centro')", (cid,)).lastrowid
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,tamano) VALUES (?,?,3,1,'Mediano')", (cid, oid)).lastrowid
+        con.commit(); sesion_de(c, "admin")
+        h = c.get(f"/clientes/{cid}").text
+        assert 'name="destino"' in h and 'value="Mérida · MRW Centro"' in h, "propone el destino de la compra"
+        assert 'name="destino"' in c.get("/packs").text
+        c.post(f"/packs/{pid}/programar", data={"fecha": hoy, "tipo_entrega": "nacional", "retiro": "1", "agencia": "Tealca", "destino": "Tealca Mérida Norte"}, follow_redirects=False)
+        k = con.execute("SELECT agencia_programada, direccion_programada FROM packs WHERE id=?", (pid,)).fetchone()
+        assert k[:] == ("Tealca", "Tealca Mérida Norte"), k[:]
+        h = c.get("/operaciones").text
+        assert "Tealca Mérida Norte" in h and "#PK7" in h and "1× Repuesto Mediano" in h
+        assert f'action="/packs/{pid}/campo"' in h and 'name="agencia"' in h, "la agencia se cambia desde la fila"
+        c.post(f"/packs/{pid}/campo", data={"agencia": "Zoom", "volver": "/operaciones"}, follow_redirects=False)
+        assert con.execute("SELECT agencia_programada FROM packs WHERE id=?", (pid,)).fetchone()[0] == "Zoom"
+        sesion_de(c, "taller"); c.post(f"/packs/{pid}/campo", data={"agencia": "MRW"}, follow_redirects=False)
+        assert con.execute("SELECT agencia_programada FROM packs WHERE id=?", (pid,)).fetchone()[0] == "Zoom", "el taller no coordina"
+        A.entregar_pack(con, pid, None, hoy, "1", "", "", "0", "", ""); con.commit()
+        k = con.execute("SELECT agencia_programada, direccion_programada FROM packs WHERE id=?", (pid,)).fetchone()
+        assert k[:] == (None, None), "la próxima entrega se pregunta de nuevo"
+        con.execute("UPDATE packs SET fecha_programada=?, retiro_programado=1 WHERE id=?", (hoy, pid)); con.commit()   # programado desde Seguimientos: solo la fecha
+        sesion_de(c, "admin"); h = c.get("/operaciones").text
+        assert "Mérida · MRW Centro" in h and "<option selected>MRW</option>" in h, "va a donde fue la compra"
         con.close()
 
 

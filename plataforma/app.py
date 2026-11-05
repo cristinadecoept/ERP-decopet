@@ -727,6 +727,7 @@ COLUMNAS = (
     ("packs", "delivery_programado", "REAL"), ("packs", "despachador_programado", "TEXT"),
     ("packs", "fecha_programada", "TEXT"), ("packs", "nota_programada", "TEXT"),
     ("packs", "direccion_programada", "TEXT"), ("packs", "maps_programado", "TEXT"),   # solo esta entrega va a otro sitio; la ficha no cambia
+    ("packs", "agencia_programada", "TEXT"),   # envío nacional: la agencia de esta entrega; el destino va en direccion_programada
     ("packs", "retiro_programado", "INTEGER"), ("packs", "tipo_programado", "TEXT"),
     ("produccion", "cantidad", "INTEGER NOT NULL DEFAULT 1"), ("produccion", "fecha_pago", "TEXT"),
     ("produccion", "faltaron", "INTEGER"),
@@ -2589,10 +2590,13 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             d = con.execute("SELECT * FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id LIMIT 1", (k["cliente_id"],)).fetchone()
             te = k["tipo_programado"] or k["tipo_entrega"]
             if tipo and te != tipo: continue
+            nac = te == "nacional"; misma = nac and k["tipo_entrega"] == "nacional"   # si el pack se compró por envío nacional, va a donde fue la compra hasta que digan otra cosa
+            lleva_k = repuesto_de_pack(k, con)[0]
             lista.append(dict(id=None, es_pack=True, pack_id=k["id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
-                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=repuesto_de_pack(k, con)[0], pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
-                              receptor_nombre=None, agencia=None, guia=None, distribuidor=None, despachador=k["despachador_programado"], ciudad=(d["ciudad"] if d else k["ciudad"]), zona=None,
-                              direccion=k["direccion_programada"] or (d["direccion"] if d else None), maps=(k["maps_programado"] if k["direccion_programada"] or k["maps_programado"] else (d["maps"] if d else None)), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), delivery_ya_pagado=bool(k["delivery_pagado"]), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup"), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
+                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_k if "× " in lleva_k else f"1× {lleva_k}", pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
+                              receptor_nombre=None, agencia=k["agencia_programada"] or (k["orden_agencia"] if misma else None), guia=None, distribuidor=None, despachador=k["despachador_programado"],
+                              ciudad=(nac and k["direccion_programada"]) or (misma and k["orden_ciudad"]) or (d["ciudad"] if d else k["ciudad"]), zona=None,
+                              direccion=k["direccion_programada"] or (d["direccion"] if d else None), maps=(k["maps_programado"] if k["direccion_programada"] or k["maps_programado"] else (d["maps"] if d else None)), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), delivery_ya_pagado=bool(k["delivery_pagado"]), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup" or (nac and (k["agencia_programada"] or (misma and k["orden_agencia"])))), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
     if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
         dia_ref = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
         for r in cargar_prepagados(con):
@@ -5752,7 +5756,7 @@ def cargar_packs(con):
     cols = [r[1] for r in con.execute("PRAGMA table_info(packs)")]
     for c, tp in (("fecha_programada", "TEXT"), ("tipo_programado", "TEXT"), ("despachador_programado", "TEXT"), ("nota_programada", "TEXT"), ("retiro_programado", "INTEGER"), ("delivery_programado", "REAL"), ("delivery_pagado", "INTEGER"), ("deliveries_prepagados", "INTEGER"), ("en_ruta", "INTEGER NOT NULL DEFAULT 0")):
         if c not in cols: con.execute(f"ALTER TABLE packs ADD COLUMN {c} {tp}")
-    rows = con.execute("""SELECT k.*, c.nombre cliente, c.telefono, c.ciudad, o.numero orden, o.tipo_entrega, o.estado orden_estado,
+    rows = con.execute("""SELECT k.*, c.nombre cliente, c.telefono, c.ciudad, o.numero orden, o.tipo_entrega, o.estado orden_estado, o.agencia orden_agencia, o.ciudad orden_ciudad,
         (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregas_posteriores,
         (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ultima_entrega
         FROM packs k JOIN clientes c ON c.id=k.cliente_id LEFT JOIN ordenes o ON o.id=k.orden_id ORDER BY k.creado_en DESC""").fetchall()
@@ -5799,7 +5803,7 @@ def packs(request: Request, ver: str = "activos", q: str = "", con=Depends(db), 
 
 
 @app.post("/packs/{pid}/programar")
-def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entrega: str = Form(""), despachador: str = Form(""), notas: str = Form(""), retiro: str = Form(""), delivery: str = Form("0"), delivery_pagado: str = Form("0"), pago_forma: str = Form(""), diferencia: str = Form(""), diferencia_pagada: str = Form("0"), volver: str = Form(""), direccion: str = Form(""), maps: str = Form(""), con=Depends(db)):
+def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entrega: str = Form(""), despachador: str = Form(""), notas: str = Form(""), retiro: str = Form(""), delivery: str = Form("0"), delivery_pagado: str = Form("0"), pago_forma: str = Form(""), diferencia: str = Form(""), diferencia_pagada: str = Form("0"), volver: str = Form(""), direccion: str = Form(""), maps: str = Form(""), agencia: str = Form(""), destino: str = Form(""), con=Depends(db)):
     k = con.execute("SELECT * FROM packs WHERE id=?", (pid,)).fetchone()
     dl = float(delivery or 0) if tipo_entrega in ("delivery", "delivery_fuera") else 0.0
     pagado = 1 if delivery_pagado in ("1", "antes") and dl > 0 else 0
@@ -5813,7 +5817,9 @@ def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entre
     con.execute("UPDATE packs SET fecha_programada=?, tipo_programado=?, despachador_programado=?, nota_programada=?, retiro_programado=?, delivery_programado=?, delivery_pagado=? WHERE id=?",
                 (fecha or None, tipo_entrega or None, despachador or None, notas or None, cuantos_prog, dl, pagado, pid))
     otra = tipo_entrega in ("delivery", "delivery_fuera")
-    con.execute("UPDATE packs SET direccion_programada=?, maps_programado=? WHERE id=?", ((direccion.strip() or None) if otra else None, (maps.strip() or None) if otra else None, pid))
+    nac = tipo_entrega == "nacional"
+    con.execute("UPDATE packs SET direccion_programada=?, maps_programado=?, agencia_programada=? WHERE id=?",
+                ((destino.strip() or None) if nac else (direccion.strip() or None) if otra else None, (maps.strip() or None) if otra else None, (agencia.strip() or None) if nac else None, pid))
     if pagado == 2:
         ya = k["diferencia_pagada"] and (k["delivery_diferencia"] or 0) > 0   # si ya la había cobrado al programar, no se cobra otra vez
         dif_pag = 1 if (ya or (diferencia_pagada == "1" and dif > 0)) else 0
@@ -5848,7 +5854,7 @@ def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despach
     if te in ("delivery", "delivery_fuera"):   # lo que pagó el cliente de delivery por este retiro, cobrado ahora o antes
         pago_retiro_despachador(con, quien, float(k["delivery_programado"] or 0) or float(delivery_cobrado or 0), fecha or datetime.date.today().isoformat(), uid,
                                 orden_id=k["orden_id"], pack_id=pid)
-    con.execute("UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, retiro_programado=NULL, delivery_programado=NULL, delivery_pagado=NULL, direccion_programada=NULL, maps_programado=NULL, estado=CASE WHEN entregadas_inicio + (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) >= unidades THEN 'completo' ELSE estado END WHERE id=?", (pid,))
+    con.execute("UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, retiro_programado=NULL, delivery_programado=NULL, delivery_pagado=NULL, direccion_programada=NULL, maps_programado=NULL, agencia_programada=NULL, estado=CASE WHEN entregadas_inicio + (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) >= unidades THEN 'completo' ELSE estado END WHERE id=?", (pid,))
     dc = float(delivery_cobrado or 0)
     if k["delivery_pagado"]: dc = 0.0   # ya se cobró al programar (o venía prepagado con el pack)
     if (k["deliveries_prepagados"] or 0) > 0 and (tipo_entrega or k["tipo_programado"]) in ("delivery", "delivery_fuera"):
@@ -5910,11 +5916,12 @@ def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
 
 
 @app.post("/packs/{pid}/campo")
-def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
-    """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, otro día, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
+def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), agencia: str = Form(None), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
+    """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, por cuál agencia, otro día, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
     if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     if fecha.strip(): reprogramar_retiro(con, "pack", pid, fecha.strip(), uid_de(request))
     if despachador is not None: con.execute("UPDATE packs SET despachador_programado=? WHERE id=?", (despachador.strip() or None, pid))
+    if agencia is not None: con.execute("UPDATE packs SET agencia_programada=? WHERE id=?", (agencia.strip() or None, pid))
     if en_ruta: con.execute("UPDATE packs SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, pid))
     con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
 
@@ -6307,10 +6314,10 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     for c_, tp in (("fecha_programada", "TEXT"), ("tipo_programado", "TEXT"), ("despachador_programado", "TEXT"), ("nota_programada", "TEXT")):
         if c_ not in [r[1] for r in con.execute("PRAGMA table_info(packs)")]: con.execute(f"ALTER TABLE packs ADD COLUMN {c_} {tp}")
     # los que se lleva el día de la compra cuentan cuando esa orden se entrega, no antes
-    packs = [dict(r) | {"entregadas_inicio": r["ini_real"]} for r in con.execute("""SELECT k.*, (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregadas,
+    packs = [dict(r) | {"entregadas_inicio": r["ini_real"]} for r in con.execute("""SELECT k.*, o_p.tipo_entrega, o_p.agencia orden_agencia, o_p.ciudad orden_ciudad, (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) entregadas,
                            (SELECT MAX(fecha) FROM entregas_repuesto e WHERE e.pack_id=k.id) ult, (SELECT delivery FROM ordenes WHERE id=k.orden_id) delivery_orden,
                            k.unidades - k.entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) futuras, (CASE WHEN k.orden_id IS NULL OR (SELECT o_.estado FROM ordenes o_ WHERE o_.id=k.orden_id)='entregada' THEN k.entregadas_inicio ELSE 0 END) ini_real
-                           FROM packs k WHERE k.cliente_id=? ORDER BY k.id DESC""", (cid,))]
+                           FROM packs k LEFT JOIN ordenes o_p ON o_p.id=k.orden_id WHERE k.cliente_id=? ORDER BY k.id DESC""", (cid,))]
     entregas = con.execute("""SELECT e.*, k.tamano, k.unidades, k.id pack, o.numero orden,
                               (SELECT COUNT(*) FROM entregas_repuesto e2 WHERE e2.pack_id=e.pack_id AND (e2.fecha < e.fecha OR (e2.fecha = e.fecha AND e2.id <= e.id))) + k.entregadas_inicio n_retiro,
                               u.nombre usuario
