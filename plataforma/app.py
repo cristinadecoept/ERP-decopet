@@ -6651,6 +6651,9 @@ def pack_cuantos_hoy(request: Request, oid: int, kid: int, cuantos: str = Form("
         if n != k["entregadas_inicio"]:
             con.execute("UPDATE packs SET entregadas_inicio=? WHERE id=?", (n, kid))
             registrar(con, oid, uid_de(request), "pack", f"Se lleva {n} de {k['unidades']} con esta entrega (antes {k['entregadas_inicio']})")
+            if n == 0: pasar_entrega_a_prepagado(con, oid, uid_de(request))   # ya no sale hoy: el delivery pagado queda para el próximo repuesto
+            elif k["entregadas_inicio"] == 0:   # volvió a llevarse algo: ese delivery sale con esta entrega, no se cuenta dos veces
+                con.execute("UPDATE packs SET deliveries_prepagados=MIN(COALESCE(deliveries_prepagados,0), ?) WHERE id=?", (k["unidades"] - n - ya, kid))
             con.commit()
     return volver(oid, request)
 

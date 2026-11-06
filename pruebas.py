@@ -2634,6 +2634,35 @@ def _():
         con.close()
 
 
+@prueba("Pack que no se lleva ninguno hoy: sale de Operaciones, queda en Packs con los 3 por entregar y el delivery pagado no se pierde; si cambia de idea no cuenta doble")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        sesion_de(c, "logistica")
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Lili Prueba','Lili')").lastrowid
+        pr = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' OR nombre LIKE 'Pack%' LIMIT 1").fetchone()[0]
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,delivery,tipo_entrega,despachador,origen_excel)
+                             VALUES ('#PK8',?,'pendiente','pagada',90,7,'delivery','Cristina',0)""", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack 3 Repuestos Grande',1,76,76)", (oid, pr))
+        con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,costo,total,extra_en) VALUES (?,'Delivery prepagado',2,7,0,14,?)", (oid, hoy))
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Zelle',90,90,'USD',?,'confirmado')", (oid, hoy))
+        kid = con.execute("""INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado,creado_en,deliveries_prepagados,tarifa_prepagada)
+                             VALUES (?,?,?,3,1,'activo',?,2,7)""", (cid, oid, pr, hoy)).lastrowid
+        con.commit()
+        assert "Lili Prueba" in c.get("/operaciones?cola=todo").text
+        c.post(f"/ordenes/{oid}/pack/{kid}/hoy", data={"cuantos": "0"}, follow_redirects=False)
+        assert "Lili Prueba" not in c.get("/operaciones?cola=todo").text, "ya no es una entrega"
+        k = con.execute("SELECT * FROM packs WHERE id=?", (kid,)).fetchone()
+        assert k["deliveries_prepagados"] == 3 and k["fecha_programada"] is None, "los 3 deliveries pagados quedan para los 3 repuestos"
+        assert con.execute("SELECT despachador FROM ordenes WHERE id=?", (oid,)).fetchone()[0] is None
+        assert "Lili Prueba" in c.get("/packs").text
+        c.post(f"/ordenes/{oid}/pack/{kid}/hoy", data={"cuantos": "1"}, follow_redirects=False)
+        assert con.execute("SELECT deliveries_prepagados FROM packs WHERE id=?", (kid,)).fetchone()[0] == 2
+        assert "Lili Prueba" in c.get("/operaciones?cola=todo").text
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
