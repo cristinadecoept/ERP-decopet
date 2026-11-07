@@ -2844,6 +2844,10 @@ def _():
         assert (cl["origen"], cl["referido_id"]) == ("Recomendación de otro cliente", rid), dict(cl)
         r = A.resumen_mes(con, A.datetime.date.today().replace(day=1))
         assert ("Recomendación de otro cliente", 1) in r["como_llegaron"], r["como_llegaron"]
+        # también desde Clientes → Nuevo cliente
+        assert "¿Cómo nos conoció?" in c.get("/clientes/nuevo/panel").text
+        c.post("/clientes/nuevo", data={"nombre_pila": "Desde", "apellido": "Clientes", "telefono": "04145550779", "correo": "d@c.com", "origen": "Publicidad (anuncio)"}, follow_redirects=False)
+        assert con.execute("SELECT origen FROM clientes WHERE telefono LIKE '%5550779'").fetchone()[0] == "Publicidad (anuncio)"
         con.close()
 
 
