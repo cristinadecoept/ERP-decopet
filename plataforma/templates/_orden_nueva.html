@@ -137,7 +137,10 @@ function pagos(tot){TOT=tot;const filas=[...document.querySelectorAll('#pagos .n
   if(esEf(d)&&!m.dataset.tocado){const r=Math.max(tot-otros,0);m.value=r>0.009?r.toFixed(2):'';}
   // en efectivo no se escribe nada: se cobra al entregar
   const rf=d.querySelector('[name=pago_ref]');m.hidden=esEf(d);if(rf)rf.hidden=esEf(d);
-  let t=d.querySelector('.ef-txt');if(esEf(d)){if(!t){t=document.createElement('span');t.className='ef-txt mini';m.after(t);}t.textContent=(+m.value>0?'$'+(+m.value).toFixed(2)+' ':'')+'se cobra al entregar';}else if(t)t.remove();});filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');s+=+m.value||0;
+  let t=d.querySelector('.ef-txt');if(esEf(d)){if(!t){t=document.createElement('span');t.className='ef-txt mini';m.after(t);}t.textContent=(+m.value>0?'$'+(+m.value).toFixed(2)+' ':'')+'se cobra al entregar';}else if(t)t.remove();
+  // pago móvil: el monto en bolívares a la tasa de hoy, para pasárselo al cliente
+  const fo=d.querySelector('[name=pago_forma]').value||'',ves=fo.startsWith('Pago Móvil')||fo.endsWith('VES');let bs=d.querySelector('.bs-txt');
+  if(ves&&+m.value>0){if(!bs){bs=document.createElement('span');bs.className='bs-txt mini';bs.style.gridColumn='1/-1';d.appendChild(bs);}bs.textContent='Bs '+(+m.value*TASA).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});}else if(bs)bs.remove();});filas.forEach(d=>{const m=d.querySelector('[name=pago_monto]');s+=+m.value||0;
   // eligió forma y no escribió monto (o puso 0): todavía no ha pagado, va a pagar por esa forma
   const rf2=d.querySelector('[name=pago_ref]');if(rf2)rf2.placeholder=(!esEf(d)&&d.querySelector('[name=pago_forma]').value&&!(+m.value>0))?'paga después':'referencia';
   if((d.querySelector('[name=pago_forma]').value||'').startsWith('Efectivo'))efe+=+m.value||0;});
