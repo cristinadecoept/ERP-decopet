@@ -2677,6 +2677,32 @@ def _():
     assert A.mensajes_cumple("Nicolás martini González", [])[0].startswith("¡Feliz cumple a Nicolás!")
 
 
+@prueba("Operaciones: el WhatsApp de una entrega de hoy abre con el mensaje que toca: si debe, recordar el pago; delivery, la hora en blanco; pick-up, a qué hora viene")
+def _():
+    from urllib.parse import unquote_plus
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat(); man = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        pr = con.execute("SELECT id FROM productos WHERE COALESCE(tipo,'producto')='producto' LIMIT 1").fetchone()[0]
+        def orden(nombre, tel, te, ep, total, pagado, fecha=None):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,?)", (nombre, nombre.split()[0], tel)).lastrowid
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,tipo_entrega,despachador,fecha_prometida,origen_excel)
+                                 VALUES (?,?,'pendiente',?,?,?,?,?,0)""", (f"#W{cid}", cid, ep, total, te, "Cristina" if te != "pickup" else None, fecha)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Rampa',1,?,?)", (oid, pr, total, total))
+            if pagado: con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Zelle',?,?,'USD',?,'confirmado')", (oid, pagado, pagado, hoy))
+        orden("Marta Debe", "04141110001", "delivery", "abonada", 50, 21)
+        orden("Pedro Pagado", "04141110002", "delivery", "pagada", 50, 50)
+        orden("Luisa Retira", "04141110003", "pickup", "pagada", 50, 50)
+        orden("Tomas Manana", "04141110004", "delivery", "pagada", 50, 50, man)
+        con.commit(); sesion_de(c, "logistica")
+        h = unquote_plus(html.unescape(c.get("/operaciones?cola=todo").text))
+        assert "¡Hoooola Marta! Recuerda pagar tu saldo pendiente de $29.00 para el pedido de hoy 💚" in h
+        assert "¡Hoooola Pedro! Tu pedido llega hoy entre __ y __ 💚" in h
+        assert "¡Hoooola Luisa! ¿Más o menos a qué hora vienes? 💚" in h
+        assert "Tomas" in h and "¡Hoooola Tomas" not in h, "otro día: el chat abre vacío"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

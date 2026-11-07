@@ -2554,6 +2554,26 @@ def packs_por_llevar(con):
     return out
 
 
+def mensaje_whatsapp_entrega(con, o, hoy):
+    """Lo que abre el WhatsApp de una fila de Operaciones si la entrega es hoy: si debe, el recordatorio de pago;
+    si no, la hora (en blanco: es una plantilla, la hora la pone quien escribe) o, en pick-up, a qué hora viene."""
+    if o["fecha_op"] > hoy or o["estado"] not in ("pendiente", "en_ruta"): return ""
+    c = con.execute("SELECT nombre, nombre_pila FROM clientes WHERE id=?", (o["cliente_id"],)).fetchone()
+    quien = ((c["nombre_pila"] or (c["nombre"] or "").split(" ")[0]).strip() if c else "")
+    n = f" {quien}" if quien else ""
+    if o.get("es_pack") or o.get("es_prepagado"):
+        solo_deliv = o["monto_contra_entrega"] if o.get("es_pack") else (o["delivery"] if o["delivery"] and not o["delivery_pagado"] else 0)
+        debe = (solo_deliv or 0) + sum(t["saldo"] for t in o.get("tambien_cobrar") or [])
+        de = " del delivery" if solo_deliv and debe <= solo_deliv + 0.009 else ""
+    else:
+        debe = (o["total"] or 0) - (o["pagado"] or 0) if o["estado_pago"] in ("sin_pago", "abonada", "rechazado", "contra_entrega") else 0
+        de = ""
+    if debe > 0.009: return f"¡Hoooola{n}! Recuerda pagar tu saldo pendiente de {fmt_usd(debe)}{de} para el pedido de hoy 💚"
+    if o["tipo_entrega"] == "pickup": return f"¡Hoooola{n}! ¿Más o menos a qué hora vienes? 💚"
+    if o["tipo_entrega"] in ("delivery", "delivery_fuera"): return f"¡Hoooola{n}! Tu pedido llega hoy entre __ y __ 💚"
+    return ""
+
+
 @app.get("/operaciones", response_class=HTMLResponse)
 def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: str = "", dia: str = "", desp: str = "", vista: str = "tipo", q: str = "", con=Depends(db)):
     rol = rol_de(request); hoy_d = datetime.date.today(); hoy = hoy_d.isoformat(); manana = (hoy_d + datetime.timedelta(days=1)).isoformat()
@@ -2639,6 +2659,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
         if o.get("es_pack") or o.get("es_prepagado"): o["tambien_cobrar"] = deudas_sin_entrega(con, o["cliente_id"])
     junto = {t["id"] for o in lista for t in o.get("tambien_cobrar") or []}
     lista = [o for o in lista if o.get("id") not in junto]   # ese pedido ya se cobra en la fila de la entrega: no sale dos veces
+    for o in lista: o["wa_msj"] = mensaje_whatsapp_entrega(con, o, hoy)
     for o in lista:   # volvió de la calle sin entregar: que se note, para no confundirlo con uno nuevo
         if o.get("id") and o["estado"] == "pendiente":
             h_ = con.execute("SELECT detalle, creado_en FROM historial WHERE orden_id=? AND accion='estado' ORDER BY id DESC LIMIT 1", (o["id"],)).fetchone()
