@@ -2,7 +2,7 @@
 import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, hashlib
 
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -1436,7 +1436,7 @@ def pasar_entrega_a_prepagado(con, oid, uid):
               ") queda guardada para cuando el cliente lo active")
 
 
-def cargar_ordenes(con, filtros, rol):
+def cargar_ordenes(con, filtros, rol, sin_limite=False):
     sql = """SELECT o.*, c.nombre cliente, c.telefono, u.nombre creada_por_nombre,
              (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_direccion,
              (SELECT d.zona      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_zona,
@@ -1485,7 +1485,8 @@ def cargar_ordenes(con, filtros, rol):
     if filtros.get("vista") == "por_cobrar_hoy": sql += " AND " + POR_COBRAR_HOY; args += [hoy, hoy]
     if filtros.get("vista") == "creadas_hoy": sql += " AND substr(o.creado_en,1,10)=? AND o.estado!='cancelada'"; args.append(hoy)
     if filtros.get("q"): sql += " AND (c.nombre LIKE ? OR o.numero LIKE ? OR c.telefono LIKE ? OR o.guia LIKE ?)"; args += [f"%{filtros['q']}%"] * 4
-    sql += " ORDER BY CAST(substr(o.numero,2) AS INTEGER) DESC LIMIT 300"
+    if filtros.get("mes"): sql += " AND substr(o.creado_en,1,7)=?"; args.append(filtros["mes"])   # mes en que se creó la orden (AAAA-MM)
+    sql += " ORDER BY CAST(substr(o.numero,2) AS INTEGER) DESC" + ("" if sin_limite else " LIMIT 300")
     rows = [dict(r) for r in con.execute(sql, args)]
     for r in rows:
         completar_direccion(r, {"direccion": r["cli_direccion"], "zona": r["cli_zona"], "ciudad": r["cli_ciudad"], "maps": r["cli_maps"]} if r["cli_direccion"] or r["cli_maps"] else None)
@@ -1499,10 +1500,10 @@ def cargar_ordenes(con, filtros, rol):
 VISTAS = {"hoy": "Entregas de hoy", "retrasadas": "Retrasadas", "sin_coordinar": "Pendientes", "incidencias": "Con incidencias abiertas", "creadas_hoy": "Creadas hoy", "por_cobrar_clientes": "Por cobrar a clientes", "por_cobrar_hoy": "Por cobrar de hoy"}
 
 @app.get("/ordenes", response_class=HTMLResponse)
-def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", abrir: int = 0, nueva: int = 0, con=Depends(db)):
+def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", mes: str = "", abrir: int = 0, nueva: int = 0, con=Depends(db)):
     rol = rol_de(request)
     if vista: estado = "todas"
-    filtros = dict(estado=estado, estado_pago=estado_pago, forma=forma, tipo_entrega=tipo_entrega, canal=canal, agencia=agencia, q=q, vista=vista)
+    filtros = dict(estado=estado, estado_pago=estado_pago, forma=forma, tipo_entrega=tipo_entrega, canal=canal, agencia=agencia, q=q, vista=vista, mes=mes)
     rows = cargar_ordenes(con, filtros, rol)
     conteos = {r["estado"]: r["n"] for r in con.execute("SELECT estado, COUNT(*) n FROM ordenes GROUP BY estado")}
     conteos["todas"] = sum(conteos.values())
@@ -1514,7 +1515,16 @@ def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", form
     conteos["repuesto_pend"] = con.execute("SELECT COUNT(DISTINCT orden_id) FROM repuestos_prepagados WHERE orden_id IS NOT NULL AND entregado_en IS NULL").fetchone()[0]
     conteos["por_facturar"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado!='cancelada' AND (requiere_factura=1 OR canal='cashea') AND COALESCE(factura_hecha,0)=0").fetchone()[0]
     retrasadas = sum(1 for r in cargar_ordenes(con, {"estado": "activas"}, rol) if any(a[0] == "retrasada" for a in r["alertas"]))
-    return render(request, "ordenes.html", seccion="ordenes", ordenes=rows, f=filtros, conteos=conteos, retrasadas=retrasadas, abrir=abrir, nueva=nueva, vista_nombre=VISTAS.get(vista))
+    meses = [(m, nombre_mes(m)) for (m,) in con.execute("SELECT DISTINCT substr(creado_en,1,7) m FROM ordenes WHERE creado_en IS NOT NULL ORDER BY m DESC")]
+    puestos = {k: v for k, v in filtros.items() if v and not (k == "estado" and v == "todas")}
+    exportar = "/ordenes/exportar" + ("?" + urlencode(puestos) if puestos else "")
+    return render(request, "ordenes.html", seccion="ordenes", ordenes=rows, f=filtros, conteos=conteos, retrasadas=retrasadas, abrir=abrir, nueva=nueva, vista_nombre=VISTAS.get(vista), meses=meses, exportar=exportar)
+
+
+def nombre_mes(m):
+    """'2026-11' → 'Noviembre 2026'."""
+    try: return f"{MESES[int(m[5:7]) - 1].capitalize()} {m[:4]}"
+    except (ValueError, IndexError, TypeError): return m or ""
 
 
 def cargar_orden(con, oid):
@@ -3999,8 +4009,12 @@ def mascotas_exportar(request: Request, con=Depends(db)):
 
 
 @app.get("/ordenes/exportar")
-def ordenes_exportar(request: Request, con=Depends(db)):
+def ordenes_exportar(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", mes: str = "", con=Depends(db)):
+    """Baja las mismas órdenes que se ven en la lista con los filtros puestos (sin el tope de 300)."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    if vista: estado = "todas"
+    filtros = dict(estado=estado, estado_pago=estado_pago, forma=forma, tipo_entrega=tipo_entrega, canal=canal, agencia=agencia, q=q, vista=vista, mes=mes)
+    ids = [r["id"] for r in cargar_ordenes(con, filtros, rol_de(request), sin_limite=True)]
     cols = [("Orden", 10, ""), ("Fecha", 12, "f"), ("Fecha de pago", 13, "f"), ("Cliente", 24, ""), ("Canal", 13, ""),
             ("Productos", 40, ""), ("Entrega", 16, ""), ("Ciudad", 16, ""), ("Estado", 14, ""), ("Pago", 15, ""),
             ("Subtotal", 12, "$"), ("Delivery", 11, "$"), ("Total", 12, "$"), ("Cobrado", 12, "$")]
@@ -4008,12 +4022,13 @@ def ordenes_exportar(request: Request, con=Depends(db)):
     for o in con.execute("""SELECT o.*, c.nombre cliente,
             (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre, ' · ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
             COALESCE((SELECT SUM(p.monto_usd) FROM pagos p WHERE p.orden_id=o.id AND p.estado='confirmado'),0) cobrado
-            FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id ORDER BY o.creado_en DESC"""):
+            FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
+            WHERE o.id IN (SELECT value FROM json_each(?)) ORDER BY o.creado_en DESC""", (json.dumps(ids),)):
         filas.append((o["numero"], _fecha(o["creado_en"]), _fecha(o["fecha_pago"]), o["cliente"], CANAL.get(o["canal"] or "", o["canal"]),
                       o["productos"], ENTREGA.get(o["tipo_entrega"] or "", o["tipo_entrega"]), o["ciudad"],
                       E_LABEL.get(o["estado"] or "", o["estado"]), P_LABEL.get(o["estado_pago"] or "", o["estado_pago"]),
                       o["subtotal"], o["delivery"], o["total"], o["cobrado"]))
-    return hoja_excel([("Órdenes", cols, filas)], "Decopet ordenes.xlsx", "Órdenes")
+    return hoja_excel([("Órdenes", cols, filas)], f"Decopet ordenes{(' ' + nombre_mes(mes).lower()) if mes else ''}.xlsx", "Órdenes")
 
 
 @app.get("/finanzas/gastos/exportar")

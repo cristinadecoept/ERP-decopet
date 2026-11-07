@@ -2779,6 +2779,27 @@ def _():
         con.close()
 
 
+@prueba("Exportar órdenes baja solo lo filtrado: el mes y el estado elegidos")
+def _():
+    import io, openpyxl
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Exporta Mes','Exporta','04145550099')").lastrowid
+        for num, cre, est in (("#90001", "2026-10-20 10:00:00", "entregada"), ("#90002", "2026-11-03 10:00:00", "entregada"), ("#90003", "2026-11-04 10:00:00", "cancelada")):
+            con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total) VALUES (?,?,'whatsapp',?,'pagada',?,10,10)", (num, cid, est, cre))
+        con.commit(); sesion_de(c, "admin")
+        def numeros(url):
+            r = c.get(url); assert r.status_code == 200, r.status_code
+            ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
+            return {str(v) for row in ws.iter_rows(values_only=True) for v in row if str(v).startswith("#9000")}
+        assert numeros("/ordenes/exportar") >= {"#90001", "#90002", "#90003"}, "sin filtro baja todo"
+        assert numeros("/ordenes/exportar?mes=2026-11") == {"#90002", "#90003"}
+        assert numeros("/ordenes/exportar?mes=2026-11&estado=entregada") == {"#90002"}
+        h = c.get("/ordenes?mes=2026-11&estado=entregada").text
+        assert "Noviembre 2026" in h and "/ordenes/exportar?estado=entregada&amp;mes=2026-11" in h, "el botón lleva los filtros puestos"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
