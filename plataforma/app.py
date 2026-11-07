@@ -1486,6 +1486,10 @@ def cargar_ordenes(con, filtros, rol, sin_limite=False):
     if filtros.get("vista") == "creadas_hoy": sql += " AND substr(o.creado_en,1,10)=? AND o.estado!='cancelada'"; args.append(hoy)
     if filtros.get("q"): sql += " AND (c.nombre LIKE ? OR o.numero LIKE ? OR c.telefono LIKE ? OR o.guia LIKE ?)"; args += [f"%{filtros['q']}%"] * 4
     if filtros.get("mes"): sql += " AND substr(o.creado_en,1,7)=?"; args.append(filtros["mes"])   # mes en que se creó la orden (AAAA-MM)
+    if (filtros.get("producto") or "").startswith("c:"):   # toda una categoría (todos los porches, todos los comedores…)
+        sql += " AND EXISTS (SELECT 1 FROM orden_lineas l JOIN productos pr ON pr.id=l.producto_id WHERE l.orden_id=o.id AND pr.categoria=? AND NOT (pr.categoria='porche' AND pr.nombre LIKE 'Malla%'))"; args.append(filtros["producto"][2:])   # la malla sola no es un porche
+    elif (filtros.get("producto") or "").isdigit():
+        sql += " AND EXISTS (SELECT 1 FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=?)"; args.append(int(filtros["producto"]))
     sql += " ORDER BY CAST(substr(o.numero,2) AS INTEGER) DESC" + ("" if sin_limite else " LIMIT 300")
     rows = [dict(r) for r in con.execute(sql, args)]
     for r in rows:
@@ -1500,10 +1504,10 @@ def cargar_ordenes(con, filtros, rol, sin_limite=False):
 VISTAS = {"hoy": "Entregas de hoy", "retrasadas": "Retrasadas", "sin_coordinar": "Pendientes", "incidencias": "Con incidencias abiertas", "creadas_hoy": "Creadas hoy", "por_cobrar_clientes": "Por cobrar a clientes", "por_cobrar_hoy": "Por cobrar de hoy"}
 
 @app.get("/ordenes", response_class=HTMLResponse)
-def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", mes: str = "", abrir: int = 0, nueva: int = 0, con=Depends(db)):
+def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", mes: str = "", producto: str = "", abrir: int = 0, nueva: int = 0, con=Depends(db)):
     rol = rol_de(request)
     if vista: estado = "todas"
-    filtros = dict(estado=estado, estado_pago=estado_pago, forma=forma, tipo_entrega=tipo_entrega, canal=canal, agencia=agencia, q=q, vista=vista, mes=mes)
+    filtros = dict(estado=estado, estado_pago=estado_pago, forma=forma, tipo_entrega=tipo_entrega, canal=canal, agencia=agencia, q=q, vista=vista, mes=mes, producto=producto)
     rows = cargar_ordenes(con, filtros, rol)
     conteos = {r["estado"]: r["n"] for r in con.execute("SELECT estado, COUNT(*) n FROM ordenes GROUP BY estado")}
     conteos["todas"] = sum(conteos.values())
@@ -1516,9 +1520,18 @@ def ordenes(request: Request, estado: str = "todas", estado_pago: str = "", form
     conteos["por_facturar"] = con.execute("SELECT COUNT(*) FROM ordenes WHERE estado!='cancelada' AND (requiere_factura=1 OR canal='cashea') AND COALESCE(factura_hecha,0)=0").fetchone()[0]
     retrasadas = sum(1 for r in cargar_ordenes(con, {"estado": "activas"}, rol) if any(a[0] == "retrasada" for a in r["alertas"]))
     meses = [(m, nombre_mes(m)) for (m,) in con.execute("SELECT DISTINCT substr(creado_en,1,7) m FROM ordenes WHERE creado_en IS NOT NULL ORDER BY m DESC")]
+    por_cat = {k: [] for k in CATEGORIAS_FILTRO}   # para el filtro Producto: cada categoría con sus productos
+    for p in con.execute("""SELECT id, nombre, categoria FROM productos WHERE tipo='producto' AND categoria IN ('porche','comedor','rampa','repuesto','kit','accesorio')
+                            AND (activo=1 OR EXISTS (SELECT 1 FROM orden_lineas l WHERE l.producto_id=productos.id)) ORDER BY orden, nombre"""):
+        por_cat[p["categoria"]].append((p["id"], p["nombre"]))
+    productos_f = [(k, v) for k, v in por_cat.items() if v]
     puestos = {k: v for k, v in filtros.items() if v and not (k == "estado" and v == "todas")}
     exportar = "/ordenes/exportar" + ("?" + urlencode(puestos) if puestos else "")
-    return render(request, "ordenes.html", seccion="ordenes", ordenes=rows, f=filtros, conteos=conteos, retrasadas=retrasadas, abrir=abrir, nueva=nueva, vista_nombre=VISTAS.get(vista), meses=meses, exportar=exportar)
+    return render(request, "ordenes.html", seccion="ordenes", ordenes=rows, f=filtros, conteos=conteos, retrasadas=retrasadas, abrir=abrir, nueva=nueva, vista_nombre=VISTAS.get(vista), meses=meses, exportar=exportar, productos_f=productos_f, CATEGORIAS_FILTRO=CATEGORIAS_FILTRO)
+
+
+CATEGORIAS_FILTRO = {"porche": ("Porches", "Todos los porches"), "comedor": ("Comedores", "Todos los comedores"), "rampa": ("Rampas", "Todas las rampas"),
+                     "repuesto": ("Repuestos y packs", "Todos los repuestos y packs"), "kit": ("Kits", "Todos los kits"), "accesorio": ("Accesorios", "Todos los accesorios")}
 
 
 def nombre_mes(m):
@@ -4009,11 +4022,11 @@ def mascotas_exportar(request: Request, con=Depends(db)):
 
 
 @app.get("/ordenes/exportar")
-def ordenes_exportar(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", mes: str = "", con=Depends(db)):
+def ordenes_exportar(request: Request, estado: str = "todas", estado_pago: str = "", forma: str = "", tipo_entrega: str = "", canal: str = "", agencia: str = "", q: str = "", vista: str = "", mes: str = "", producto: str = "", con=Depends(db)):
     """Baja las mismas órdenes que se ven en la lista con los filtros puestos (sin el tope de 300)."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
     if vista: estado = "todas"
-    filtros = dict(estado=estado, estado_pago=estado_pago, forma=forma, tipo_entrega=tipo_entrega, canal=canal, agencia=agencia, q=q, vista=vista, mes=mes)
+    filtros = dict(estado=estado, estado_pago=estado_pago, forma=forma, tipo_entrega=tipo_entrega, canal=canal, agencia=agencia, q=q, vista=vista, mes=mes, producto=producto)
     ids = [r["id"] for r in cargar_ordenes(con, filtros, rol_de(request), sin_limite=True)]
     cols = [("Orden", 10, ""), ("Fecha", 12, "f"), ("Fecha de pago", 13, "f"), ("Cliente", 24, ""), ("Canal", 13, ""),
             ("Productos", 40, ""), ("Entrega", 16, ""), ("Ciudad", 16, ""), ("Estado", 14, ""), ("Pago", 15, ""),

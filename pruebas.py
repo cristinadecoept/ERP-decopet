@@ -2779,7 +2779,7 @@ def _():
         con.close()
 
 
-@prueba("Exportar órdenes baja solo lo filtrado: el mes y el estado elegidos; el miembro PRO sale con su coronita")
+@prueba("Exportar órdenes baja solo lo filtrado: el mes, el estado y el producto elegidos; el miembro PRO sale con su coronita")
 def _():
     import io, openpyxl
     with erp_de_prueba() as c:
@@ -2797,6 +2797,13 @@ def _():
         assert numeros("/ordenes/exportar?mes=2026-11&estado=entregada") == {"#90002"}
         h = c.get("/ordenes?mes=2026-11&estado=entregada").text
         assert "Noviembre 2026" in h and "/ordenes/exportar?estado=entregada&amp;mes=2026-11" in h, "el botón lleva los filtros puestos"
+        pro = con.execute("SELECT id FROM productos WHERE nombre LIKE 'El Porche Versión PRO%' ORDER BY id LIMIT 1").fetchone()["id"]
+        oid = con.execute("SELECT id FROM ordenes WHERE numero='#90002'").fetchone()["id"]
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio) VALUES (?,?,'El Porche Versión PRO',1,10)", (oid, pro)); con.commit()
+        assert numeros(f"/ordenes/exportar?mes=2026-11&producto={pro}") == {"#90002"}, "por producto"
+        assert numeros("/ordenes/exportar?mes=2026-11&producto=c:porche") == {"#90002"}, "por categoría"
+        assert numeros("/ordenes/exportar?mes=2026-11&producto=c:rampa") == set()
+        assert "Todos los porches" in h
         assert 'class="corona"' not in h
         con.execute("UPDATE clientes SET porche_version='PRO' WHERE id=?", (cid,)); con.commit()
         assert 'class="corona"' in c.get("/ordenes?mes=2026-11&estado=entregada").text, "el miembro PRO lleva su coronita en Órdenes"
