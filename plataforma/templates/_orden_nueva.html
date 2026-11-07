@@ -18,7 +18,7 @@
 <div class="nota-log" id="cl-dup" hidden></div><label>Cédula / RIF <span class="mini" id="ced-nota">(factura o envío nacional)</span></label><input name="cliente_cedula" id="cl-ced" placeholder="V-12345678">{{ lugar(ciudades_vl, n_ciudad="cliente_ciudad", n_estado="cliente_estado", id_ciudad="cl-ciudad") }}
 <label>Dirección escrita (habitual)</label><input name="cliente_direccion" id="cl-dir" placeholder="Res. Los Pinos, torre B, apto 4B — referencia" oninput="dirHabitualNueva()"><label>GPS <span class="mini">(link de Google Maps)</span></label><input name="cliente_maps" placeholder="https://maps.app.goo.gl/…" inputmode="url"></div>
 <div id="masc-lista"></div>
-<button type="button" class="no-link" style="margin-top:8px" onclick="agregarMascota()">+ Agregar mascotas</button>
+<button type="button" class="no-masc" onclick="agregarMascota()" title="Agregar mascota" aria-label="Agregar mascota"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 5.2C8.6 4.4 10 4 11.5 4s2.9.4 4.3 1.2c.6 1.5.9 3.4.9 5.8 0 4-2.3 6.8-5.2 6.8S6.3 15 6.3 11c0-2.4.3-4.3.9-5.8z"/><path d="M7.2 5.2C5.4 5 3.6 6.4 3.4 9.6c-.1 1.5.5 2.5 1.6 2.6 1 .1 1.6-.9 1.6-2.2"/><path d="M15.8 5.2c1.8-.2 3.6 1.2 3.8 4.4"/><circle cx="9.6" cy="9.8" r=".55" fill="currentColor"/><circle cx="13.4" cy="9.8" r=".55" fill="currentColor"/><path d="M10.7 12.6h1.6l-.8 1z" fill="currentColor"/></svg><span class="no-masc-mas">+</span></button>
 </section>
 
 <!-- 2 · CANAL -->
