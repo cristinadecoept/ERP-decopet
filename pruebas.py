@@ -2810,6 +2810,25 @@ def _():
         con.close()
 
 
+@prueba("Analítica por ciudad: solo el nombre de la ciudad, nunca la dirección de la oficina de la agencia")
+def _():
+    f = A.ciudad_de_texto
+    assert f("Agencia Tealca, CC Los Chaguaramos, Barcelona") == "Barcelona"
+    assert f("Agencia MRW 20080 esquina calle 12 de Barrio Obrero. San Cristóbal Edo Táchira.") == "San Cristóbal"
+    assert f("Zoom Puerto Ordaz, Centro Comercial Santo Tome III, Los Olivos") == "Puerto Ordaz"
+    assert f("merida") == "Mérida" and f("Ocumare del Tuy") == "Ocumare del Tuy"
+    assert f("Av Venezuela entre calles 39 y 40 No 39-55 Código postal 3001") is None
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,ciudad) VALUES ('Ciu Dad','Ciu','04145550123','Valencia')").lastrowid
+        for n, ciu in (("#90011", "Tealca CC Gran Bazar, Maracaibo, Zulia"), ("#90012", "Av Venezuela entre calles 39 y 40 No 39-55")):
+            con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total,tipo_entrega,ciudad) VALUES (?,?,'whatsapp','entregada','pagada','2026-11-03 10:00:00',10,10,'nacional',?)", (n, cid, ciu))
+        con.commit()
+        ciudades = {x["k"] for x in A.resumen_mes(con, A.datetime.date(2026, 11, 1))["ciudades"]}
+        assert {"Maracaibo", "Valencia"} <= ciudades and not any("," in x for x in ciudades), ciudades
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

@@ -547,6 +547,21 @@ def lugar(con, ciudad, estado=None):
         for x, ex in con.execute("SELECT ciudad, MAX(estado) FROM clientes WHERE ciudad IS NOT NULL GROUP BY ciudad"):
             if _llave_lugar(x) == k: c = x; e = e or ex; break
     return c, (e_elegido or e)
+def ciudad_de_texto(texto):
+    """De lo que se escribió como ciudad (a veces es la dirección entera de la oficina de la agencia) saca solo la ciudad.
+    'Tealca CC Gran Bazar, Maracaibo, Zulia' → 'Maracaibo'. Si es una ciudad corta, la deja como está. Si no reconoce ninguna, None."""
+    t = (texto or "").strip()
+    if not t: return None
+    if "," not in t and len(t.split()) <= 4:
+        c, _ = normalizar_ciudad(t)
+        return c
+    k = " " + _llave_lugar(t.replace(",", " ")) + " "
+    mejor = None   # la que aparece más al final: la ciudad suele ir después de la calle
+    for llave, c in _CIUDAD_POR_LLAVE.items():
+        if c == "Pendiente": continue
+        i = k.rfind(" " + llave + " ")
+        if i >= 0 and (mejor is None or i > mejor[0] or (i == mejor[0] and len(llave) > mejor[2])): mejor = (i, c, len(llave))
+    return mejor[1] if mejor else None
 def ciudades_conocidas(con):
     """Para la lista de Ciudad: las de siempre y las que ya se guardaron con su estado, cada una con su estado."""
     lista = {c: ESTADO_DE_CIUDAD.get(c) for c in CIUDADES_VE}
@@ -2469,7 +2484,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     if desp == "__otro__": desp = (f.get("despachador_otro") or "").strip()
     if f.get("tipo_entrega") == "nacional" and f.get("a_domicilio") == "1": con.execute("UPDATE ordenes SET a_domicilio=1 WHERE id=?", (oid,))
     if f.get("tipo_entrega") == "nacional" and (f.get("oficina_agencia") or "").strip():
-        con.execute("UPDATE ordenes SET direccion=?, ciudad=COALESCE(NULLIF(ciudad,''), ?) WHERE id=?", (f["oficina_agencia"].strip(), f["oficina_agencia"].strip().split("·")[-1].strip(), oid))
+        con.execute("UPDATE ordenes SET direccion=?, ciudad=COALESCE(NULLIF(ciudad,''), ?) WHERE id=?", (f["oficina_agencia"].strip(), ciudad_de_texto(f["oficina_agencia"].strip().split("·")[-1]), oid))
     if (f.get("receptor_correo") or f.get("receptor_cedula")):
         cols = [r[1] for r in con.execute("PRAGMA table_info(ordenes)")]
         for c_ in ("receptor_correo", "receptor_cedula"):
@@ -7792,11 +7807,14 @@ def resumen_mes(con, m0):
     fin = ((m0 + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)).isoformat()
     ini = m0.isoformat(); rango = (ini, fin)
     ventas = round(sum(m for m, n in ventas_por_dia(con, ini, fin).values()), 2)
-    ords = con.execute("""SELECT o.id, o.cliente_id, o.canal, o.total, COALESCE(NULLIF(TRIM(o.ciudad),''), c.ciudad, 'Sin ciudad') ciudad,
+    ords = con.execute("""SELECT o.id, o.cliente_id, o.canal, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente,
                           (SELECT MIN(substr(x.creado_en,1,10)) FROM ordenes x WHERE x.cliente_id=o.cliente_id AND x.estado!='cancelada') primera,
                           c.origen
                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ?""", rango).fetchall()
+    ords = [dict(o) for o in ords]
+    for o in ords:   # solo la ciudad: nunca la dirección de la oficina de la agencia
+        o["ciudad"] = ciudad_de_texto(o["ciudad_orden"]) or ciudad_de_texto(o["ciudad_cliente"]) or "Sin ciudad"
     pedidos = len(ords)
     clientes = {o["cliente_id"] for o in ords}
     nuevos = {o["cliente_id"] for o in ords if (o["primera"] or "") >= ini}
