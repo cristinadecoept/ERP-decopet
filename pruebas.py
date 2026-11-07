@@ -2876,6 +2876,25 @@ def _():
         con.close()
 
 
+@prueba("Ficha del cliente · Qué ha comprado: muestra las fechas de cada compra (×2 si ese día llevó dos), no un total que confunde")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        rep = con.execute("SELECT id FROM productos WHERE categoria='repuesto' AND activo=1 AND tipo='producto' LIMIT 1").fetchone()["id"]
+        hoy = A.datetime.date.today()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Fechas X','Fechas','04145552001')").lastrowid
+        for i, (d, n) in enumerate([(0, 2), (20, 1), (40, 1), (60, 1)]):
+            f = (hoy - A.datetime.timedelta(days=d)).isoformat() + " 10:00:00"
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',?,10,10)", (f"#F{i}", cid, f)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio) VALUES (?,?,'x',?,10)", (oid, rep, n))
+        con.commit(); sesion_de(c, "admin")
+        h = c.get(f"/clientes/{cid}").text
+        f20 = (hoy - A.datetime.timedelta(days=20)).strftime("%d/%m"); f60 = (hoy - A.datetime.timedelta(days=60)).strftime("%d/%m")
+        assert "hoy ×2, " + f20 in h and "…" in h and f60 not in h.split("Qué ha comprado")[1].split("</div></div>")[0]
+        assert "5×" not in h and "última vez" not in h
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

@@ -6419,7 +6419,12 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     lineas = con.execute("""SELECT p.sku, p.nombre, p.id pid, p.categoria, SUM(l.cantidad) n, MAX(substr(o.creado_en,1,10)) ultima
                             FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id JOIN productos p ON p.id=l.producto_id
                             WHERE o.cliente_id=? AND o.estado!='cancelada' GROUP BY p.id""", (cid,)).fetchall()
-    comprado = {r["pid"]: r for r in lineas}
+    comprado = {r["pid"]: dict(r, fechas=[]) for r in lineas}
+    # Cada día que compró ese producto (lo más reciente primero), con cuántas unidades ese día
+    for r in con.execute("""SELECT l.producto_id pid, substr(o.creado_en,1,10) dia, CAST(SUM(l.cantidad) AS INTEGER) n
+                            FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
+                            WHERE o.cliente_id=? AND o.estado!='cancelada' GROUP BY l.producto_id, dia ORDER BY dia DESC""", (cid,)):
+        if r["pid"] in comprado: comprado[r["pid"]]["fechas"].append((r["dia"], r["n"]))
     catalogo = con.execute("SELECT * FROM productos WHERE tipo='producto' AND activo=1 ORDER BY orden").fetchall()
     for c_, tp in (("fecha_programada", "TEXT"), ("tipo_programado", "TEXT"), ("despachador_programado", "TEXT"), ("nota_programada", "TEXT")):
         if c_ not in [r[1] for r in con.execute("PRAGMA table_info(packs)")]: con.execute(f"ALTER TABLE packs ADD COLUMN {c_} {tp}")
