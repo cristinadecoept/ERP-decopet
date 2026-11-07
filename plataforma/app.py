@@ -1652,6 +1652,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
 def orden_panel(request: Request, oid: int, con=Depends(db)):
     o = cargar_orden(con, oid)
     if not o: return HTMLResponse("<p>No existe.</p>")
+    o["wa_msj"] = mensaje_guia(con, o)
     vendibles = con.execute("""SELECT id, nombre, precio, requiere_color FROM productos WHERE activo=1 AND tipo NOT IN ('opcion','insumo') AND COALESCE(sku,'') NOT LIKE 'PACK%'
                                ORDER BY categoria, nombre""").fetchall()
     return render(request, "_orden_panel.html", o=o, vendibles=vendibles)
@@ -2558,9 +2559,7 @@ def mensaje_whatsapp_entrega(con, o, hoy):
     """Lo que abre el WhatsApp de una fila de Operaciones si la entrega es hoy: si debe, el recordatorio de pago;
     si no, la hora (en blanco: es una plantilla, la hora la pone quien escribe) o, en pick-up, a qué hora viene."""
     if o["fecha_op"] > hoy or o["estado"] not in ("pendiente", "en_ruta"): return ""
-    c = con.execute("SELECT nombre, nombre_pila FROM clientes WHERE id=?", (o["cliente_id"],)).fetchone()
-    quien = ((c["nombre_pila"] or (c["nombre"] or "").split(" ")[0]).strip() if c else "")
-    n = f" {quien}" if quien else ""
+    n = saludo_nombre(con, o["cliente_id"])
     if o.get("es_pack") or o.get("es_prepagado"):
         solo_deliv = o["monto_contra_entrega"] if o.get("es_pack") else (o["delivery"] if o["delivery"] and not o["delivery_pagado"] else 0)
         debe = (solo_deliv or 0) + sum(t["saldo"] for t in o.get("tambien_cobrar") or [])
@@ -2571,7 +2570,20 @@ def mensaje_whatsapp_entrega(con, o, hoy):
     if debe > 0.009: return f"¡Hoooola{n}! Recuerda pagar tu saldo pendiente de {fmt_usd(debe)}{de} para el pedido de hoy 💚"
     if o["tipo_entrega"] == "pickup": return f"¡Hoooola{n}! ¿Más o menos a qué hora vienes? 💚"
     if o["tipo_entrega"] in ("delivery", "delivery_fuera"): return f"¡Hoooola{n}! Tu pedido llega hoy entre __ y __ 💚"
-    return ""
+    return mensaje_guia(con, o)
+
+
+def saludo_nombre(con, cid):
+    """ " Carmen": el nombre con el que se le escribe al cliente, listo para ir después de '¡Hoooola'."""
+    c = con.execute("SELECT nombre, nombre_pila FROM clientes WHERE id=?", (cid,)).fetchone()
+    quien = ((c["nombre_pila"] or (c["nombre"] or "").split(" ")[0]).strip() if c else "")
+    return f" {quien}" if quien else ""
+
+
+def mensaje_guia(con, o):
+    """Envío nacional: el WhatsApp abre con el saludo para mandarle la guía. Es una plantilla: la guía la pega quien escribe."""
+    if o.get("tipo_entrega") != "nacional" or o.get("estado") == "cancelada": return ""
+    return f"¡Hoooola{saludo_nombre(con, o['cliente_id'])}! Aquí te envío tu guía para que le hagas seguimiento. Cuando te llegue, mándanos una foto 📸 y síguenos en Instagram 💚"
 
 
 @app.get("/operaciones", response_class=HTMLResponse)

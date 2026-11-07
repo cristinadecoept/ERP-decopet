@@ -2703,6 +2703,23 @@ def _():
         con.close()
 
 
+@prueba("Envío nacional: el WhatsApp de la orden abre con el saludo para mandar la guía, sin agencia ni número (los pone quien escribe), también ya entregada")
+def _():
+    from urllib.parse import unquote_plus
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Nora Lejos','Nora','04141110009')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,tipo_entrega,agencia,guia,origen_excel)
+                             VALUES ('#G1',?,'entregada','pagada',50,'nacional','Zoom','123456789',0)""", (cid,)).lastrowid
+        con.commit(); sesion_de(c, "logistica")
+        h = unquote_plus(html.unescape(c.get(f"/ordenes/{oid}/panel").text))
+        msj = "¡Hoooola Nora! Aquí te envío tu guía para que le hagas seguimiento. Cuando te llegue, mándanos una foto 📸 y síguenos en Instagram 💚"
+        assert msj in h and msj + " " not in h
+        con.execute("UPDATE ordenes SET tipo_entrega='delivery' WHERE id=?", (oid,)); con.commit()
+        assert "Hoooola" not in unquote_plus(html.unescape(c.get(f"/ordenes/{oid}/panel").text)), "solo envío nacional"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
