@@ -1437,7 +1437,7 @@ def pasar_entrega_a_prepagado(con, oid, uid):
 
 
 def cargar_ordenes(con, filtros, rol, sin_limite=False):
-    sql = """SELECT o.*, c.nombre cliente, c.telefono, u.nombre creada_por_nombre,
+    sql = """SELECT o.*, c.nombre cliente, c.telefono, c.porche_version, u.nombre creada_por_nombre,
              (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_direccion,
              (SELECT d.zona      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_zona,
              (SELECT d.ciudad    FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_ciudad,
