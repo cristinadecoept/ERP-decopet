@@ -2829,6 +2829,24 @@ def _():
         con.close()
 
 
+@prueba("Nueva orden con cliente nuevo: se anota cómo nos conoció y, si fue recomendación, quién lo trajo; sale en Analítica")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        rid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Quien Recomienda','Quien','04145550777')").lastrowid
+        con.commit(); sesion_de(c, "admin")
+        assert "¿Cómo nos conoció?" in c.get("/ordenes/nueva/panel").text and "Publicidad (anuncio)" in c.get("/ordenes/nueva/panel").text
+        c.post("/ordenes/nueva", data={"cliente_nombre_pila": "Nueva", "cliente_apellido": "Referida", "cliente_telefono": "04145550778", "cliente_correo": "n@x.com",
+               "cliente_origen": "Recomendación de otro cliente", "cliente_referido_id": str(rid), "canal": "whatsapp", "producto_id": str(pr), "cantidad": "1",
+               "personalizacion": "", "color": "", "malla": "0", "tipo_entrega": "pickup", "pago_forma": [""], "pago_monto": [""], "pago_ref": [""]})
+        cl = con.execute("SELECT origen, referido_id FROM clientes WHERE telefono LIKE '%5550778'").fetchone()
+        assert (cl["origen"], cl["referido_id"]) == ("Recomendación de otro cliente", rid), dict(cl)
+        r = A.resumen_mes(con, A.datetime.date.today().replace(day=1))
+        assert ("Recomendación de otro cliente", 1) in r["como_llegaron"], r["como_llegaron"]
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

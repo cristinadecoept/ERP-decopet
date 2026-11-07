@@ -312,7 +312,7 @@ def proveedor_visible(rol, nombre):
     return None
 
 
-ORIGENES = ["Instagram", "Recomendación de otro cliente", "Página web / Google", "Cashea", "Nos vio en la calle",
+ORIGENES = ["Instagram", "Publicidad (anuncio)", "Recomendación de otro cliente", "Página web / Google", "Cashea", "Nos vio en la calle",
             "Feria o evento", "Duwu", "Vidapets", "Ya era cliente", "Otro"]   # cómo nos conoció, distinto del canal por donde pidió
 
 CONCEPTOS_EXTRA = ["Delivery", "Personalización", "Propina", "Repuesto adicional", "Ajuste", "Otro"]   # cosas que un cliente le agrega a una orden ya hecha
