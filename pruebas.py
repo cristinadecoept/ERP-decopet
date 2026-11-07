@@ -2720,6 +2720,35 @@ def _():
         con.close()
 
 
+@prueba("Cobrar 'Debe' en Operaciones: la casilla 'Registrar en Cash flow' es solo de Cristina y anota el cobro en su caja (pedido y delivery de pack)")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('ventas_auto','0')"); con.commit(); A.cargar_formas_pago()
+        fo = con.execute("SELECT nombre FROM cuentas WHERE activa=1 AND COALESCE(cobra,1)=1 AND nombre NOT LIKE 'Efectivo%' ORDER BY orden, codigo LIMIT 1").fetchone()[0]
+        pr = con.execute("SELECT id FROM productos WHERE COALESCE(tipo,'producto')='producto' LIMIT 1").fetchone()[0]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Carmen Debe','Carmen','04141110005')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,tipo_entrega,despachador,origen_excel)
+                             VALUES ('#CF1',?,'pendiente','sin_pago',30,'delivery','Cristina',0)""", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Rampa',1,30,30)", (oid, pr))
+        kid = con.execute("""INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,delivery_programado)
+                             VALUES (?,?,?,3,1,'activo',date('now','localtime'),'delivery',5)""", (cid, oid, pr)).lastrowid
+        con.commit()
+        libro = lambda: con.execute("SELECT m.* FROM movimientos m WHERE m.categoria='Ventas'").fetchall()
+        sesion_de(c, "admin")
+        assert 'name="en_cashflow"' in c.get("/operaciones?cola=todo").text
+        c.post(f"/ordenes/{oid}/cobrar", data={"forma": fo, "monto_usd": "10", "volver": "/operaciones"}, follow_redirects=False)
+        assert not libro(), "sin marcar no entra nada"
+        c.post(f"/ordenes/{oid}/cobrar", data={"forma": fo, "monto_usd": "20", "en_cashflow": "1", "volver": "/operaciones"}, follow_redirects=False)
+        ms = libro(); assert len(ms) == 1 and ms[0]["monto_usd"] == 20 and "#CF1" in ms[0]["concepto"], [dict(m) for m in ms]
+        assert con.execute("SELECT COUNT(*) FROM pagos WHERE orden_id=? AND en_cashflow=1", (oid,)).fetchone()[0] == 1
+        c.post(f"/packs/{kid}/cobrar-delivery", data={"forma": fo, "monto_usd": "5", "en_cashflow": "1", "volver": "/operaciones"}, follow_redirects=False)
+        assert len(libro()) == 2 and libro()[-1]["monto_usd"] == 5
+        sesion_de(c, "logistica")
+        assert 'name="en_cashflow"' not in c.get("/operaciones?cola=todo").text, "logística no la ve"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

@@ -2014,8 +2014,10 @@ async def cobrar_saldo(request: Request, oid: int, con=Depends(db)):
                   + (f" · le quedan {fmt_usd(queda)}" if queda > 0.009 else " · no le queda saldo"))
         con.commit(); return volver(oid, request)
     en_bs = es_bolivares(forma); tasa = tasa_hoy(con)["valor"]
-    con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,'confirmado',?,datetime('now','localtime'))",
+    cur = con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,'confirmado',?,datetime('now','localtime'))",
                 (oid, forma, monto, monto * tasa if en_bs else monto, "VES" if en_bs else "USD", tasa if en_bs else None, FORMA_CUENTA.get(forma), f.get("referencia") or None, datetime.date.today().isoformat(), uid))
+    if f.get("en_cashflow") == "1" and solo_admin(request):
+        anotar_en_cashflow(con, cur.lastrowid, oid, forma, monto, datetime.date.today().isoformat(), uid, "Registrado al cobrar")
     pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
     con.execute("UPDATE ordenes SET estado_pago=? WHERE id=?", (estado_pago_de(pagado, o["total"]), oid)); fijar_fecha_pago(con, oid)
     sobra = sobrante_a_favor(con, oid, uid)
@@ -2475,14 +2477,8 @@ async def crear_orden(request: Request, con=Depends(db)):
         cur_p = con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     (oid, fo, m, round(m * tasa_v, 2) if es_bolivares(fo) else m, "VES" if es_bolivares(fo) else "USD", tasa_v if es_bolivares(fo) else None, FORMA_CUENTA.get(fo), ref or None, ahora, est,
                      uid if confirma else None, ahora if confirma else None))
-        caja = con.execute("SELECT id FROM cuentas WHERE nombre=?", (FORMA_CUENTA.get(fo),)).fetchone() if al_libro else None
-        if caja:   # igual que al confirmar un pago: la venta entra a su caja sin anotarla otra vez
-            od = con.execute("SELECT o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?", (oid,)).fetchone()
-            con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_destino_id, monto_usd, monto_real, moneda, concepto, categoria, notas, usuario_id)
-                           VALUES (?,'entrada',?,?,?,'USD',?,'Ventas',?,?)""",
-                        (fp or hoy_d.isoformat(), caja[0], m, m, f"Ventas · {od['numero']} · {od['cliente'] or ''} · {fo}", "Registrado al crear la orden", uid))
-            con.execute("UPDATE pagos SET en_cashflow=1 WHERE id=?", (cur_p.lastrowid,))
-            registrar(con, oid, uid, "pago", f"{fo} {fmt_usd(m)} anotado en Cash flow")
+        if al_libro:   # igual que al confirmar un pago: la venta entra a su caja sin anotarla otra vez
+            anotar_en_cashflow(con, cur_p.lastrowid, oid, fo, m, fp or hoy_d.isoformat(), uid, "Registrado al crear la orden")
     # Cashea se trata como cualquier canal: si Cristina marca el pago completo, la orden queda pagada.
     # El seguimiento de las cuotas de Cashea queda para más adelante.
     por_revisar = 0 if confirma else sum(m for fo, m, _ in pagos_in if not fo.startswith("Efectivo") and fo != SALDO_FAVOR)
@@ -2719,7 +2715,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     # Pagarlo no es de aquí: se le paga el viernes con lo demás, desde su ficha de despachador.
     tarifas_ag = {a: tarifa_agencia(con, a) for a in AGENCIAS}
     oficinas_ag = oficinas_agencia(con)
-    return render(request, "operaciones.html", seccion="operaciones", grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, total=len(lista), hoy_iso=hoy, manana_iso=manana,
+    return render(request, "operaciones.html", seccion="operaciones", ventas_auto=ventas_automaticas(con), grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, total=len(lista), hoy_iso=hoy, manana_iso=manana,
                   por_llevar=por_llevar, por_agencia=por_agencia, viajes=viajes, tarifas_ag=tarifas_ag, oficinas_ag=oficinas_ag,
                   tipo=tipo, agencia=agencia, conteos_tipo=conteos_tipo, conteos_ag=conteos_ag, dia=dia, desp=desp, despachadores=despachadores, conteos_desp=conteos_desp, vista=vista, fecha_larga=fecha_larga, q=q)
 
@@ -2734,6 +2730,21 @@ def forma_del_despachador(forma, otro=""):
     if forma not in FORMAS_DESPACHADOR: return forma
     if forma == "Otro" and (otro or "").strip(): forma = (otro or "").strip()[:40]
     return f"{forma} (según despachador)"
+def anotar_en_cashflow(con, pago_id, oid, forma, monto, fecha, uid, nota):
+    """Cristina marcó 'Registrar en Cash flow': el pago entra a su caja como venta, igual que al confirmarlo,
+    y queda marcado para no anotarlo dos veces. Solo si las ventas no entran solas y la forma es una caja."""
+    if ventas_automaticas(con): return False
+    caja = con.execute("SELECT id FROM cuentas WHERE nombre=?", (caja_de(forma),)).fetchone()
+    if not caja: return False
+    od = con.execute("SELECT o.numero, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) cliente FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?", (oid,)).fetchone()
+    con.execute("""INSERT INTO movimientos (fecha, tipo, cuenta_destino_id, monto_usd, monto_real, moneda, concepto, categoria, notas, usuario_id)
+                   VALUES (?,'entrada',?,?,?,'USD',?,'Ventas',?,?)""",
+                (fecha, caja[0], monto, monto, f"Ventas · {od['numero']} · {od['cliente'] or ''} · {forma}", nota, uid))
+    con.execute("UPDATE pagos SET en_cashflow=1 WHERE id=?", (pago_id,))
+    registrar(con, oid, uid, "pago", f"{forma} {fmt_usd(monto)} anotado en Cash flow")
+    return True
+
+
 def caja_de(forma):
     """La caja donde entra un pago con esa forma, o None si no es una caja (lo reportó el despachador y falta asignarla)."""
     return FORMA_CUENTA.get(forma or "") or (forma if forma in MONEDA_CAJA else None)
@@ -5990,7 +6001,8 @@ def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador:
 
 @app.post("/packs/{rid}/cobrar-delivery")
 @app.post("/prepagados/{rid}/cobrar-delivery")
-def retiro_cobrar_delivery(request: Request, rid: int, forma: str = Form(""), monto_usd: str = Form(""), referencia: str = Form(""), volver: str = Form(""), con=Depends(db)):
+def retiro_cobrar_delivery(request: Request, rid: int, forma: str = Form(""), monto_usd: str = Form(""), referencia: str = Form(""), volver: str = Form(""),
+                           en_cashflow: str = Form(""), con=Depends(db)):
     """El cliente pagó el delivery de un retiro de pack o de un repuesto prepagado antes de que se lo lleven:
     entra a su orden hoy y al entregar ya no se le cobra. Al despachador se le sigue pagando su delivery."""
     rol = rol_de(request); ir = RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
@@ -6001,6 +6013,9 @@ def retiro_cobrar_delivery(request: Request, rid: int, forma: str = Form(""), mo
     monto = float(cifra(monto_usd) or 0)
     if k and k["orden_id"] and not k["delivery_pagado"] and monto > 0 and forma:
         cobro_extra(con, k["orden_id"], concepto, monto, forma, datetime.date.today().isoformat(), uid_de(request), referencia)
+        if en_cashflow == "1" and solo_admin(request):
+            pid_ = con.execute("SELECT MAX(id) FROM pagos WHERE orden_id=?", (k["orden_id"],)).fetchone()[0]
+            anotar_en_cashflow(con, pid_, k["orden_id"], forma, round(monto, 2), datetime.date.today().isoformat(), uid_de(request), "Registrado al cobrar")
         con.execute(f"UPDATE {tabla} SET delivery_pagado=1 WHERE id=?", (rid,))
         if kind != "pack": con.execute("UPDATE repuestos_prepagados SET delivery_forma=? WHERE id=?", (forma, rid))
         con.commit()
