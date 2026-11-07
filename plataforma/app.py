@@ -2583,7 +2583,7 @@ def saludo_nombre(con, cid):
 def mensaje_guia(con, o):
     """Envío nacional: el WhatsApp abre con el saludo para mandarle la guía. Es una plantilla: la guía la pega quien escribe."""
     if o.get("tipo_entrega") != "nacional" or o.get("estado") == "cancelada": return ""
-    return f"¡Hoooola{saludo_nombre(con, o['cliente_id'])}! Aquí te envío tu guía para que le hagas seguimiento. Cuando te llegue, mándanos una foto 📸 y síguenos en Instagram 💚"
+    return f"¡Hoooola{saludo_nombre(con, o['cliente_id'])}! Aquí te envío tu guía para que le hagas seguimiento. Cuando te llegue, mándanos una foto 📸 y síguenos en Instagram @_decopet 💚"
 
 
 @app.get("/operaciones", response_class=HTMLResponse)

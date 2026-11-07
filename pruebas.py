@@ -2713,7 +2713,7 @@ def _():
                              VALUES ('#G1',?,'entregada','pagada',50,'nacional','Zoom','123456789',0)""", (cid,)).lastrowid
         con.commit(); sesion_de(c, "logistica")
         h = unquote_plus(html.unescape(c.get(f"/ordenes/{oid}/panel").text))
-        msj = "¡Hoooola Nora! Aquí te envío tu guía para que le hagas seguimiento. Cuando te llegue, mándanos una foto 📸 y síguenos en Instagram 💚"
+        msj = "¡Hoooola Nora! Aquí te envío tu guía para que le hagas seguimiento. Cuando te llegue, mándanos una foto 📸 y síguenos en Instagram @_decopet 💚"
         assert msj in h and msj + " " not in h
         con.execute("UPDATE ordenes SET tipo_entrega='delivery' WHERE id=?", (oid,)); con.commit()
         assert "Hoooola" not in unquote_plus(html.unescape(c.get(f"/ordenes/{oid}/panel").text)), "solo envío nacional"
