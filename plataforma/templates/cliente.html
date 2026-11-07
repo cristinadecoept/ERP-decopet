@@ -138,7 +138,7 @@
 {% if not d.maps %}<div class="mini">Ubicación aproximada por la dirección escrita: falta el link GPS.</div>{% endif %}{% endif %}
 <div class="dir-gps" hidden><label>GPS</label><input name="maps" value="{{ d.maps or '' }}" placeholder="https://maps.app.goo.gl/…"></div>
 <p style="margin:8px 0 0;display:flex;gap:6px"><button type="button" class="btn chico sec" onclick="editar(this)">Editar</button><button class="btn chico" hidden>Guardar</button>{% if d.maps %}<a class="btn chico sec" href="{{ d.maps }}" target="_blank">Abrir mapa</a>{% endif %}<button class="btn chico pel" name="borrar" value="1" onclick="return confirm('¿Borrar esta dirección?')">Borrar</button></p></form>{% endfor %}
-<details {{ 'open' if not dirs }}><summary class="mini" style="cursor:pointer;margin-top:8px">+ Agregar dirección</summary><form method="post" action="/clientes/{{ c.id }}/direccion">
+<details {{ 'open' if not dirs }}><summary class="no-masc"><span class="no-masc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg><span class="no-masc-mas">+</span></span>Agregar dirección</summary><form method="post" action="/clientes/{{ c.id }}/direccion">
 <input type="hidden" name="ciudad" value="{{ c.ciudad or '' }}">
 <label>Dirección escrita</label><input name="direccion" required placeholder="Res., edificio, apto, referencia"><label>GPS</label><input name="maps" placeholder="https://maps.app.goo.gl/…">
 <p style="margin:8px 0 0"><button class="btn chico sec">Agregar</button></p></form></details></div>
