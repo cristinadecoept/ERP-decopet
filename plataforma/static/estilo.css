@@ -1600,3 +1600,4 @@ html.oscuro .pill-fuera span{background:rgba(225,120,46,.16);border-color:rgba(2
 .stats-bar .ritmo-bien b{color:var(--verde-osc)}.stats-bar .ritmo-mal{background:#fdf0ec}.stats-bar .ritmo-mal b{color:#c94a2f}
 .recuperar{align-self:flex-start;font-style:normal;font-size:11.5px;font-weight:700;color:#fff;background:#c94a2f;border-radius:99px;padding:2px 9px}
 html.oscuro .stats-bar .ritmo-mal{background:#3a2420}html.oscuro .stats-bar .ritmo-mal b{color:#f08a6f}html.oscuro .stats-bar .ritmo-bien b{color:#7fc9a4}
+.ic-mini{width:17px;height:17px;vertical-align:-3px;margin-right:6px;color:var(--verde-osc);flex:none}html.oscuro .ic-mini{color:#7fc9a4}
