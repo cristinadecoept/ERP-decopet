@@ -5217,7 +5217,7 @@ def produccion(request: Request, ver: str = "en_proceso", q: str = "", debe: str
                                          WHERE p.nombre=? ORDER BY i.item""", (c,))] for c in quienes}
     return render(request, "produccion.html", seccion="produccion" if tipo == "produccion" else "compras", tipo=tipo, rows=rows, piezas=piezas, vende=vende,
                   grupos=grupos, mes=mes, semana=semana, anio=anio, anios=anios, MESES_N=MESES_N,
-                  carpinteros=quienes, ver=ver, n=n, debe=debe, por_pagar=por_pagar, FORMAS_PAGO=FORMAS_PAGO, precios=precios)
+                  carpinteros=quienes, ver=ver, n=n, debe=debe, por_pagar=por_pagar, FORMAS_PAGO=FORMAS_PAGO, precios=precios, tasa=tasa_hoy(con))
 
 
 @app.post("/produccion")
