@@ -5618,7 +5618,7 @@ def cumples_proximos(con, ventana=30):
                         hecho=bool(r), estado=(estado_resultado(r) if r else ("Pendiente" if faltan <= 2 else "Próximo")),
                         ofrecer=[t for t, _ in oportunidades_de(con, m["id"])] if faltan <= 2 else [],
                         hogar=hogar_de(con, m["id"], hoy) if faltan <= 2 else None))
-        if faltan <= 2: out[-1]["mensajes"] = mensajes_cumple(m["perro"], edad, out[-1]["ofrecer"])
+        if faltan <= 2: out[-1]["mensajes"] = mensajes_cumple(m["perro"], out[-1]["ofrecer"])
     out.sort(key=lambda s: s["dias"])
     return out
 
@@ -6213,46 +6213,28 @@ def hogar_de(con, cid, hoy):
     return {"perros": perros, "porche": porche, "compras": [dict(r) for r in compras]}
 
 
-# Mensajes de cumpleaños para WhatsApp. Tono de la marca (ejemplo de Cristina, 3 oct 2026): cercano, con humor, corto,
-# 💚 como firma; la oferta va al final y suave ("nos avisan"), nunca insistente. Sin adjetivos con género: no sabemos si es macho o hembra.
-SALUDOS_CUMPLE = [
-    "¡Feliz cumple a {p}! 🥳 Hoy se acepta repetir plato. Bueno, {p} acepta todos los días 😂💚",
-    "¡Hoy cumple {p}! 🎂 Que hoy haya premios dobles y siestas largas 💚",
-    "¡Feliz cumpleaños, {p}! 🐾{e} Que lo celebren con muchos cariños y algún premio extra 😄💚",
-    "¡Hoy es el día de {p}! 🎉 Feliz cumple de parte de todo el equipo Decopet 💚",
+# Mensajes de cumpleaños para WhatsApp (salen solo el día del cumple): corto, 💚 como firma y el 10% de ese día en lo que el
+# cliente todavía no tiene. Tiene que quedar claro que el regalo es de ellos: el cliente creía que se lo estábamos regalando.
+SALUDOS_CUMPLE = ["¡Feliz cumple a {p}! 🎂💚", "¡Hoy cumple {p}! 🎉💚", "¡Feliz cumple, {p}! 🐾💚", "¡Hoy es el cumple de {p}! 🥳💚"]
+DESCUENTO_CUMPLE = [   # cada saludo va con una forma distinta, así no terminan todos igual
+    "Por si le quieren regalar {x}, hoy tienen 10% de descuento.",
+    "Si le quieren regalar {x}, solo por hoy tienen 10% de descuento.",
+    "Si quieren regalarle {x}, hoy tienen 10% de descuento 😉",
+    "Por si le quieren regalar {x}, 10% de descuento solo por hoy.",
 ]
-OFERTA_CUMPLE = {   # varias formas de ofrecer cada cosa: cada saludo va con una distinta, así no terminan todos igual
-    "Comedor": ["Si quieren estrenarlo con un comedor nuevo, nos avisan.",
-                "Y si el regalo es un comedor nuevo, aquí estamos 🍽️",
-                "¿Un comedor nuevo para celebrar? Nos escriben y se lo preparamos.",
-                "Por cierto, un comedor a su altura es el regalo perfecto para comer cómodo 😉"],
-    "Rampa": ["Si quieren regalarle una rampa para que suba y baje con más comodidad, nos avisan.",
-              "¿Y si este año el regalo es una rampa? Nos avisan 🐾",
-              "Una rampa es un regalo que se agradece todos los días. Si la quieren, nos escriben.",
-              "Si quieren cuidarle las patitas, la rampa es buena idea. Aquí estamos."],
-    "El Porche Versión PRO": ["Si quieren regalarle su propio porche, nos avisan 🌿",
-                              "¿Y si el regalo es su propio porche de grama natural? 🌿",
-                              "Un porche propio sería el mejor regalo. Nos escriben si les provoca.",
-                              "Si quieren darle su rincón de grama en casa, el porche es para eso 🌱"],
-    "Otro Básico o pasarse al PRO": ["Y si quieren celebrarlo con otro porche o pasándose al PRO, nos avisan 🌿",
-                                     "¿Y si el regalo es subir al porche PRO? Nos avisan 🌿",
-                                     "Si les hace falta un segundo porche o quieren pasarse al PRO, aquí estamos.",
-                                     "Buen día para pensar en el PRO… o en un segundo porche 😉"],
-    "Pack 3 repuestos": ["Y si toca reponer, el pack de 3 repuestos sale mejor 😉",
-                         "Si ya toca grama nueva, el pack de 3 les rinde más 🌱",
-                         "Y para celebrar con grama fresca, el pack de 3 repuestos es buena idea.",
-                         "Por cierto, el pack de 3 repuestos les ahorra viajes 😉"],
-}
+OFERTA_CUMPLE = {"Comedor": "un comedor", "Rampa": "una rampa", "El Porche Versión PRO": "un porche",
+                 "Otro Básico o pasarse al PRO": "un porche PRO", "Pack 3 repuestos": "el pack de 3 repuestos"}
 
 
-def mensajes_cumple(perro, edad, ofrecer):
-    """Varias versiones del mensaje de felicitación; Cristina elige o cambia antes de enviarlo."""
-    ofertas = next((OFERTA_CUMPLE[t] for t in ofrecer if t in OFERTA_CUMPLE),
-                   OFERTA_CUMPLE["Comedor"] if any(t.endswith("comedores") for t in ofrecer) else [])
-    e = f" {edad} año{'s' if edad != 1 else ''}." if edad else ""
+def mensajes_cumple(perro, ofrecer):
+    """Varias versiones del mensaje de felicitación; Cristina elige o cambia antes de enviarlo.
+    El descuento nombra lo que el cliente no tiene (lo de oportunidades_de); si ya lo tiene todo, va solo el saludo."""
+    cosas = list(dict.fromkeys(OFERTA_CUMPLE["Comedor"] if t.endswith("comedores") else OFERTA_CUMPLE.get(t) for t in ofrecer))
+    cosas = [c for c in cosas if c]
+    x = (", ".join(cosas[:-1]) + " o " + cosas[-1]) if len(cosas) > 1 else "".join(cosas)
     partes = (perro or "").split()
     perro = partes[0] if len(partes) > 2 else perro   # "Nicolás martini González" → "Nicolás" (a veces trae el apellido de la familia)
-    return [(s.format(p=perro, e=e) + (" " + ofertas[i % len(ofertas)] if ofertas else "")).strip() for i, s in enumerate(SALUDOS_CUMPLE)]
+    return [(s.format(p=perro) + (" " + DESCUENTO_CUMPLE[i].format(x=x) if x else "")) for i, s in enumerate(SALUDOS_CUMPLE)]
 
 
 # Cuando el cliente no respondió: del 2º intento en adelante se le escribe distinto, corto y como habla una persona.

@@ -2663,6 +2663,20 @@ def _():
         con.close()
 
 
+@prueba("Mensajes de cumpleaños: el 10% nombra lo que el cliente no tiene; si lo tiene todo, solo el saludo; el regalo queda claro que es de ellos")
+def _():
+    ms = A.mensajes_cumple("Naya", ["Comedor", "Rampa"])
+    assert len(ms) == 4 and len(set(ms)) == 4
+    assert all("Naya" in m and "💚" in m and "un comedor o una rampa" in m and "10% de descuento" in m for m in ms)
+    assert all(("le quieren regalar" in m) or ("quieren regalarle" in m) for m in ms)
+    ms = A.mensajes_cumple("Naya", ["Rampa"])
+    assert all("una rampa" in m and "comedor" not in m for m in ms), "solo lo que le falta"
+    assert all("un comedor" in m for m in A.mensajes_cumple("Naya", ["2 comedores"]))
+    ms = A.mensajes_cumple("Naya", [])
+    assert all("10%" not in m and "regal" not in m for m in ms), "ya lo tiene todo: solo el saludo"
+    assert A.mensajes_cumple("Nicolás martini González", [])[0].startswith("¡Feliz cumple a Nicolás!")
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
