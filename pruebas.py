@@ -2836,7 +2836,7 @@ def _():
         pr = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
         rid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Quien Recomienda','Quien','04145550777')").lastrowid
         con.commit(); sesion_de(c, "admin")
-        assert "¿Cómo nos conoció?" in c.get("/ordenes/nueva/panel").text and "Publicidad (anuncio)" in c.get("/ordenes/nueva/panel").text
+        assert "¿Cómo llegó?" in c.get("/ordenes/nueva/panel").text and "Publicidad (anuncio)" in c.get("/ordenes/nueva/panel").text
         c.post("/ordenes/nueva", data={"cliente_nombre_pila": "Nueva", "cliente_apellido": "Referida", "cliente_telefono": "04145550778", "cliente_correo": "n@x.com",
                "cliente_origen": "Recomendación de otro cliente", "cliente_referido_id": str(rid), "canal": "whatsapp", "producto_id": str(pr), "cantidad": "1",
                "personalizacion": "", "color": "", "malla": "0", "tipo_entrega": "pickup", "pago_forma": [""], "pago_monto": [""], "pago_ref": [""]})
@@ -2845,7 +2845,7 @@ def _():
         r = A.resumen_mes(con, A.datetime.date.today().replace(day=1))
         assert ("Recomendación de otro cliente", 1) in r["como_llegaron"], r["como_llegaron"]
         # también desde Clientes → Nuevo cliente
-        assert "¿Cómo nos conoció?" in c.get("/clientes/nuevo/panel").text
+        assert "¿Cómo llegó?" in c.get("/clientes/nuevo/panel").text
         c.post("/clientes/nuevo", data={"nombre_pila": "Desde", "apellido": "Clientes", "telefono": "04145550779", "correo": "d@c.com", "origen": "Publicidad (anuncio)"}, follow_redirects=False)
         assert con.execute("SELECT origen FROM clientes WHERE telefono LIKE '%5550779'").fetchone()[0] == "Publicidad (anuncio)"
         con.close()

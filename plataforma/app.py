@@ -7825,7 +7825,7 @@ def resumen_mes(con, m0):
         return sorted(({"k": k, "n": v[0], "m": round(v[1], 2), "pct": round(v[1] / ventas * 100) if ventas else 0} for k, v in d.items()), key=lambda x: -x["m"])
     origen = {}
     for o in ords:
-        if o["cliente_id"] in nuevos: origen[o["cliente_id"]] = o["origen"] or "Sin anotar"
+        if o["cliente_id"] in nuevos: origen[o["cliente_id"]] = o["origen"] or "Otros"
     como_llegaron = {}
     for v in origen.values(): como_llegaron[v] = como_llegaron.get(v, 0) + 1
     lineas = con.execute("""SELECT l.nombre, p.sku, p.categoria, SUM(l.cantidad) u, SUM(l.total) f, COUNT(DISTINCT o.cliente_id) cl
