@@ -13,8 +13,8 @@
  {% if rol=='admin' %}<div><span>Gastado</span><b>{{ nums.total|usd }}</b></div>{% endif %}
  <div><span>Pedidos</span><b>{{ nums.n }}</b></div>
  {% if rol=='admin' %}<div><span>Ticket promedio</span><b>{{ nums.ticket|usd }}</b></div>{% endif %}
- <div><span>Último pedido</span><b>{% if nums.dias_sin is not none %}{{ 'hoy' if nums.dias_sin==0 else 'hace ' ~ nums.dias_sin ~ ' d' }}{% else %}—{% endif %}</b></div>
- <div><span>Compra cada</span><b>{% if nums.cada %}{{ nums.cada }} d{% else %}—{% endif %}</b></div>
+ <div class="{{ 'ritmo-mal' if atrasado }}"><span>Último pedido</span><b>{% if nums.dias_sin is not none %}{{ 'hoy' if nums.dias_sin==0 else 'hace ' ~ nums.dias_sin ~ ' d' }}{% else %}—{% endif %}</b>{% if atrasado %}<em class="recuperar">Recuperar</em>{% endif %}</div>
+ {% set cada = rep_cada if (porche or c.porche_version in ('PRO','Básico')) else nums.cada %}<div class="{{ 'ritmo-' ~ ritmo_rep if ritmo_rep }}"><span>Compra cada</span><b>{% if cada %}{{ cada }} d{% if ritmo_rep=='bien' %} 👍{% endif %}{% else %}—{% endif %}</b>{% if ritmo_rep=='mal' and not atrasado %}<em class="recuperar">Recuperar</em>{% endif %}</div>
  {% if porche %}<div><span>Próximo repuesto</span><b>{% if perros and not perros|rejectattr('fallecida')|list %}pausado{% elif proximo %}{{ proximo|dia }}{% else %}—{% endif %}</b></div>{% endif %}
  {% if rol=='admin' and credito %}<div class="acento"><span>Saldo a favor</span><b>{{ credito|usd }}</b></div>{% endif %}
  {% if saldo_pack %}<div class="acento"><span>Pack por entregar</span><b><a href="/packs?q={{ c.nombre|urlencode }}">{{ saldo_pack }}</a></b></div>{% endif %}

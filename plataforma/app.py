@@ -6495,7 +6495,24 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     # lo que ha pasado en sus entregas: queda en su ficha para siempre, abierto o ya resuelto
     incid = con.execute("""SELECT i.*, o.numero, substr(i.creado_en,1,10) fecha FROM incidencias i JOIN ordenes o ON o.id=i.orden_id
                            WHERE o.cliente_id=? ORDER BY i.id DESC""", (cid,)).fetchall()
-    return render(request, "cliente.html", seccion="clientes", incid=incid, ciudades_vl=ciudades_conocidas(con),
+    # Repuestos (dueños del porche): lo sano es cada 21 días; hasta 30 está bien; más de 40 hay que recuperarlo
+    # cada cuántos días usa un repuesto: el tiempo entre compras repartido entre los repuestos que trajo cada una
+    # (un Pack 3 cada 84 días = un repuesto cada 28); si no hay cómo, su ritmo de compras
+    rep_cada = None
+    compras = con.execute("""SELECT substr(o.creado_en,1,10) d, SUM(l.cantidad * CASE WHEN p.nombre LIKE 'Pack 8%' THEN 8 WHEN p.nombre LIKE 'Pack 4%' THEN 4
+                             WHEN p.nombre LIKE 'Pack 3%' THEN 3 ELSE 1 END) u FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id JOIN productos p ON p.id=l.producto_id
+                             WHERE o.cliente_id=? AND o.estado!='cancelada' AND p.categoria='repuesto' GROUP BY 1 ORDER BY 1""", (cid,)).fetchall()
+    if len(compras) >= 2:
+        span = (datetime.date.fromisoformat(compras[-1]["d"]) - datetime.date.fromisoformat(compras[0]["d"])).days
+        usados = sum(x["u"] or 0 for x in compras[:-1])
+        rep_cada = round(span / usados) if usados else None
+    rep_cada = rep_cada or ritmo or nums["cada"]
+    dias_rep = (hoy - datetime.date.fromisoformat(ult_rep[:10])).days if ult_rep and not saldo_pack else None   # con pack por entregar no se cuenta
+    ritmo_rep = None; atrasado = False
+    if porche or c["porche_version"] in ("PRO", "Básico"):
+        if rep_cada: ritmo_rep = "bien" if rep_cada <= 30 else ("mal" if rep_cada > 40 else None)
+        atrasado = bool(dias_rep and dias_rep > 40)   # más de 40 días sin repuesto: hay que recuperarlo
+    return render(request, "cliente.html", seccion="clientes", incid=incid, ciudades_vl=ciudades_conocidas(con), rep_cada=rep_cada, ritmo_rep=ritmo_rep, atrasado=atrasado,
                   credito=credito_de(con, cid),
                   credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
                         (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=k.orden_id AND p.estado='confirmado' AND p.forma!=?) pagado

@@ -2851,6 +2851,31 @@ def _():
         con.close()
 
 
+@prueba("Ficha del cliente con porche: repuesto cada 30 días o menos sale en verde con 👍; más de 40 sale en rojo; más de 40 días sin comprar marca 'Recuperar' en Último pedido")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pro = con.execute("SELECT id FROM productos WHERE sku LIKE 'PRO-%' LIMIT 1").fetchone()["id"]
+        rep = con.execute("SELECT id FROM productos WHERE categoria='repuesto' AND sku LIKE 'REP-%' LIMIT 1").fetchone()["id"]
+        hoy = A.datetime.date.today()
+        def cliente(tel, dias):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,?)", ("Ritmo " + tel, "Ritmo", tel)).lastrowid
+            for i, (d, prod) in enumerate([(dias[0] + 5, pro)] + [(x, rep) for x in dias]):
+                f = (hoy - A.datetime.timedelta(days=d)).isoformat() + " 10:00:00"
+                oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',?,10,10)", (f"#{tel[-4:]}{i}", cid, f)).lastrowid
+                con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio) VALUES (?,?,'x',1,10)", (oid, prod))
+            con.commit(); return cid
+        sesion_de(c, "admin")
+        bien = c.get(f"/clientes/{cliente('04145551001', [75, 50, 25, 3])}").text
+        assert "ritmo-bien" in bien and "Recuperar" not in bien
+        mal = c.get(f"/clientes/{cliente('04145551002', [200, 140, 80])}").text
+        assert "ritmo-mal" in mal and "Recuperar" in mal
+        # buen ritmo pero hace más de 40 días que no compra: el rojo va en 'Último pedido', no en su ritmo
+        atr = c.get(f"/clientes/{cliente('04145551003', [120, 100, 80, 60])}").text
+        assert "ritmo-bien" in atr and atr.count("Recuperar") == 1
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
