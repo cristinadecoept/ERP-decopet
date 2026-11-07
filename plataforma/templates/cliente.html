@@ -24,7 +24,7 @@
 <div class="perfil-main">
 {% set uo = ordenes|rejectattr('estado','equalto','cancelada')|first %}{% if uo %}<div class="tarjeta ult-ped" onclick="location.href='/ordenes?estado=todas&abrir={{ uo.id }}'">
  <div class="ult-cab"><h3>Último pedido</h3><span class="mini">{{ uo.numero }} · {{ uo.creado_en|fecha }}</span></div>
- <div class="ult-cuerpo"><span>{{ uo.productos or '—' }}</span>{% if rol=='admin' %}<b>{{ uo.total|usd }}</b>{% endif %}</div>
+ <div class="ult-cuerpo"><span>{{ uo.productos or '—' }}</span>{% if rol=='admin' %}<div class="ult-monto"><b>{{ uo.total|usd }}</b>{% set fp = (uo.formas or uo.forma_pago_prevista or ('Cashea' if uo.canal=='cashea' else '')) %}{% if fp %}<span class="mini">{{ fp|replace(',', ' + ') }}</span>{% endif %}</div>{% endif %}</div>
  <div class="ult-est">{% if rol=='admin' %}<span class="pago {{ uo.estado_pago }}">{{ P_LABEL.get(uo.estado_pago, uo.estado_pago) }}</span>{% endif %}<span class="est {{ uo.estado }}">{{ E_LABEL.get(uo.estado, uo.estado) }}</span></div>
 </div>{% endif %}
 <div class="tarjeta"><div class="hogar-g"><div>

@@ -6412,7 +6412,8 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     dirs = con.execute("SELECT * FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id", (cid,)).fetchall()
     notas = con.execute("SELECT n.*, u.nombre autor FROM notas_cliente n LEFT JOIN usuarios u ON u.id=n.autor_id WHERE cliente_id=? ORDER BY n.id DESC", (cid,)).fetchall()
     if rol != "admin": notas = [n for n in notas if n["mostrar_logistica"]]
-    ordenes = con.execute("""SELECT o.*, (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre, ', ') FROM orden_lineas l WHERE l.orden_id=o.id) productos
+    ordenes = con.execute("""SELECT o.*, (SELECT GROUP_CONCAT(CAST(l.cantidad AS INTEGER) || '× ' || l.nombre, ', ') FROM orden_lineas l WHERE l.orden_id=o.id) productos,
+                             (SELECT GROUP_CONCAT(DISTINCT p.forma) FROM pagos p WHERE p.orden_id=o.id AND p.estado!='rechazado') formas
                              FROM ordenes o WHERE o.cliente_id=? ORDER BY o.creado_en DESC""", (cid,)).fetchall()
     validas = [o for o in ordenes if o["estado"] != "cancelada"]
     lineas = con.execute("""SELECT p.sku, p.nombre, p.id pid, p.categoria, SUM(l.cantidad) n, MAX(substr(o.creado_en,1,10)) ultima

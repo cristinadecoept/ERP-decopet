@@ -1596,3 +1596,4 @@ html.oscuro .pill-fuera span{background:rgba(225,120,46,.16);border-color:rgba(2
 .tabla:has(details[open]){overflow:visible}   /* un menú abierto en la última fila no queda cortado por la tabla */
 .cf-det-pop{position:fixed}   /* el detalle de una caja flota sobre la pantalla (controles.js lo ubica): el panel que se desliza no lo corta */
 .op-dir-t{display:block;font-weight:600;overflow-wrap:anywhere}   /* la dirección escrita en grande cuando no hay zona: se parte en varias líneas, no se monta encima */
+.ult-monto{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
