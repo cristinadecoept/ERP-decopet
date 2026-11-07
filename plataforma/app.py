@@ -688,6 +688,7 @@ async def puerta(request: Request, call_next):
 COLUMNAS = (
     ("mascotas", "fallecida", "TEXT"),   # el día que se anotó que falleció: no se felicita, no sale en mensajes; si no le queda ninguna, se pausan los repuestos
     ("ordenes", "paga_el", "TEXT"),   # el cliente dijo que paga ese día: hasta entonces no sale en "con saldo pendiente"
+    ("ordenes", "a_domicilio", "INTEGER NOT NULL DEFAULT 0"),   # envío nacional que la agencia lleva a la puerta del cliente, no a su oficina
     ("ordenes", "espera_aviso", "INTEGER NOT NULL DEFAULT 0"),   # el cliente avisa cuándo lo busca o lo recibe: no sale en el día a día
     ("abonos_produccion", "gasto_id", "INTEGER"),
     ("clientes", "origen", "TEXT"), ("clientes", "origen_nota", "TEXT"),
@@ -1605,6 +1606,7 @@ def resumen_despacho(o, con_plata=True):
     if o["fecha_prometida"]: ent += f" · {fmt_fecha(o['fecha_prometida'])}" + (f" {o['franja']}" if o["franja"] else "")
     if o["agencia"]: ent += f" · {o['agencia']}" + (f" guía {o['guia']}" if o["guia"] else "")
     if o["tipo_entrega"] == "nacional" and o["modalidad_envio"]: ent += f" · {MODALIDAD[o['modalidad_envio']].lower()}"
+    if o["tipo_entrega"] == "nacional" and o["a_domicilio"]: ent += " · A DOMICILIO (puerta del cliente)"
     L.append(f"🚚 {ent}")
     if o["tipo_entrega"] == "distribuidor": L.append(f"🏪 Retira en {o['distribuidor'] or 'distribuidor'} ({o['ciudad'] or ''})")
     elif o["tipo_entrega"] != "pickup" and o["direccion"]:
@@ -2036,6 +2038,8 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     te = f.get("tipo_entrega")
     # cada tipo de entrega solo guarda lo que le corresponde
     if te == "nacional": f["ciudad"] = f.get("ciudad_nac") or f.get("ciudad"); f["despachador"] = ""; f["distribuidor"] = ""; f["franja"] = ""
+    dom = 1 if te == "nacional" and f.get("a_domicilio") == "1" else 0
+    if dom: f["direccion"] = (f.get("direccion_dom") or "").strip() or f.get("direccion")   # a domicilio: la dirección es la de la puerta del cliente
     elif te == "distribuidor": f["ciudad"] = f.get("ciudad_dist") or f.get("ciudad"); f["despachador"] = ""; f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["franja"] = ""
     elif te == "pickup": f["despachador"] = ""; f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["distribuidor"] = ""
     else: f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["distribuidor"] = ""
@@ -2046,6 +2050,8 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     cambios = [f"{c}: '{o[c] or ''}' → '{f.get(c) or ''}'" for c in campos if (o[c] or "") != (f.get(c) or "")]
     con.execute(f"UPDATE ordenes SET {', '.join(c + '=?' for c in campos)} WHERE id=?", [f.get(c) or None for c in campos] + [oid])
     if (o["fecha_prometida"] or "") != (f.get("fecha_prometida") or ""): con.execute("UPDATE ordenes SET espera_aviso=0 WHERE id=?", (oid,))   # ya tiene fecha
+    if dom != (o["a_domicilio"] or 0):
+        con.execute("UPDATE ordenes SET a_domicilio=? WHERE id=?", (dom, oid)); cambios.append("a domicilio" if dom else "en la oficina de la agencia")
     fijar_pago_despachador(con, oid)
     if cambios: registrar(con, oid, uid_de(request), "entrega", "; ".join(cambios))
     con.commit(); return volver(oid, request)
@@ -2438,6 +2444,7 @@ async def crear_orden(request: Request, con=Depends(db)):
     if canal == "cashea" or f.get("factura") == "1": con.execute("UPDATE ordenes SET requiere_factura=1 WHERE id=?", (oid,))
     desp = f.get("despachador") or ""
     if desp == "__otro__": desp = (f.get("despachador_otro") or "").strip()
+    if f.get("tipo_entrega") == "nacional" and f.get("a_domicilio") == "1": con.execute("UPDATE ordenes SET a_domicilio=1 WHERE id=?", (oid,))
     if f.get("tipo_entrega") == "nacional" and (f.get("oficina_agencia") or "").strip():
         con.execute("UPDATE ordenes SET direccion=?, ciudad=COALESCE(NULLIF(ciudad,''), ?) WHERE id=?", (f["oficina_agencia"].strip(), f["oficina_agencia"].strip().split("·")[-1].strip(), oid))
     if (f.get("receptor_correo") or f.get("receptor_cedula")):
@@ -6915,10 +6922,11 @@ def viajes_por_llevar(con, nombre):
     packs_v = [k for k in cargar_packs(con) if k["viaje_id"] and k["saldo"] > 0] if viajes else []
     for v in viajes:
         v["paquetes"] = []
-        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
+        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, o.a_domicilio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
                                 o.receptor_cedula, NULLIF(TRIM(o.receptor_correo),'') receptor_correo,
                                 c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
             o = quien_retira(dict(o))
+            if o["a_domicilio"]: o["direccion"] = "🚪 A DOMICILIO: " + (o["direccion"] or o["ciudad"] or "falta la dirección")   # la agencia lo lleva a la puerta
             o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
             v["paquetes"].append(o)
         for k in (k for k in packs_v if k["viaje_id"] == v["id"]):   # si no dijeron otra cosa, retira el mismo de la compra por agencia

@@ -2749,6 +2749,36 @@ def _():
         con.close()
 
 
+@prueba("Envío nacional a domicilio: se marca al crear y al editar, y sale como '🚪 A DOMICILIO' con la dirección en la orden, Operaciones y el viaje a la agencia")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,correo,cedula) VALUES ('Dani Puerta','Dani','04145550001','d@x.com','V-1234567')").lastrowid
+        con.commit(); sesion_de(c, "admin")
+        def crear(**extra):
+            c.post("/ordenes/nueva", data={"cliente_id": str(cid), "canal": "whatsapp", "producto_id": str(pr), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+                   "tipo_entrega": "nacional", "agencia": "Tealca", "oficina_agencia": "Av Ravell con calle Carabobo · Barcelona", "pago_forma": [""], "pago_monto": [""], "pago_ref": [""], **extra})
+            return con.execute("SELECT * FROM ordenes WHERE cliente_id=? ORDER BY id DESC LIMIT 1", (cid,)).fetchone()
+        o = crear()
+        assert o["a_domicilio"] == 0, "lo normal es la oficina de la agencia"
+        o = crear(a_domicilio="1")
+        assert o["a_domicilio"] == 1 and o["direccion"].startswith("Av Ravell")
+        assert "🚪 A domicilio" in c.get(f"/ordenes/{o['id']}/panel").text
+        assert "🚪 A domicilio" in c.get("/operaciones?cola=todo").text
+        vid = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,monto,pedidos,usuario_id) VALUES (date('now','localtime'),'Cristina','Tealca',5,1,1)").lastrowid
+        con.execute("UPDATE ordenes SET viaje_id=? WHERE id=?", (vid, o["id"])); con.commit()
+        paq = [p for v in A.viajes_por_llevar(con, "Cristina") for p in v["paquetes"]]
+        assert any(p["direccion"] == "🚪 A DOMICILIO: Av Ravell con calle Carabobo · Barcelona" for p in paq), [p["direccion"] for p in paq]
+        # editar: se quita y vuelve a la oficina
+        c.post(f"/ordenes/{o['id']}/entrega", data={"tipo_entrega": "nacional", "agencia": "Tealca", "ciudad_nac": "Barcelona", "direccion": "Av Ravell con calle Carabobo · Barcelona"}, follow_redirects=False)
+        assert con.execute("SELECT a_domicilio FROM ordenes WHERE id=?", (o["id"],)).fetchone()[0] == 0
+        c.post(f"/ordenes/{o['id']}/entrega", data={"tipo_entrega": "nacional", "agencia": "Tealca", "ciudad_nac": "Barcelona", "a_domicilio": "1", "direccion_dom": "Calle 5, casa 12"}, follow_redirects=False)
+        r = con.execute("SELECT a_domicilio, direccion FROM ordenes WHERE id=?", (o["id"],)).fetchone()
+        assert (r[0], r[1]) == (1, "Calle 5, casa 12")
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
