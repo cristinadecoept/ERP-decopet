@@ -6457,6 +6457,12 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     elif c["porche_version"] == "PRO": etiquetas.append("Miembro PRO" + (f" · {c['porche_tamano']}" if c["porche_tamano"] else ""))
     elif c["porche_version"] == "Básico": etiquetas.append("Porche Básico" + (f" · {c['porche_tamano']}" if c["porche_tamano"] else ""))
     saldo_pack = sum(max(k["unidades"] - k["entregadas_inicio"] - k["entregadas"], 0) for k in packs)
+    # En 'Qué ha comprado', al lado del pack: cuántos repuestos le quedan de ese pack (ej. 'quedan 1 de 3')
+    quedan_pack = {}
+    for k in packs:
+        sal = k["unidades"] - k["entregadas_inicio"] - k["entregadas"]
+        if sal > 0 and k["producto_id"]:
+            q = quedan_pack.setdefault(k["producto_id"], [0, 0]); q[0] += sal; q[1] += k["unidades"]
     if saldo_pack: etiquetas.append(f"Pack activo · le quedan {saldo_pack}")
     prepagados = con.execute("SELECT COUNT(*) FROM repuestos_prepagados WHERE cliente_id=? AND entregado_en IS NULL", (cid,)).fetchone()[0]
     if prepagados: etiquetas.append(f"{prepagados} repuesto{'s' if prepagados > 1 else ''} pagado{'s' if prepagados > 1 else ''} por entregar")
@@ -6525,7 +6531,7 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
                         WHERE k.cliente_id=? ORDER BY k.id DESC LIMIT 12""", (SALDO_FAVOR, cid)).fetchall(),
                   cajas=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 ORDER BY orden").fetchall(), c=c, perros=perros, dirs=dirs, notas=notas, ordenes=ordenes, comprado=comprado, catalogo=catalogo,
                   refirio=refirio, lo_trajo=lo_trajo,
-                  packs=packs, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
+                  packs=packs, quedan_pack=quedan_pack, entregas=entregas, segs=segs, fotos=fotos, total=total, n_ordenes=n, primera=primera, ultima=ultima, dias_sin=dias_sin,
                   etiquetas=etiquetas, ritmo=ritmo, confianza=confianza, ult_rep=ult_rep, proximo=proximo, porche=porche, nums=nums, saldo_pack=saldo_pack, n_prepagados=prepagados,
                   oportunidades=oportunidades_cliente(lineas, [m for m in perros if not m["fallecida"]], ya_tiene_porche=(c["porche_version"] in ("PRO", "Básico")), tiene_basico=(c["porche_version"] == "Básico")), formas=formas, canales=canales, entregas_tipo=entregas_tipo,
                   ENTREGA=ENTREGA, E_LABEL=E_LABEL, P_LABEL=P_LABEL, RESULTADOS=RESULTADOS)

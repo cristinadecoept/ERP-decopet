@@ -2895,6 +2895,23 @@ def _():
         con.close()
 
 
+@prueba("Ficha del cliente · Qué ha comprado: el pack activo dice cuántos repuestos le quedan ('quedan 1 de 3'); el pack completo no")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pk = con.execute("SELECT id FROM productos WHERE nombre LIKE 'Pack 3%' AND activo=1 AND tipo='producto' LIMIT 1").fetchone()["id"]
+        def cliente(tel, inicio):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,?)", ("Pack " + tel, "Pack", tel)).lastrowid
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',10,10)", ("#P" + tel[-3:], cid)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio) VALUES (?,?,'x',1,10)", (oid, pk))
+            con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio) VALUES (?,?,?,3,?)", (cid, oid, pk, inicio))
+            con.commit(); return cid
+        sesion_de(c, "admin")
+        assert "quedan 2 de 3" in c.get(f"/clientes/{cliente('04145553001', 1)}").text
+        assert "quedan-pack" not in c.get(f"/clientes/{cliente('04145553002', 3)}").text
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
