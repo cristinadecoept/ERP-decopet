@@ -1258,6 +1258,28 @@ def _():
         assert con.execute("SELECT total FROM ordenes WHERE id=9001").fetchone()[0] == 101, "lo pagado no se quita"
         con.close()
 
+@prueba("Pasar a pick-up: si Cristina dice quitar el delivery, baja el total (y si ya lo pagó le queda a favor); si dice dejarlo, sigue debiendo")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (9011,'Keymerid','Keymerid')")
+        for oid in (9011, 9012, 9013):
+            con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega,despachador,creado_en) VALUES (?,?,9011,'pendiente','abonada',100,5,105,'delivery','Cristina','2026-11-07 10:00')", (oid, f"#{oid}"))
+            con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,fecha,estado) VALUES (?,'Zelle',100,100,'USD','2026-11-07','confirmado')", (oid,))
+        con.execute("UPDATE pagos SET monto_usd=105, monto_real=105 WHERE orden_id=9013"); con.execute("UPDATE ordenes SET estado_pago='pagada' WHERE id=9013")
+        con.commit()
+        c.post("/ordenes/9011/entrega", data={"tipo_entrega": "pickup", "quitar_delivery": "1"})
+        o = con.execute("SELECT total, delivery, estado_pago, despachador FROM ordenes WHERE id=9011").fetchone()
+        assert (o["total"], o["delivery"], o["estado_pago"], o["despachador"]) == (100, 0, "pagada", None), dict(o)
+        c.post("/ordenes/9012/entrega", data={"tipo_entrega": "pickup", "quitar_delivery": "0"})
+        o = con.execute("SELECT total, delivery, estado_pago FROM ordenes WHERE id=9012").fetchone()
+        assert (o["total"], o["delivery"], o["estado_pago"]) == (105, 5, "abonada"), dict(o)
+        c.post("/ordenes/9013/entrega", data={"tipo_entrega": "pickup", "quitar_delivery": "1"})
+        assert con.execute("SELECT total FROM ordenes WHERE id=9013").fetchone()[0] == 100
+        assert A.credito_de(con, 9011) == 5, "lo que pagó de delivery le queda a favor"
+        con.close()
+
 @prueba("Corregir un pago mal anotado: cambia el monto y la orden queda pagada; borrar un pago la deja por pagar")
 def _():
     with erp_de_prueba() as c:

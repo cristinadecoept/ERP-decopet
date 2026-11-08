@@ -2067,6 +2067,25 @@ async def cobrar_saldo(request: Request, oid: int, con=Depends(db)):
     con.commit(); return volver(oid, request)
 
 
+def quitar_delivery(con, oid, uid):
+    """La orden pasó a pick-up y Cristina dijo que el delivery ya no va: baja el total (con el delivery que se agregó después,
+    si lo hay). Si ya lo había pagado, eso le queda a favor. Devuelve cuánto se quitó."""
+    o = con.execute("SELECT delivery FROM ordenes WHERE id=?", (oid,)).fetchone()
+    m = round((o["delivery"] if o else 0) or 0, 2)
+    if m <= 0.009: return 0
+    extra = con.execute("""SELECT COALESCE(SUM(total),0) FROM orden_lineas WHERE orden_id=? AND extra_en IS NOT NULL
+                           AND lower(trim(nombre))='delivery'""", (oid,)).fetchone()[0]
+    con.execute("DELETE FROM orden_lineas WHERE orden_id=? AND extra_en IS NOT NULL AND lower(trim(nombre))='delivery'", (oid,))
+    con.execute("UPDATE ordenes SET subtotal=MAX(COALESCE(subtotal,0)-?,0), total=MAX(COALESCE(total,0)-?,0), delivery=0 WHERE id=?", (extra, m, oid))
+    t = con.execute("SELECT total FROM ordenes WHERE id=?", (oid,)).fetchone()[0]
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+    con.execute("UPDATE ordenes SET estado_pago=? WHERE id=? AND estado_pago NOT IN ('por_cobrar','reembolsada')", (estado_pago_de(pagado, t), oid))
+    fijar_fecha_pago(con, oid)
+    sobra = sobrante_a_favor(con, oid, uid)
+    registrar(con, oid, uid, "pago", f"Pasó a pick-up: se quitó el delivery de {fmt_usd(m)}" + (f" · {fmt_usd(sobra)} le quedan a favor" if sobra else ""))
+    return m
+
+
 @app.post("/ordenes/{oid}/entrega")
 async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request); f = await request.form()
@@ -2090,6 +2109,9 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     if (o["fecha_prometida"] or "") != (f.get("fecha_prometida") or ""): con.execute("UPDATE ordenes SET espera_aviso=0 WHERE id=?", (oid,))   # ya tiene fecha
     if dom != (o["a_domicilio"] or 0):
         con.execute("UPDATE ordenes SET a_domicilio=? WHERE id=?", (dom, oid)); cambios.append("a domicilio" if dom else "en la oficina de la agencia")
+    # pasó a pick-up: el delivery se quita solo si Cristina lo pidió (si no, queda como estaba)
+    if te == "pickup" and o["tipo_entrega"] != "pickup" and f.get("quitar_delivery") == "1" and "confirmar_pago" in PERMISOS[rol]:
+        quitar_delivery(con, oid, uid_de(request))
     fijar_pago_despachador(con, oid)
     if cambios: registrar(con, oid, uid_de(request), "entrega", "; ".join(cambios))
     con.commit(); return volver(oid, request)
