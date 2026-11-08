@@ -6405,7 +6405,7 @@ def mensaje_recuperar(con, cid, dias):
     hola = f"¡Hola {quien}! 👋" if quien else "¡Hola! 👋"
     como = f"¿Cómo {'van' if len(perros) > 1 else 'va'} {de} con el porche?" if de else "¿Cómo va todo con el porche?"
     if dias and dias > 60:
-        return f"{hola} Tienes mucho tiempo sin cambiar el repuesto. Si lo pides hoy, tienes 15% de descuento 🎁💚"
+        return f"{hola} Tienes mucho tiempo sin cambiar el repuesto{' de ' + de if de else ''}. Si lo pides hoy, tienes 15% de descuento 🎁💚"
     return f"{hola} {como} Ya toca repuesto 🌱 ¿Te lo preparamos? 💚"
 
 
