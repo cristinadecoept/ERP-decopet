@@ -19,12 +19,12 @@
 {% if (por_llevar or viajes) and 'coordinar' in puede %}
 {% set v_url = '/operaciones?cola=' ~ cola ~ '&dia=' ~ dia ~ qs %}
 <details class="viajes" {{ 'open' if tipo=='nacional' }}>
- <summary>Llevar a la agencia{% if por_llevar %} · {{ por_llevar|length }} pedido{{ 's' if por_llevar|length!=1 }} esperando{% endif %}{% set sin_llevar = viajes|rejectattr('llevado_en')|list %}{% if sin_llevar %} · {{ sin_llevar|length }} viaje{{ 's' if sin_llevar|length!=1 }} por llevar{% endif %}</summary>
+ <summary>Llevar a la agencia{% if por_llevar %} · {{ por_llevar|length }} orden{{ 'es' if por_llevar|length!=1 }} esperando{% endif %}{% set sin_llevar = viajes|rejectattr('llevado_en')|list %}{% if sin_llevar %} · {{ sin_llevar|length }} viaje{{ 's' if sin_llevar|length!=1 }} por llevar{% endif %}</summary>
  <div class="viajes-cuerpo">
  {% for ag, ped in por_agencia.items() %}
   <form method="post" action="/viajes/crear" class="viaje-f">
    <input type="hidden" name="volver" value="{{ v_url }}">
-   <div class="viaje-cab"><b>{{ ag or 'Sin agencia asignada' }}</b><span class="mini">{{ ped|length }} pedido{{ 's' if ped|length!=1 }}{% if ag and 'ver_dinero' in puede %} · {% if ag in oficinas_ag %}{% for nom, t in oficinas_ag[ag].items() %}{{ nom }} {{ t|usd }}{{ ' · ' if not loop.last }}{% endfor %}{% else %}el viaje son {{ tarifas_ag.get(ag, 5)|usd }}{% endif %}{% endif %}</span></div>
+   <div class="viaje-cab"><b>{{ ag or 'Sin agencia asignada' }}</b><span class="mini">{{ ped|length }} orden{{ 'es' if ped|length!=1 }}{% if ag and 'ver_dinero' in puede %} · {% if ag in oficinas_ag %}{% for nom, t in oficinas_ag[ag].items() %}{{ nom }} {{ t|usd }}{{ ' · ' if not loop.last }}{% endfor %}{% else %}el viaje son {{ tarifas_ag.get(ag, 5)|usd }}{% endif %}{% endif %}</span></div>
    <div class="viaje-lista">{% for o in ped %}<label class="viaje-p"><input type="checkbox" {% if o.pack_id %}name="pack_id" value="{{ o.pack_id }}"{% else %}name="orden_id" value="{{ o.id }}"{% endif %} checked><span><b>{{ o.cliente }}</b> <span class="ln-num">{{ o.numero }}</span>{% if o.pack_id %} <span class="pack-tag"><span aria-hidden="true">📦</span>{{ o.pack_pos }}</span>{% endif %}{% if o.ciudad %} <span class="mini">{{ o.ciudad }}</span>{% endif %} <span class="mini">· {{ o.fecha|dia }}</span></span></label>{% endfor %}</div>
    <div class="viaje-pie">
     <div><label>Quién los lleva</label><select name="despachador" required><option value="" selected disabled>Elegir…</option>{% for d in DESPACHADORES %}<option>{{ d }}</option>{% endfor %}</select></div>
@@ -36,9 +36,9 @@
    </div>
   </form>
  {% endfor %}
- {% if not por_llevar %}<div class="vacio">No hay pedidos de envío nacional esperando que alguien los lleve.</div>{% endif %}
+ {% if not por_llevar %}<div class="vacio">No hay órdenes de envío nacional esperando que alguien los lleve.</div>{% endif %}
  {% if viajes and 'ver_dinero' in puede %}
- <div style="overflow-x:auto"><table data-cols="Fecha:12|Quién:15|Agencia:13|Pedidos:11|Le pagas:12|:37" class="lineas viaje-tabla"><tr><th>Fecha</th><th>Quién</th><th>Agencia</th><th class="num">Pedidos</th><th class="num">Le pagas</th><th></th></tr>
+ <div style="overflow-x:auto"><table data-cols="Fecha:12|Quién:15|Agencia:13|Órdenes:11|Le pagas:12|:37" class="lineas viaje-tabla"><tr><th>Fecha</th><th>Quién</th><th>Agencia</th><th class="num">Órdenes</th><th class="num">Le pagas</th><th></th></tr>
  {% for t in viajes %}<tr><td class="mono">{{ t.fecha|dia }}</td><td>{{ t.despachador }}</td><td>{{ t.agencia or '—' }}{% if t.oficina %} <span class="mini">{{ t.oficina }}</span>{% endif %}</td><td class="num">{{ t.n_ordenes }}</td><td class="num">{{ t.monto|usd }}</td><td class="num"><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center">{% if not t.llevado_en %}<span class="est pendiente">Por llevar</span> <form method="post" action="/viajes/{{ t.id }}/llevado" style="display:inline"><input type="hidden" name="volver" value="{{ v_url }}"><button class="btn chico">Ya los llevó</button></form>{% else %}<span class="est entregada">Llevado</span>{% endif %} <form method="post" action="/viajes/{{ t.id }}/borrar" style="display:inline" onsubmit="return confirm('¿Deshacer este viaje?')"><input type="hidden" name="volver" value="{{ v_url }}"><button class="btn sec chico">Deshacer</button></form></div></td></tr>{% endfor %}</table></div>
  {% endif %}
  </div>

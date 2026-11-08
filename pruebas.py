@@ -2566,7 +2566,7 @@ def _():
         pr = con.execute("SELECT id, nombre, precio FROM productos WHERE sku NOT LIKE 'PACK%' AND COALESCE(tipo,'producto')!='opcion' LIMIT 1").fetchone()
         con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,?,0,?)", (otra, pr["id"], pr["nombre"], pr["precio"], pr["precio"]))
         con.commit(); sesion_de(c, "admin")
-        por_llevar = lambda: int((re.search(r"(\d+) pedidos? por llevar a la agencia", c.get("/").text) or [0, 0])[1])
+        por_llevar = lambda: int((re.search(r"(\d+) (?:orden|órdenes) por llevar a la agencia", c.get("/").text) or [0, 0])[1])
         antes = por_llevar()
         c.post(f"/packs/{pid}/programar", data={"fecha": hoy, "tipo_entrega": "nacional", "retiro": "1", "agencia": "Tealca", "destino": "Tealca Mérida Norte"}, follow_redirects=False)
         assert A.packs_por_llevar(con)[0]["pack_id"] == pid

@@ -11,9 +11,9 @@
 </div>
 <div class="tarjeta stats-bar">
  {% if rol=='admin' %}<div><span>Gastado</span><b>{{ nums.total|usd }}</b></div>{% endif %}
- <div><span>Pedidos</span><b>{{ nums.n }}</b></div>
+ <div><span>Órdenes</span><b>{{ nums.n }}</b></div>
  {% if rol=='admin' %}<div><span>Ticket promedio</span><b>{{ nums.ticket|usd }}</b></div>{% endif %}
- <div class="{{ 'ritmo-mal' if atrasado }}"><span>Último pedido</span><b>{% if nums.dias_sin is not none %}{{ 'hoy' if nums.dias_sin==0 else 'hace ' ~ nums.dias_sin ~ ' d' }}{% else %}—{% endif %}</b>{% if atrasado %}{% if recuperar_wa %}<a class="recuperar" href="{{ recuperar_wa }}" target="_blank" rel="noreferrer">Recuperar ↗</a>{% else %}<em class="recuperar">Recuperar</em>{% endif %}{% endif %}</div>
+ <div class="{{ 'ritmo-mal' if atrasado }}"><span>Última orden</span><b>{% if nums.dias_sin is not none %}{{ 'hoy' if nums.dias_sin==0 else 'hace ' ~ nums.dias_sin ~ ' d' }}{% else %}—{% endif %}</b>{% if atrasado %}{% if recuperar_wa %}<a class="recuperar" href="{{ recuperar_wa }}" target="_blank" rel="noreferrer">Recuperar ↗</a>{% else %}<em class="recuperar">Recuperar</em>{% endif %}{% endif %}</div>
  {% set cada = rep_cada if (porche or c.porche_version in ('PRO','Básico')) else nums.cada %}<div class="{{ 'ritmo-' ~ ritmo_rep if ritmo_rep }}"><span>Compra cada</span><b>{% if cada %}{{ cada }} d{% if ritmo_rep=='bien' %} 👍{% endif %}{% else %}—{% endif %}</b></div>
  {% if porche %}<div><span>Próximo repuesto</span><b>{% if perros and not perros|rejectattr('fallecida')|list %}pausado{% elif proximo %}{{ proximo|dia }}{% else %}—{% endif %}</b></div>{% endif %}
  {% if rol=='admin' and credito %}<div class="acento"><span>Saldo a favor</span><b>{{ credito|usd }}</b></div>{% endif %}
@@ -23,7 +23,7 @@
 <div class="perfil-grid">
 <div class="perfil-main">
 {% set uo = ordenes|rejectattr('estado','equalto','cancelada')|first %}{% if uo %}<div class="tarjeta ult-ped" onclick="location.href='/ordenes?estado=todas&abrir={{ uo.id }}'">
- <div class="ult-cab"><h3>Último pedido</h3><span class="mini">{{ uo.numero }} · {{ uo.creado_en|fecha }}</span></div>
+ <div class="ult-cab"><h3>Última orden</h3><span class="mini">{{ uo.numero }} · {{ uo.creado_en|fecha }}</span></div>
  <div class="ult-cuerpo"><span>{{ uo.productos or '—' }}</span>{% if rol=='admin' %}<div class="ult-monto"><b>{{ uo.total|usd }}</b>{% set fp = (uo.formas or uo.forma_pago_prevista or ('Cashea' if uo.canal=='cashea' else '')) %}{% if fp %}<span class="mini">{{ fp|replace(',', ' + ') }}</span>{% endif %}</div>{% endif %}</div>
  <div class="ult-est">{% if uo.canal %}<span class="canal-tag {{ uo.canal }}">{{ CANAL.get(uo.canal, uo.canal) }}</span>{% endif %}{% if rol=='admin' %}<span class="pago {{ uo.estado_pago }}">{{ P_LABEL.get(uo.estado_pago, uo.estado_pago) }}</span>{% endif %}<span class="est {{ uo.estado }}">{{ E_LABEL.get(uo.estado, uo.estado) }}</span></div>
 </div>{% endif %}
@@ -73,16 +73,16 @@
 </div>{% endif %}
 {% if nums.n %}<div class="tab-p" data-p="compra" hidden>
 <div class="num-graf">
- <div><h3>Últimos 12 meses{% if rol!='admin' %} (pedidos){% endif %}</h3><svg viewBox="0 0 240 70" class="mini-barras">{% for m,v in nums.meses %}{% set h = (v/nums.max_mes*48) if nums.max_mes else 0 %}<rect x="{{ loop.index0*20+2 }}" y="{{ 52-h }}" width="16" height="{{ h }}" rx="3" fill="{{ 'var(--verde)' if v else 'var(--linea)' }}"{% if not v %} height="3" y="49"{% endif %}/><text x="{{ loop.index0*20+10 }}" y="65" text-anchor="middle">{{ m }}</text>{% endfor %}</svg></div>
+ <div><h3>Últimos 12 meses{% if rol!='admin' %} (órdenes){% endif %}</h3><svg viewBox="0 0 240 70" class="mini-barras">{% for m,v in nums.meses %}{% set h = (v/nums.max_mes*48) if nums.max_mes else 0 %}<rect x="{{ loop.index0*20+2 }}" y="{{ 52-h }}" width="16" height="{{ h }}" rx="3" fill="{{ 'var(--verde)' if v else 'var(--linea)' }}"{% if not v %} height="3" y="49"{% endif %}/><text x="{{ loop.index0*20+10 }}" y="65" text-anchor="middle">{{ m }}</text>{% endfor %}</svg></div>
  <div><h3>Por qué canal compra</h3>{% set tot = canales|map(attribute='n')|sum %}{% for r in canales %}<div class="barra-h"><span>{{ CANAL.get(r.canal, r.canal or '—') }}</span><i><b style="width:{{ (r.n/tot*100)|round }}%"></b></i><em>{{ r.n }}</em></div>{% endfor %}</div>
  {% if rol=='admin' %}<div><h3>Cómo paga</h3>{% set totp = formas|map(attribute='n')|sum %}{% for r in formas %}<div class="barra-h"><span>{{ r.forma }}</span><i><b style="width:{{ (r.n/totp*100)|round }}%"></b></i><em>{{ r.n }}</em></div>{% else %}<p class="mini">Sin pagos registrados.</p>{% endfor %}</div>{% endif %}
  <div><h3>Cómo recibe</h3>{% set tote = entregas_tipo|map(attribute='n')|sum %}{% for r in entregas_tipo %}<div class="barra-h"><span>{{ ENTREGA.get(r.tipo_entrega, r.tipo_entrega) }}</span><i><b style="width:{{ (r.n/tote*100)|round }}%"></b></i><em>{{ r.n }}</em></div>{% endfor %}
 </div>
-</div> <div class="mini" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">{% if nums.favorito %}Lo que más compra: <b>{{ nums.favorito.nombre }}</b> ({{ nums.favorito.n|int }} veces){% endif %}{% if nums.canceladas %} · {{ nums.canceladas }} pedido{{ 's' if nums.canceladas>1 }} cancelado{{ 's' if nums.canceladas>1 }}{% endif %}{% if nums.problemas %} · <a href="#incidencias" onclick="event.preventDefault();verIncid()" style="color:#b3321b">{{ nums.problemas }} incidencia{{ 's' if nums.problemas>1 }}</a>{% endif %}{% if rol=='admin' and nums.rechazados %} · {{ nums.rechazados }} pago{{ 's' if nums.rechazados>1 }} rechazado{{ 's' if nums.rechazados>1 }}{% endif %}</div>
+</div> <div class="mini" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">{% if nums.favorito %}Lo que más compra: <b>{{ nums.favorito.nombre }}</b> ({{ nums.favorito.n|int }} veces){% endif %}{% if nums.canceladas %} · {{ nums.canceladas }} orden{{ 'es' if nums.canceladas>1 }} cancelado{{ 's' if nums.canceladas>1 }}{% endif %}{% if nums.problemas %} · <a href="#incidencias" onclick="event.preventDefault();verIncid()" style="color:#b3321b">{{ nums.problemas }} incidencia{{ 's' if nums.problemas>1 }}</a>{% endif %}{% if rol=='admin' and nums.rechazados %} · {{ nums.rechazados }} pago{{ 's' if nums.rechazados>1 }} rechazado{{ 's' if nums.rechazados>1 }}{% endif %}</div>
 </div>{% endif %}
 {% if incid %}<div class="tab-p" data-p="incid" hidden>
 
-<table data-cols="Fecha:12|Pedido:10|Qué pasó:46|Avisó:16|Estado:16" class="lineas"><tr><th>Fecha</th><th>Pedido</th><th>Qué pasó</th><th>Avisó</th><th>Estado</th></tr>
+<table data-cols="Fecha:12|Orden:10|Qué pasó:46|Avisó:16|Estado:16" class="lineas"><tr><th>Fecha</th><th>Orden</th><th>Qué pasó</th><th>Avisó</th><th>Estado</th></tr>
 {% for i in incid %}<tr><td class="mono" style="width:100px">{{ i.fecha|dia }}</td><td class="mono"><a href="/ordenes?estado=todas&abrir={{ i.orden_id }}">{{ i.numero }}</a></td>
 <td><b>{{ i.tipo or '' }}</b>{% if i.descripcion %}<div class="mini">“{{ i.descripcion }}”</div>{% endif %}{% if i.resolucion %}<div class="mini">Se resolvió: {{ i.resolucion }}</div>{% endif %}</td>
 <td class="mini">{{ i.responsable or '—' }}</td><td>{% if i.estado=='abierta' %}<span class="est no_entregado">Abierta</span>{% else %}<span class="est entregada">Resuelta</span>{% endif %}</td></tr>{% endfor %}</table>
