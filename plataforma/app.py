@@ -6316,7 +6316,10 @@ def hogar_de(con, cid, hoy):
     compras = con.execute("""SELECT l.nombre, CAST(SUM(l.cantidad) AS INTEGER) n FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
                              JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=? AND o.estado!='cancelada' AND p.tipo='producto'
                              GROUP BY l.nombre ORDER BY MAX(o.creado_en) DESC""", (cid,)).fetchall()
-    porche = " ".join(x for x in ((c["porche_version"] if c else None), (c["porche_tamano"] if c else None)) if x)
+    # solo PRO o Básico cuentan como porche; cualquier otra cosa (vacío, "no" que vino de Airtable) se muestra igual: no tiene
+    porche = ""
+    if c and c["porche_version"] in ("PRO", "Básico"):
+        porche = c["porche_version"] + (f" · {c['porche_tamano']}" if c["porche_tamano"] else "")
     return {"perros": perros, "porche": porche, "compras": [dict(r) for r in compras]}
 
 
