@@ -1605,3 +1605,6 @@ html.oscuro .pill-fuera span{background:rgba(225,120,46,.16);border-color:rgba(2
 html.oscuro .stats-bar .ritmo-mal{background:#3a2420}html.oscuro .stats-bar .ritmo-mal b{color:#f08a6f}html.oscuro .stats-bar .ritmo-bien b{color:#7fc9a4}
 .ic-mini{width:17px;height:17px;vertical-align:-3px;margin-right:6px;color:var(--verde-osc);flex:none}html.oscuro .ic-mini{color:#7fc9a4}
 .ult-est{flex-wrap:wrap;align-items:center}.ult-est .canal-tag{border-radius:99px;padding:3px 10px;line-height:1.3}
+
+/* Canal Cashea: el logo en vez del texto (el texto queda para lectores de pantalla y Excel) */
+.canal-tag.cashea,html.oscuro .canal-tag.cashea{font-size:0;color:transparent;width:72px;height:22px;vertical-align:middle;background:#fff url(/static/logo-cashea.png) center/56px auto no-repeat;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
