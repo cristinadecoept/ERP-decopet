@@ -2912,6 +2912,19 @@ def _():
         con.close()
 
 
+@prueba("Ficha del cliente · Cómo paga: 'Pago Móvil' y 'Pago Móvil VES' salen juntos en una sola barra")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Paga X','Paga','04145554001')").lastrowid
+        for i, f in enumerate(["Pago Móvil", "Pago Móvil", "Pago Móvil VES"]):
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',10,10)", (f"#M{i}", cid)).lastrowid
+            con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,fecha) VALUES (?,?,10,date('now'))", (oid, f))
+        con.commit(); con.close(); sesion_de(c, "admin")
+        h = c.get(f"/clientes/{cid}").text.split("Cómo paga")[1].split("</div></div>")[0]
+        assert "Pago Móvil VES" not in h and h.count("Pago Móvil") == 1 and "<em>3</em>" in h
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

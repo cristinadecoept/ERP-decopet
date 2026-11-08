@@ -6468,7 +6468,9 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     if prepagados: etiquetas.append(f"{prepagados} repuesto{'s' if prepagados > 1 else ''} pagado{'s' if prepagados > 1 else ''} por entregar")
     if dias_sin is not None and dias_sin > 90: etiquetas.append("Inactivo")
     if not validas: etiquetas.append("Sin compras")
-    formas = con.execute("SELECT forma, COUNT(*) n FROM pagos p JOIN ordenes o ON o.id=p.orden_id WHERE o.cliente_id=? AND o.estado!='cancelada' GROUP BY forma ORDER BY n DESC", (cid,)).fetchall()
+    # 'Pago Móvil' (como lo anota el despachador) y 'Pago Móvil VES' (la caja) son lo mismo: una sola barra
+    formas = con.execute("""SELECT CASE WHEN p.forma='Pago Móvil VES' THEN 'Pago Móvil' ELSE p.forma END forma, COUNT(*) n
+                            FROM pagos p JOIN ordenes o ON o.id=p.orden_id WHERE o.cliente_id=? AND o.estado!='cancelada' GROUP BY 1 ORDER BY n DESC""", (cid,)).fetchall()
     canales = con.execute("SELECT canal, COUNT(*) n FROM ordenes WHERE cliente_id=? AND estado!='cancelada' GROUP BY canal ORDER BY n DESC", (cid,)).fetchall()
     entregas_tipo = con.execute("SELECT tipo_entrega, COUNT(*) n FROM ordenes WHERE cliente_id=? AND estado!='cancelada' AND tipo_entrega IS NOT NULL GROUP BY 1 ORDER BY n DESC", (cid,)).fetchall()
     # números del cliente
