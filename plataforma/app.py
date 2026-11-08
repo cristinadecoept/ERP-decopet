@@ -600,10 +600,11 @@ def db():
 PUERTAS = {
     "taller":      (("/taller", "/inventario", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/taller"),
     "despachador": (("/mis-entregas", "/tarifas", "/ordenes/", "/viajes/", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/mis-entregas"),
-    # Logística coordina y entrega: ve órdenes, clientes y despachos, nunca plata ni catálogo con precios.
+    # Logística coordina y entrega: ve órdenes, clientes y despachos, nunca plata. Del catálogo ve el precio de venta
+    # (el mismo que ve al crear una orden), sin costos ni márgenes y sin poder cambiar nada (Cristina, 8 nov).
     # Lista cerrada: una página nueva no la ve hasta que se agregue aquí a propósito.
     "logistica":   (("/inicio", "/operaciones", "/ordenes", "/clientes", "/mascotas", "/inventario", "/despachadores",
-                     "/packs", "/prepagados", "/seguimientos", "/miembros", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/operaciones"),
+                     "/packs", "/prepagados", "/seguimientos", "/miembros", "/productos", "/static", "/fotos", "/ver-como", "/favicon", "/salir", "/entrar"), "/operaciones"),
 }
 TALLER_PERMITIDO = PUERTAS["taller"][0]
 

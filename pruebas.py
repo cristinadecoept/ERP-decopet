@@ -623,10 +623,10 @@ def _():
         assert f'"{t}"' in fuente or t == "ordenes", f"eliminar_cliente no borra {t}"
 
 
-@prueba("Logística tiene lista cerrada: no llega a plata, catálogo, exportes ni al manual técnico")
+@prueba("Logística tiene lista cerrada: no llega a plata, exportes ni al manual técnico")
 def _():
     permitido, _casa = A.PUERTAS["logistica"]
-    for ruta in ("/cashflow", "/finanzas", "/productos", "/historial", "/historial/exportar", "/configuracion", "/produccion", "/equipo", "/revision", "/tarifas", "/docs", "/openapi.json"):
+    for ruta in ("/cashflow", "/finanzas", "/historial", "/historial/exportar", "/configuracion", "/produccion", "/equipo", "/revision", "/tarifas", "/docs", "/openapi.json"):
         assert not ruta.startswith(permitido), f"Logística puede abrir {ruta}"
     assert A.app.openapi_url is None and A.app.docs_url is None, "el manual técnico está publicado"
     o = {"numero": "#1", "cliente": "Ana", "telefono": "", "lineas": [], "tipo_entrega": "delivery", "fecha_prometida": None, "franja": None,
@@ -1236,6 +1236,21 @@ def _():
         assert css.headers["cache-control"] == "private, no-cache", css.headers["cache-control"]
         assert c.get("/static/estilo.css", headers={"if-none-match": css.headers["etag"]}).status_code == 304
         assert c.get("/inicio").headers["cache-control"] == "no-store"
+
+
+@prueba("Logística ve el catálogo con precio de venta, sin costos ni márgenes, y no puede cambiar nada")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "logistica")
+        r = c.get("/productos")
+        assert r.status_code == 200 and "Catálogo" in r.text, r.status_code
+        assert 'name="costo_' not in r.text and "cat-margen dinero" not in r.text and ">Costo<" not in r.text and "Guardar catálogo" not in r.text, "logística ve costos o puede guardar"
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT id, nombre, precio FROM productos WHERE tipo='producto' AND precio>0 ORDER BY id LIMIT 1").fetchone()
+        c.post("/productos/guardar", data={f"nombre_{p['id']}": "Otro nombre", f"precio_{p['id']}": "1"})
+        q = con.execute("SELECT nombre, precio FROM productos WHERE id=?", (p["id"],)).fetchone()
+        assert (q["nombre"], q["precio"]) == (p["nombre"], p["precio"]), "logística cambió el catálogo"
+        con.close()
 
 
 @prueba("Quitar un delivery agregado que no se pagó: baja el total y la orden queda pagada; uno pagado no se quita")
