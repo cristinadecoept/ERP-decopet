@@ -6121,6 +6121,13 @@ def mascotas_lista(request: Request, q: str = "", ver: str = "mascotas", raza: s
 # lo que le puede faltar a la ficha de un cliente, en el orden en que se muestra
 FALTA_CLIENTE = {"telefono": "teléfono", "correo": "correo", "ciudad": "ciudad", "estado": "estado", "direccion": "dirección", "mascota": "mascota", "raza": "raza del perro"}
 
+def envio_nacional(r):
+    """Cliente de envío nacional: se le manda por agencia, así que nunca va a tener dirección ni GPS en su ficha
+    (Cristina, 7 nov 2026). Lo dice su último pedido; si no tiene pedidos, que su estado no sea Caracas ni Miranda."""
+    if r.get("ult_entrega"): return r["ult_entrega"] == "nacional"
+    return bool(r.get("estado")) and r["estado"] not in ("Distrito Capital", "Miranda")
+
+
 def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
     base = """SELECT c.*, (SELECT direccion FROM direcciones d WHERE d.cliente_id=c.id AND principal=1) dir,
              (SELECT COUNT(*) FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada') n_ordenes,
@@ -6134,6 +6141,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
              (SELECT COUNT(*) FROM notas_cliente nc WHERE nc.cliente_id=c.id) n_notas,
              (SELECT GROUP_CONCAT(nc.texto, ' · ') FROM notas_cliente nc WHERE nc.cliente_id=c.id) notas_txt,
              (SELECT canal FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada' GROUP BY canal ORDER BY COUNT(*) DESC LIMIT 1) canal_top,
+             (SELECT tipo_entrega FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada' AND o.tipo_entrega IS NOT NULL ORDER BY o.creado_en DESC LIMIT 1) ult_entrega,
              EXISTS(SELECT 1 FROM ordenes o JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=c.id AND o.estado!='cancelada' AND p.sku LIKE 'PRO-%') pro,
              COALESCE((SELECT GROUP_CONCAT(DISTINCT CASE p.sku WHEN 'PRO-M' THEN 'PRO Mediano' WHEN 'PRO-G' THEN 'PRO Grande' WHEN 'BAS-M' THEN 'Básico Mediano' WHEN 'BAS-G' THEN 'Básico Grande' END)
               FROM ordenes o JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=c.id AND o.estado!='cancelada' AND (p.sku LIKE 'PRO-%' OR p.sku LIKE 'BAS-%')),
@@ -6149,7 +6157,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
         r["basico"] = (r["porches"] or "").startswith("Básico") or r["porche_version"] == "Básico"
         r["pendientes"] = ([k for k in ("telefono", "correo", "ciudad") if (r[k] or "Pendiente") == "Pendiente"]
                            + (["estado"] if not r["estado"] else [])
-                           + (["direccion"] if not r["n_dir"] else []) + (["mascota"] if not r["n_perros"] else [])
+                           + (["direccion"] if not r["n_dir"] and not envio_nacional(r) else []) + (["mascota"] if not r["n_perros"] else [])
                            + (["raza"] if r["perro_pend"] else []))
     creditos = {r[0]: round(r[1], 2) for r in con.execute("SELECT cliente_id, SUM(monto) FROM credito_cliente GROUP BY cliente_id HAVING SUM(monto) > 0.009")}
     for r in rows: r["credito"] = creditos.get(r["id"], 0)

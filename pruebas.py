@@ -2938,6 +2938,22 @@ def _():
         assert "Repuesto Contactado" in h and "Cumple Felicitado" not in h
 
 
+@prueba("Clientes · Datos pendientes: a los de envío nacional no se les pide dirección (se les manda por agencia); a los de Caracas sí")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        def cli(nombre, tel, estado, te):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,correo,ciudad,estado) VALUES (?,?,?,'x@x.com','X',?)", (nombre, nombre, tel, estado)).lastrowid
+            con.execute("INSERT INTO mascotas (cliente_id,nombre,raza) VALUES (?,'Toby','Poodle')", (cid,))
+            if te: con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,tipo_entrega,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',?,10,10)", ("#N" + tel[-3:], cid, te))
+        cli("Nacional Por Agencia", "04145556001", "Zulia", "nacional")
+        cli("Caracas Sin Direccion", "04145556002", "Distrito Capital", "delivery")
+        cli("Zulia Sin Pedidos", "04145556003", "Zulia", None)
+        con.commit(); con.close(); sesion_de(c, "admin")
+        h = c.get("/clientes?ver=pendientes&falta=direccion").text
+        assert "Caracas Sin Direccion" in h and "Nacional Por Agencia" not in h and "Zulia Sin Pedidos" not in h
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
