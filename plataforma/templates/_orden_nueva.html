@@ -44,7 +44,7 @@
 <div class="nota-log" id="nada-hoy" hidden style="margin-top:0">Hoy no se entrega nada. La entrega es opcional: si la llenas (delivery, despachador), queda guardada para cuando el cliente active su repuesto.</div>
 <div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="ELIGIO='{{ k }}';setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
 <div id="ent-detalle" hidden>
-<div id="pack-dv" hidden style="margin-top:10px"><label>¿Cuántos deliveries del pack paga hoy?</label><div class="mini" style="margin:-2px 0 6px">Los que no pague hoy los paga al recibir cada entrega.</div><select id="pack-dv-sel" onchange="packDelivSet()"></select><div class="mini" id="pack-dv-txt"></div></div>
+<div id="pack-dv" hidden style="margin-top:10px"><label>¿Cuántos deliveries del pack paga ahora?</label><div class="mini" style="margin:-2px 0 6px">Los que no pague ahora los paga al recibir cada entrega.</div><select id="pack-dv-sel" onchange="packDelivSet()"></select><div class="mini" id="pack-dv-txt"></div></div>
 <div class="g2" id="desp-w" hidden style="margin-top:10px"><div><label>Despachador</label><select name="despachador" id="desp-sel" onchange="document.getElementById('desp-otro').hidden=this.value!=='__otro__'"><option value="">— por asignar —</option>{% for d in DESPACHADORES %}<option>{{ d }}</option>{% endfor %}<option value="__otro__">Otro…</option></select></div><div id="desp-otro" hidden><label>Nombre</label><input name="despachador_otro" placeholder="nombre"></div></div>
 <div id="ag-w" hidden style="margin-top:10px"><label>Agencia</label><select name="agencia" style="max-width:260px"><option value="">— elegir —</option>{% for a in AGENCIAS %}<option>{{ a }}</option>{% endfor %}</select></div>
 
@@ -104,7 +104,7 @@ function packDeliv(){const w=document.getElementById('pack-dv');if(!w)return;con
  const ini=d?+(d.querySelector('[name=pack_inicio]').value||0):0,on=!!d&&(te==='delivery'||te==='delivery_fuera')&&ini>=1;w.hidden=!on;
  if(!on){document.querySelectorAll('[name=pack_deliv]').forEach(h=>h.value='0');return;}
  const U=+d.querySelector('[name=pack_deliv]').dataset.u,max=1+Math.max(U-ini,0),sel=document.getElementById('pack-dv-sel'),prev=+sel.value||1;let o='';
- for(let n=1;n<=max;n++)o+=`<option value="${n}" ${n===Math.min(prev,max)?'selected':''}>${n===1?'Solo el de hoy':(n===max?'Todos: hoy y las '+(n-1)+' entregas que le quedan':'El de hoy y '+(n-1)+(n===2?' entrega más':' entregas más'))}</option>`;
+ for(let n=1;n<=max;n++)o+=`<option value="${n}" ${n===Math.min(prev,max)?'selected':''}>${n===1?'Solo el de esta entrega':(n===max?'Todos: esta entrega y las '+(n-1)+' que le quedan':'Esta entrega y '+(n-1)+' más')}</option>`;
  sel.innerHTML=o;packDelivSet();}
 function packDelivSet(){const d=packLinea(),sel=document.getElementById('pack-dv-sel');if(!d)return;d.querySelector('[name=pack_deliv]').value=sel.value;calc();}
 function dpackMonto(){const d=packLinea(),w=document.getElementById('pack-dv');if(!d||!w||w.hidden)return [0,0];const k=Math.max((+d.querySelector('[name=pack_deliv]').value||1)-1,0),c=Math.max(1,+d.querySelector('[name=cantidad]').value||1),fee=+document.getElementById('deliv').value||0;return [k*c,k*c*fee];}
