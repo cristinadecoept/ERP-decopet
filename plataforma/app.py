@@ -5706,7 +5706,7 @@ def cumples_proximos(con, ventana=30):
         fase = "hoy" if faltan == 0 else "previo"
         clave = f"cumple_{fase}:{m['mid']}:{cumple.year}"
         r = hechos.get(clave)
-        out.append(dict(cliente_id=m["id"], cliente=m["nombre"], telefono=m["telefono"], perro=m["perro"], raza=m["raza"], edad=edad, fecha=cumple.isoformat(), dias=faltan,
+        out.append(dict(cliente_id=m["id"], cliente=m["nombre"], telefono=m["telefono"], perro=m["perro"], mascota_id=m["mid"], raza=m["raza"], edad=edad, fecha=cumple.isoformat(), dias=faltan,
                         tamano="", que=(f"🎂 {m['perro']} cumple {edad} año{'s' if edad != 1 else ''}" if edad else f"🎂 Cumpleaños de {m['perro']}"), clave=clave, tipo="cumple", activo=faltan <= 2,
                         tipo_txt=("Felicitar" if faltan == 0 else ("Ofrecer regalo" if faltan <= 2 else f"en {faltan} días")),
                         hecho=bool(r), estado=(estado_resultado(r) if r else ("Pendiente" if faltan <= 2 else "Próximo")),
@@ -6312,7 +6312,7 @@ def hogar_de(con, cid, hoy):
             try:
                 f = datetime.date.fromisoformat(nac[:10]); anios = hoy.year - f.year - ((hoy.month, hoy.day) < (f.month, f.day))
             except ValueError: pass
-        perros.append({"nombre": m["nombre"], "raza": m["raza"], "anios": anios, "peso": m["peso_kg"], "notas": m["notas"]})
+        perros.append({"id": m["id"], "nombre": m["nombre"], "raza": m["raza"], "anios": anios, "peso": m["peso_kg"], "notas": m["notas"]})
     compras = con.execute("""SELECT l.nombre, CAST(SUM(l.cantidad) AS INTEGER) n FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id
                              JOIN productos p ON p.id=l.producto_id WHERE o.cliente_id=? AND o.estado!='cancelada' AND p.tipo='producto'
                              GROUP BY l.nombre ORDER BY MAX(o.creado_en) DESC""", (cid,)).fetchall()
