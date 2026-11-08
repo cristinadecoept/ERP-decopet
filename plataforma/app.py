@@ -6534,7 +6534,14 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     if porche or c["porche_version"] in ("PRO", "Básico"):
         if rep_cada: ritmo_rep = "bien" if rep_cada <= 30 else ("mal" if rep_cada > 40 else None)
         atrasado = bool(dias_rep and dias_rep > 40)   # más de 40 días sin repuesto: hay que recuperarlo
-    return render(request, "cliente.html", seccion="clientes", incid=incid, ciudades_vl=ciudades_conocidas(con), rep_cada=rep_cada, ritmo_rep=ritmo_rep, atrasado=atrasado,
+    # 'Recuperar' abre su WhatsApp con el mensaje de repuesto ya escrito (Cristina, 7 nov 2026: que el botón sirva)
+    recuperar_wa = None
+    if atrasado and c["telefono"] and c["telefono"] != "Pendiente":
+        msg = mensajes_repuesto(con, {"cliente_id": cid, "tipo": "repuesto", "tamano": c["porche_tamano"], "dias": dias_rep})[0]
+        if dias_rep > 60:   # más de 60 días sin repuesto: 15% de descuento en el próximo (Cristina, 7 nov 2026)
+            msg = msg.removesuffix(" 💚") + " Y como hace rato no te vemos, tienes 15% de descuento en tu próximo repuesto 🎁💚"
+        recuperar_wa = wa(c["telefono"]) + "?text=" + quote(msg)
+    return render(request, "cliente.html", seccion="clientes", incid=incid, ciudades_vl=ciudades_conocidas(con), rep_cada=rep_cada, ritmo_rep=ritmo_rep, atrasado=atrasado, recuperar_wa=recuperar_wa,
                   credito=credito_de(con, cid),
                   credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
                         (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=k.orden_id AND p.estado='confirmado' AND p.forma!=?) pagado

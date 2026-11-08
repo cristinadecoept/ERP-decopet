@@ -1611,3 +1611,13 @@ html.oscuro .stats-bar .ritmo-mal{background:#3a2420}html.oscuro .stats-bar .rit
 /* Nueva orden · botón de canal Cashea con su logo; en modo oscuro el botón va en blanco para que se lea el logo */
 #canal-pills .pill-logo{height:15px;width:auto;display:block}
 html.oscuro #canal-pills .no-pill[data-v="cashea"]:not(.act){background:#fff;border-color:#fff}
+/* Ficha del cliente: 'Recuperar' es un botón que abre su WhatsApp; la línea de contacto alineada; saldo a favor a la vista */
+a.recuperar{text-decoration:none;cursor:pointer}a.recuperar:hover{filter:brightness(1.08)}
+.perfil-contacto{align-items:center}.perfil-contacto>*{display:inline-flex;align-items:center;gap:4px;line-height:1.35}
+.perfil-contacto .ic-mini{width:15px;height:15px;color:var(--tinta-3,#8a8f8c)}
+.chip-saldo{display:inline-flex;align-items:center;gap:5px;background:var(--verde-tinte)!important;color:var(--verde-osc)!important;border-color:rgba(40,86,62,.35)!important;text-decoration:none;font-weight:600}
+.chip-saldo .ic-mini{width:14px;height:14px;color:inherit}
+.tab-punto{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--verde);vertical-align:middle;margin-left:3px}
+.saldo-ico{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:700;color:var(--verde-osc);background:var(--verde-tinte);border-radius:99px;padding:1px 7px;vertical-align:middle}
+.saldo-ico svg{width:12px;height:12px}
+html.oscuro .chip-saldo,html.oscuro .saldo-ico{color:#9fd8bb!important}

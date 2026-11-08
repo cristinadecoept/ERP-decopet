@@ -2869,10 +2869,12 @@ def _():
         bien = c.get(f"/clientes/{cliente('04145551001', [75, 50, 25, 3])}").text
         assert "ritmo-bien" in bien and "Recuperar" not in bien
         mal = c.get(f"/clientes/{cliente('04145551002', [200, 140, 80])}").text
-        assert "ritmo-mal" in mal and "Recuperar" in mal
+        assert "ritmo-mal" in mal and "Recuperar ↗" in mal and "https://wa.me/584145551002?text=" in mal   # el botón abre su WhatsApp con el mensaje
+        assert "15%25%20de%20descuento" in mal   # 80 días sin repuesto: el mensaje ofrece 15% en el próximo
         # buen ritmo pero hace más de 40 días que no compra: el rojo va en 'Último pedido', no en su ritmo
         atr = c.get(f"/clientes/{cliente('04145551003', [120, 100, 80, 60])}").text
         assert "ritmo-bien" in atr and atr.count("Recuperar") == 1
+        assert "15%25%20de%20descuento" not in atr   # justo 60 días: todavía sin descuento (es a partir de más de 60)
         con.close()
 
 
@@ -2974,6 +2976,19 @@ def _():
         assert oficina not in quedan and arch.get(oficina) == "Tealca · Bella Vista"
         assert {mixto, miranda, caracas} <= quedan and not ({mixto, miranda, caracas} & set(arch))
         con.close()
+
+
+@prueba("Saldo a favor a la vista: chip en la ficha del cliente y monto junto al nombre en la lista de clientes")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Con Saldo','Con','04145558001')").lastrowid
+        sin = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Sin Saldo','Sin','04145558002')").lastrowid
+        con.execute("INSERT INTO credito_cliente (cliente_id,fecha,monto,motivo) VALUES (?,date('now'),15,'prueba')", (cid,))
+        con.commit(); con.close(); sesion_de(c, "admin")
+        assert "chip-saldo" in c.get(f"/clientes/{cid}").text and "chip-saldo" not in c.get(f"/clientes/{sin}").text
+        h = c.get("/clientes?q=Saldo").text
+        assert 'title="Saldo a favor $15.00"' in h
 
 
 print()
