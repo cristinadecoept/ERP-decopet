@@ -2869,7 +2869,7 @@ def _():
         bien = c.get(f"/clientes/{cliente('04145551001', [75, 50, 25, 3])}").text
         assert "ritmo-bien" in bien and "Recuperar" not in bien
         mal = c.get(f"/clientes/{cliente('04145551002', [200, 140, 80])}").text
-        assert "ritmo-mal" in mal and "Recuperar ↗" in mal and "https://wa.me/584145551002?text=" in mal   # el botón abre su WhatsApp con el mensaje
+        assert "ritmo-mal" in mal and "Recuperar ↗" in mal and "https://api.whatsapp.com/send?phone=584145551002&amp;text=" in mal   # el botón abre su WhatsApp con el mensaje
         assert "15%25%20de%20descuento" in mal   # 80 días sin repuesto: el mensaje ofrece 15% en el próximo
         # buen ritmo pero hace más de 40 días que no compra: el rojo va en 'Último pedido', no en su ritmo
         atr = c.get(f"/clientes/{cliente('04145551003', [120, 100, 80, 60])}").text

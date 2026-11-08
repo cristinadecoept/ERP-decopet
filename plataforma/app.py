@@ -6394,6 +6394,21 @@ def mensajes_repuesto(con, s):
     return v
 
 
+def mensaje_recuperar(con, cid, dias):
+    """El mensaje corto del botón 'Recuperar' (Cristina, 7 nov 2026: el largo era mucho).
+    Con más de 60 días sin repuesto lleva un 15% de descuento en el próximo."""
+    c = con.execute("SELECT nombre, nombre_pila FROM clientes WHERE id=?", (cid,)).fetchone()
+    quien = (c["nombre_pila"] or (c["nombre"] or "").split(" ")[0]).strip() if c else ""
+    perros = [((r[0] or "").split() or [""])[0] for r in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=? AND fallecida IS NULL ORDER BY id", (cid,))]
+    perros = [p for p in perros if p]
+    de = (" y ".join([", ".join(perros[:-1]), perros[-1]]) if len(perros) > 1 else perros[0]) if perros else ""
+    hola = f"¡Hola {quien}! 👋" if quien else "¡Hola! 👋"
+    como = f"¿Cómo {'van' if len(perros) > 1 else 'va'} {de} con el porche?" if de else "¿Cómo va todo con el porche?"
+    if dias and dias > 60:
+        return f"{hola} Tienes mucho tiempo sin cambiar el repuesto. Si lo pides hoy, tienes 15% de descuento 🎁💚"
+    return f"{hola} {como} Ya toca repuesto 🌱 ¿Te lo preparamos? 💚"
+
+
 def oportunidades_de(con, cid):
     """Lo que se le puede ofrecer a este cliente (lo mismo que sale en su ficha). Para el cumpleaños de su perro."""
     c = con.execute("SELECT porche_version FROM clientes WHERE id=?", (cid,)).fetchone()
@@ -6537,10 +6552,8 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     # 'Recuperar' abre su WhatsApp con el mensaje de repuesto ya escrito (Cristina, 7 nov 2026: que el botón sirva)
     recuperar_wa = None
     if atrasado and c["telefono"] and c["telefono"] != "Pendiente":
-        msg = mensajes_repuesto(con, {"cliente_id": cid, "tipo": "repuesto", "tamano": c["porche_tamano"], "dias": dias_rep})[0]
-        if dias_rep > 60:   # más de 60 días sin repuesto: 15% de descuento en el próximo (Cristina, 7 nov 2026)
-            msg = msg.removesuffix(" 💚") + " Y como hace rato no te vemos, tienes 15% de descuento en tu próximo repuesto 🎁💚"
-        recuperar_wa = wa(c["telefono"]) + "?text=" + quote(msg)
+        msg = mensaje_recuperar(con, cid, dias_rep)
+        recuperar_wa = wa_api(c["telefono"]) + "&text=" + quote(msg)   # api.whatsapp.com: wa.me daña los emojis
     return render(request, "cliente.html", seccion="clientes", incid=incid, ciudades_vl=ciudades_conocidas(con), rep_cada=rep_cada, ritmo_rep=ritmo_rep, atrasado=atrasado, recuperar_wa=recuperar_wa,
                   credito=credito_de(con, cid),
                   credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
