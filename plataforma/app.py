@@ -5726,7 +5726,8 @@ def seguimientos(request: Request, ver: str = "pendientes", tipo: str = "", q: s
     pend = [s for s in todos if s.get("tarde") or ver != "atrasados"]   # Atrasados: solo los que siguen en Hoy porque no se contactaron
     if tipo: pend = [s for s in (todos if ver != "hechos" else pend) if s["tipo"] == tipo]   # al filtrar por tipo se ven de una vez los de hoy y los atrasados
     if q: pend = [s for s in pend if q.lower() in (s["cliente"] or "").lower() or q in (s["telefono"] or "")]
-    hechos = con.execute("SELECT s.*, c.nombre cliente, c.telefono, u.nombre usuario FROM seguimientos s JOIN clientes c ON c.id=s.cliente_id LEFT JOIN usuarios u ON u.id=s.usuario_id ORDER BY s.hecho_en DESC LIMIT 200").fetchall()
+    # Contactados: solo seguimientos de repuesto, básico y cobro; los cumpleaños se ven en Inicio (Cristina, 7 nov 2026: se mezclaban)
+    hechos = con.execute("SELECT s.*, c.nombre cliente, c.telefono, u.nombre usuario FROM seguimientos s JOIN clientes c ON c.id=s.cliente_id LEFT JOIN usuarios u ON u.id=s.usuario_id WHERE s.tipo!='cumple' ORDER BY s.hecho_en DESC LIMIT 200").fetchall()
     return render(request, "seguimientos.html", seccion="seguimientos", pend=pend, hechos=hechos, ver=ver, tipo=tipo, total=len([s for s in todos if s.get("fase", "hoy") == "hoy"]), n_atr=n_atr, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, q=q, hoy_iso=datetime.date.today().isoformat())
 
 

@@ -2925,6 +2925,19 @@ def _():
         assert "Pago Móvil VES" not in h and h.count("Pago Móvil") == 1 and "<em>3</em>" in h
 
 
+@prueba("Seguimientos · Contactados: no mezcla los cumpleaños felicitados con los seguimientos de repuesto")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        a = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Repuesto Contactado','R','04145555001')").lastrowid
+        b = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Cumple Felicitado','C','04145555002')").lastrowid
+        con.execute("INSERT INTO seguimientos (cliente_id,tipo,clave,resultado) VALUES (?,'repuesto','seg:x','enviado')", (a,))
+        con.execute("INSERT INTO seguimientos (cliente_id,tipo,clave,resultado) VALUES (?,'cumple','cumple_hoy:x','felicitado')", (b,))
+        con.commit(); con.close(); sesion_de(c, "admin")
+        h = c.get("/seguimientos?ver=hechos").text
+        assert "Repuesto Contactado" in h and "Cumple Felicitado" not in h
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
