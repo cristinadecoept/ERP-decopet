@@ -1417,8 +1417,9 @@ html.oscuro .postit:not(.nueva){color:#3b330a}
 
 /* Ficha del cliente · Qué ha comprado: solo lo que compró, no el catálogo entero */
 .compras-l{display:flex;flex-direction:column}
-.compra-ln{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--linea)}
+.compra-ln{display:grid;grid-template-columns:44px minmax(min-content,max-content) 1fr;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--linea)}
 .compra-ln:last-child{border-bottom:0}
+.compra-ln>.mini{text-align:right}
 .quedan-pack{display:table;margin-top:4px;background:var(--verde-cl,#e2f2e8);color:var(--verde-osc);font-size:12px;font-weight:600;border-radius:99px;padding:2px 9px}
 html.oscuro .quedan-pack{background:rgba(127,201,164,.16);color:#7fc9a4}
 .compra-n{background:var(--verde-cl,#e2f2e8);color:var(--verde-osc);font-weight:700;font-size:13px;border-radius:8px;text-align:center;padding:3px 0}
