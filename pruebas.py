@@ -2954,6 +2954,28 @@ def _():
         assert "Caracas Sin Direccion" in h and "Nacional Por Agencia" not in h and "Zulia Sin Pedidos" not in h
 
 
+@prueba("Migración 023: archiva (no borra) la oficina guardada como dirección de clientes solo de envío nacional fuera de Caracas y Miranda")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        def cli(nombre, tel, estado, tipos, dire, ciudad):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,estado) VALUES (?,?,?,?)", (nombre, nombre, tel, estado)).lastrowid
+            for i, te in enumerate(tipos):
+                con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,tipo_entrega,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',?,10,10)", (f"#A{tel[-3:]}{i}", cid, te))
+            return con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,ciudad,principal) VALUES (?,'Principal',?,?,1)", (cid, dire, ciudad)).lastrowid
+        oficina = cli("Solo Nacional", "04145557001", "Zulia", ["nacional", "nacional"], "Tealca · Bella Vista", "Maracaibo")
+        mixto = cli("Nacional Y Delivery", "04145557002", "Zulia", ["nacional", "delivery"], "Casa en Caracas", "Caracas")
+        miranda = cli("Nacional Miranda", "04145557003", "Miranda", ["nacional"], "Charallave calle 3", "Charallave")
+        caracas = cli("Nacional Caracas", "04145557004", "Zulia", ["nacional"], "Los Chaguaramos", "Caracas")
+        con.execute("DELETE FROM migraciones WHERE nombre='023_archivar_oficinas_envio_nacional.sql'"); con.commit()
+        A.aplicar_migraciones(con)
+        quedan = {r[0] for r in con.execute("SELECT id FROM direcciones")}
+        arch = {r[0]: r[1] for r in con.execute("SELECT id, direccion FROM direcciones_archivadas")}
+        assert oficina not in quedan and arch.get(oficina) == "Tealca · Bella Vista"
+        assert {mixto, miranda, caracas} <= quedan and not ({mixto, miranda, caracas} & set(arch))
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

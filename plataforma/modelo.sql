@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS mascotas (
 CREATE TABLE IF NOT EXISTS direcciones (
   id INTEGER PRIMARY KEY, cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
   etiqueta TEXT, direccion TEXT NOT NULL, zona TEXT, municipio TEXT, ciudad TEXT, estado TEXT, maps TEXT, principal INTEGER DEFAULT 0);
+-- direcciones sacadas de la ficha que no eran la casa del cliente (ej. la oficina de la agencia): se guardan aquí por si hay que devolverlas
+CREATE TABLE IF NOT EXISTS direcciones_archivadas (
+  id INTEGER PRIMARY KEY, cliente_id INTEGER, etiqueta TEXT, direccion TEXT, zona TEXT, municipio TEXT, ciudad TEXT,
+  estado TEXT, maps TEXT, principal INTEGER, motivo TEXT, archivada_en TEXT DEFAULT (datetime('now','localtime')));
 
 CREATE TABLE IF NOT EXISTS notas_cliente (
   id INTEGER PRIMARY KEY, cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
