@@ -38,7 +38,8 @@
 
  <div class="tarjeta"><h3>Por ciudad</h3>
  {% if am.ciudades %}<table data-cols="Ciudad:46|Órdenes:22|Ventas:32" class="lineas"><tr><th>Ciudad</th><th class="num">Órdenes</th><th class="num">Ventas</th></tr>
- {% set mx = am.ciudades|map(attribute='m')|max %}{% for x in am.ciudades %}<tr><td>{{ x.k }}{{ barra(x.m, mx) }}</td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
+ {% set mx = am.ciudades|map(attribute='m')|max %}{% for x in am.ciudades[:4] %}<tr><td>{{ x.k }}{{ barra(x.m, mx) }}</td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}
+ {% set resto = am.ciudades[4:] %}{% if resto %}<tr><td>Otras {{ resto|length }} ciudades{{ barra(resto|sum(attribute='m'), mx) }}</td><td class="num">{{ resto|sum(attribute='n') }}</td><td class="num"><b>{{ (resto|sum(attribute='m'))|usd }}</b></td></tr>{% endif %}</table>
  {% else %}<div class="vacio">Sin órdenes este mes.</div>{% endif %}</div>
 </div>
 
