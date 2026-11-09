@@ -1830,6 +1830,29 @@ def _():
         con.close()
 
 
+@prueba("Nota para el taller: se guarda al editar la entrega y sale en Hoy en el taller, en el pick-up y en lo que lleva el despachador")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        p = con.execute("SELECT id, nombre, precio, costo FROM productos WHERE tipo='producto' AND categoria NOT IN ('opcion','kit') LIMIT 1").fetchone()
+        ids = []
+        for nombre, te, desp in (("Notita", "pickup", None), ("Llevita", "delivery", "Juan")):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES (?,?)", (nombre + " Prueba", nombre)).lastrowid
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida) VALUES (?,?,'pendiente','pagada',24,0,?,?,?)",
+                              ("#N" + nombre, cid, te, desp, hoy)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,?,?,?)", (oid, p["id"], p["nombre"], p["precio"], p["costo"], p["precio"]))
+            ids.append(oid)
+        con.commit()
+        sesion_de(c, "admin")
+        c.post(f"/ordenes/{ids[0]}/entrega", data={"tipo_entrega": "pickup", "fecha_prometida": hoy, "nota_taller": "ponerle lazo rojo"})
+        c.post(f"/ordenes/{ids[1]}/entrega", data={"tipo_entrega": "delivery", "despachador": "Juan", "fecha_prometida": hoy, "nota_taller": "revisar tornillos"})
+        assert con.execute("SELECT nota_taller FROM ordenes WHERE id=?", (ids[0],)).fetchone()[0] == "ponerle lazo rojo"
+        sesion_de(c, "taller"); h = c.get("/taller").text
+        assert "ponerle lazo rojo" in h and "revisar tornillos" in h, "el taller no ve la nota"
+        con.close()
+
+
 @prueba("Taller: cada pick-up sale el día que le toca (y si se atrasa sigue saliendo); el de otro día no")
 def _():
     with erp_de_prueba() as c:

@@ -141,6 +141,7 @@
 <div data-para="distribuidor"><div class="g2"><div><label>Distribuidor</label><select name="distribuidor"><option value="">—</option>{% for d in DISTRIBUIDORES %}<option {{ 'selected' if o.distribuidor==d }}>{{ d }}</option>{% endfor %}</select></div><div><label>Ciudad</label><input name="ciudad_dist" value="{{ o.ciudad or '' }}"></div></div></div>
 <div class="g2"><div><label><span data-lbl="pickup distribuidor">Quién retira <span class="mini">(si no es el cliente)</span></span><span data-lbl="delivery delivery_fuera nacional otro">Recibe <span class="mini">(si no es el cliente)</span></span></label><input name="receptor_nombre" value="{{ o.receptor_nombre or '' }}"></div>
  <div><label><span data-lbl="pickup distribuidor">Teléfono de quien retira</span><span data-lbl="delivery delivery_fuera nacional otro">Teléfono de quien recibe</span></label><input name="receptor_telefono" value="{{ o.receptor_telefono or '' }}"></div></div>
+<label>Nota para el taller</label><input name="nota_taller" value="{{ o.nota_taller or '' }}">
 <label>Notas de entrega <span class="mini">(las ve logística y van en el resumen)</span></label><textarea name="notas_entrega" rows="2">{{ o.notas_entrega or '' }}</textarea>
 <input type="hidden" name="forma_pago_prevista" value="{{ o.forma_pago_prevista or '' }}">
 <p><button class="btn chico">Guardar entrega</button></p></form>

@@ -705,7 +705,8 @@ COLUMNAS = (
     ("mascotas", "fallecida", "TEXT"),   # el día que se anotó que falleció: no se felicita, no sale en mensajes; si no le queda ninguna, se pausan los repuestos
     ("ordenes", "paga_el", "TEXT"),   # el cliente dijo que paga ese día: hasta entonces no sale en "con saldo pendiente"
     ("ordenes", "a_domicilio", "INTEGER NOT NULL DEFAULT 0"),   # envío nacional que la agencia lleva a la puerta del cliente, no a su oficina
-    ("ordenes", "espera_aviso", "INTEGER NOT NULL DEFAULT 0"),   # el cliente avisa cuándo lo busca o lo recibe: no sale en el día a día
+    ("ordenes", "espera_aviso", "INTEGER NOT NULL DEFAULT 0"),
+    ("ordenes", "nota_taller", "TEXT"),   # lo que el taller tiene que saber de esta orden (sale en Hoy en el taller)   # el cliente avisa cuándo lo busca o lo recibe: no sale en el día a día
     ("abonos_produccion", "gasto_id", "INTEGER"),
     ("clientes", "origen", "TEXT"), ("clientes", "origen_nota", "TEXT"),
     ("clientes", "porche_tamano", "TEXT"), ("clientes", "porche_version", "TEXT"),
@@ -2091,7 +2092,7 @@ def quitar_delivery(con, oid, uid):
 async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request); f = await request.form()
     if "editar_entrega" not in PERMISOS[rol]: return volver(oid, request)
-    campos = ["tipo_entrega", "direccion", "zona", "maps", "ciudad", "receptor_nombre", "receptor_telefono", "despachador", "agencia", "guia", "distribuidor", "fecha_prometida", "franja", "notas_entrega", "modalidad_envio", "forma_pago_prevista"]
+    campos = ["tipo_entrega", "direccion", "zona", "maps", "ciudad", "receptor_nombre", "receptor_telefono", "despachador", "agencia", "guia", "distribuidor", "fecha_prometida", "franja", "notas_entrega", "nota_taller", "modalidad_envio", "forma_pago_prevista"]
     f = dict(f)
     te = f.get("tipo_entrega")
     # cada tipo de entrega solo guarda lo que le corresponde
@@ -2484,6 +2485,7 @@ async def crear_orden(request: Request, con=Depends(db)):
                        f.get("receptor_nombre") or None, f.get("receptor_telefono") or None, fecha_auto, f.get("franja") or None, f.get("notas_entrega") or None, f.get("notas") or None, costo,
                        " + ".join(formas_elegidas) or ("BNC" if canal == "cashea" else None), f.get("modalidad_envio") or ("cobro_destino" if f.get("tipo_entrega") == "nacional" else None), f.get("maps") or None))
     oid = cur.lastrowid
+    if (f.get("nota_taller") or "").strip(): con.execute("UPDATE ordenes SET nota_taller=? WHERE id=?", (f.get("nota_taller").strip(), oid))
     for li, (p, c, perso, color, malla, extras, total_linea, prepago) in enumerate(lineas):
         cur_l = con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,personalizacion,color,malla,extras,total) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (oid, p["id"], p["nombre"], c, total_linea if p["sku"] == "OPC-PERSO" else p["precio"], p["costo"], perso, color, malla, extras, total_linea))
@@ -7575,7 +7577,7 @@ def taller_hoy(request: Request, con=Depends(db)):
         return f"{ya + 1}/{total}" if n <= 1 else f"{ya + 1}-{ya + n}/{total}"
 
     pickups = []
-    for o in con.execute("""SELECT o.id, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(o.receptor_nombre),'') recibe,
+    for o in con.execute("""SELECT o.id, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.nota_taller),'') nota_taller,
                             COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha,
                             (CASE WHEN o.estado_pago IN ('sin_pago','abonada','contra_entrega','rechazado') THEN 1 ELSE 0 END) falta_cobrar
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
@@ -7602,13 +7604,13 @@ def taller_hoy(request: Request, con=Depends(db)):
     # Sin nombres de clientes y sin fechas: es una lista de bultos, todo lo de hoy.
     salidas = {}
     def sale(quien_lleva, producto, n, agencia=False, falta=False):
-        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}, "falta": falta})
+        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})
         d = g["agencia"] if agencia else g["cosas"]   # lo de la agencia va aparte: eso hay que embalarlo
         d[producto] = d.get(producto, 0) + n
 
     for o in con.execute("""SELECT o.id, COALESCE(NULLIF(TRIM(o.despachador),''),   -- un envío nacional lo lleva quien tiene el viaje a la agencia
                                    (SELECT v.despachador FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL)) despachador,
-                            o.tipo_entrega, o.agencia FROM ordenes o
+                            o.tipo_entrega, o.agencia, NULLIF(TRIM(o.nota_taller),'') nota_taller FROM ordenes o
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
                               AND o.estado='pendiente' AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0   -- en ruta = ya salió del taller
                               AND """ + HAY_QUE_ENTREGAR() + """
@@ -7620,6 +7622,8 @@ def taller_hoy(request: Request, con=Depends(db)):
         # un envío nacional sin despachador no es "sin despachador": va a una agencia (MRW, Tealca…) y falta quién lo lleve hasta allá
         falta = not (o["despachador"] or "").strip()
         lleva = (o["despachador"] or "").strip() or ((f"Para {o['agencia']}" if o["agencia"] else "Para la agencia") if a_agencia else "Sin despachador")
+        if o["nota_taller"]:
+            salidas.setdefault(lleva, {"quien_lleva": lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})["notas"].append(o["nota_taller"])
         for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo, l.malla,
                                 TRIM(COALESCE(l.personalizacion,'')) perso
                                 FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? AND l.extra_en IS NULL

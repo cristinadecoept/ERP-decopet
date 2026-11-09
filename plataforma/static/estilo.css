@@ -1621,3 +1621,4 @@ a.recuperar{text-decoration:none;cursor:pointer}a.recuperar:hover{filter:brightn
 .saldo-ico svg{width:12px;height:12px}
 html.oscuro .chip-saldo,html.oscuro .saldo-ico{color:#9fd8bb!important}
 .tab-b .tab-ic{width:16px;height:16px;margin:0 5px 0 0;vertical-align:-3px;color:var(--verde-osc)}html.oscuro .tab-b .tab-ic{color:#9fd8bb}
+.nota-taller{margin-top:4px;font-size:13.5px;font-weight:600;color:var(--naranja)}
