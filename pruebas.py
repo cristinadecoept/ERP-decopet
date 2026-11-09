@@ -635,6 +635,30 @@ def _():
     assert "$" not in A.resumen_despacho(o, con_plata=False) and "$20" in A.resumen_despacho(o)
 
 
+@prueba("Analítica: el que ya había comprado (en el ERP o en el Excel de antes) sale en 'Volvieron a comprar' con lo de antes y lo de ahora, no en 'cómo llegaron'")
+def _():
+    con = base_limpia()
+    for i, n in ((901, "Rampa Prueba"), (902, "Porche Prueba")):
+        con.execute("INSERT INTO productos (id,sku,nombre,tipo,precio,activo) VALUES (?,?,?,'producto',98,1)", (i, f"T{i}", n))
+    p = con.execute("SELECT id, nombre FROM productos WHERE id IN (901,902) ORDER BY id").fetchall()
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (1,'Michel Prueba','Michel')")
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (2,'Ana Excel','Ana')")
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila,origen) VALUES (3,'Rosa Nueva','Rosa','Publicidad (anuncio)')")
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (4,'Luis Nuevo','Luis')")
+    con.execute("INSERT INTO clientes (id,nombre,nombre_pila,origen) VALUES (5,'Juana Vieja','Juana','Ya era cliente')")
+    for oid, cid, dia, prod in ((1, 1, '2026-10-09', p[0]), (2, 1, '2026-11-08', p[1]), (3, 2, '2026-11-08', p[1]), (4, 3, '2026-11-08', p[1]), (5, 4, '2026-11-08', p[1]), (6, 5, '2026-11-08', p[1])):
+        con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,origen_excel,creado_en) VALUES (?,?,?,'entregada','pagada',98,0,?)", (oid, f"#{oid}", cid, dia + " 10:00"))
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,?,1,98,98)", (oid, prod["id"], prod["nombre"]))
+    con.execute("INSERT INTO registro_ventas (fecha,cliente,producto,precio) VALUES ('2026-09-20','ana excel ','Rampa Nueva',98)")
+    con.commit()
+    m = A.resumen_mes(con, datetime.date(2026, 11, 1))
+    assert dict(m["como_llegaron"]) == {"Publicidad (anuncio)": 1, "Otros": 1}, m["como_llegaron"]
+    v = {x["nombre"]: (x["antes"], x["ahora"]) for x in m["volvieron"]}
+    assert v["Michel Prueba"] == (p[0]["nombre"], [p[1]["nombre"]]), v
+    assert v["Ana Excel"] == ("Rampa Nueva", [p[1]["nombre"]]), v
+    assert "Juana Vieja" in v and (m["nuevos"], m["repiten"]) == (2, 3), (m["nuevos"], m["repiten"])
+
+
 @prueba("Slow Chow: al confirmar que llegó se dice cuántos azules y rosados; cada uno se lleva su plato")
 def _():
     con = base_limpia()

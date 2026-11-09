@@ -7899,7 +7899,7 @@ def resumen_mes(con, m0):
     ventas = round(sum(m for m, n in ventas_por_dia(con, ini, fin).values()), 2)
     ords = con.execute("""SELECT o.id, o.cliente_id, o.canal, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente,
                           (SELECT MIN(substr(x.creado_en,1,10)) FROM ordenes x WHERE x.cliente_id=o.cliente_id AND x.estado!='cancelada') primera,
-                          c.origen
+                          c.origen, c.nombre
                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ?""", rango).fetchall()
     ords = [dict(o) for o in ords]
@@ -7907,15 +7907,33 @@ def resumen_mes(con, m0):
         o["ciudad"] = ciudad_de_texto(o["ciudad_orden"]) or ciudad_de_texto(o["ciudad_cliente"]) or "Sin ciudad"
     pedidos = len(ords)
     clientes = {o["cliente_id"] for o in ords}
-    nuevos = {o["cliente_id"] for o in ords if (o["primera"] or "") >= ini}
+    # lo que compró antes del ERP está en el Registro de ventas (Excel), solo con el nombre: se cruza por el nombre
+    en_excel = {r[0] for r in con.execute("SELECT DISTINCT lower(trim(cliente)) FROM registro_ventas WHERE substr(fecha,1,10) < ?", (ini,))}
+    # "Ya era cliente" en la ficha: compró antes del ERP aunque el nombre no esté igual en el Excel
+    nuevos = {o["cliente_id"] for o in ords if (o["primera"] or "") >= ini and (o["nombre"] or "").strip().lower() not in en_excel
+              and o["origen"] != "Ya era cliente"}
     def agrupa(clave):
         d = {}
         for o in ords:
             k = o[clave] or "—"; d.setdefault(k, [0, 0.0]); d[k][0] += 1; d[k][1] += o["total"] or 0
         return sorted(({"k": k, "n": v[0], "m": round(v[1], 2), "pct": round(v[1] / ventas * 100) if ventas else 0} for k, v in d.items()), key=lambda x: -x["m"])
-    origen = {}
+    # cómo llegaron: solo los nuevos (el que vuelve no "llegó", volvió: va aparte, con lo que compró antes y ahora)
+    origen = {o["cliente_id"]: o["origen"] or "Otros" for o in ords if o["cliente_id"] in nuevos}
+    volvieron = {}
     for o in ords:
-        if o["cliente_id"] in nuevos: origen[o["cliente_id"]] = o["origen"] or "Otros"
+        if o["cliente_id"] in nuevos or not o["cliente_id"]: continue
+        v = volvieron.setdefault(o["cliente_id"], {"id": o["cliente_id"], "nombre": o["nombre"], "m": 0.0, "ahora": [], "antes": None})
+        v["m"] += o["total"] or 0
+        v["ahora"] += [r[0] for r in con.execute("""SELECT l.nombre FROM orden_lineas l JOIN productos p ON p.id=l.producto_id
+                        WHERE l.orden_id=? AND l.extra_en IS NULL AND p.tipo='producto'""", (o["id"],)) if r[0] not in v["ahora"]]
+    for v in volvieron.values():   # lo último que compró antes de este mes: en el ERP o, si no, en el Excel
+        r = con.execute("""SELECT l.nombre FROM orden_lineas l JOIN ordenes x ON x.id=l.orden_id JOIN productos p ON p.id=l.producto_id
+                           WHERE x.cliente_id=? AND x.estado!='cancelada' AND substr(x.creado_en,1,10) < ? AND l.extra_en IS NULL AND p.tipo='producto'
+                           ORDER BY x.creado_en DESC, l.id LIMIT 1""", (v["id"], ini)).fetchone() \
+            or con.execute("""SELECT producto FROM registro_ventas WHERE lower(trim(cliente))=? AND substr(fecha,1,10) < ?
+                              ORDER BY fecha DESC, id DESC LIMIT 1""", ((v["nombre"] or "").strip().lower(), ini)).fetchone()
+        v["antes"] = r[0] if r else None
+    volvieron = sorted(volvieron.values(), key=lambda v: -v["m"])
     como_llegaron = {}
     for v in origen.values(): como_llegaron[v] = como_llegaron.get(v, 0) + 1
     lineas = con.execute("""SELECT l.nombre, p.sku, p.categoria, SUM(l.cantidad) u, SUM(l.total) f, COUNT(DISTINCT o.cliente_id) cl
@@ -7936,7 +7954,7 @@ def resumen_mes(con, m0):
         "ventas": ventas, "pedidos": pedidos, "ticket": round(ventas / pedidos, 2) if pedidos else 0,
         "clientes": len(clientes), "nuevos": len(nuevos), "repiten": len(clientes - nuevos),
         "canales": agrupa("canal"), "ciudades": agrupa("ciudad")[:8],
-        "como_llegaron": sorted(como_llegaron.items(), key=lambda x: -x[1]),
+        "como_llegaron": sorted(como_llegaron.items(), key=lambda x: -x[1]), "volvieron": volvieron,
         "top": [dict(l) for l in lineas[:8]],
         "rep_clientes": clientes_de("p.sku LIKE 'REP-%'"), "rep_unidades": int(suma(es_rep)),
         "pack_clientes": clientes_de("p.sku LIKE 'PACK%'"), "packs": int(suma(es_pack)),
