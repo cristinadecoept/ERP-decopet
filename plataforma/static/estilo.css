@@ -961,7 +961,7 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 @media (min-width:901px){ .nom-cli{display:inline-block;min-width:150px} .tabla .fila td.mini[style*="max-width:300px"]{min-width:170px} }
 /* Analítica */
 .an-mes{display:flex;align-items:center;gap:10px}.an-mes b{font-size:17px;min-width:150px;text-align:center}
-.an-tiles{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))!important;margin-bottom:8px}
+.an-tiles{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))!important;margin-bottom:8px}
 .an-var{font-weight:700;margin-right:4px}.an-var.sube{color:var(--verde-osc)}.an-var.baja{color:#b3321b}
 .an-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
 @media(max-width:1100px){.an-g{grid-template-columns:1fr}}
@@ -1624,3 +1624,11 @@ html.oscuro .chip-saldo,html.oscuro .saldo-ico{color:#9fd8bb!important}
 .nota-taller{margin-top:4px;font-size:13.5px;font-weight:600;color:var(--naranja)}
 .an-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.an-col{display:flex;flex-direction:column;gap:14px;min-width:0}.an-g2 .tarjeta{margin:0}
 @media(max-width:1100px){.an-g2{grid-template-columns:1fr}}
+/* Analítica: la cifra del mes resalta y cada fila lleva su barra */
+.tile.an-hero{background:var(--verde);color:#fff}.tile.an-hero b,.tile.an-hero b *{color:#fff!important}.tile.an-hero>span,.tile.an-hero>i{color:rgba(255,255,255,.85)}.tile.an-hero .an-var{color:#fff}
+.an-var{display:inline-block;border-radius:99px;padding:1px 8px;font-size:11.5px}.an-var.sube{background:var(--verde-tinte)}.an-var.baja{background:var(--coral-tinte)}
+.tile.an-hero .an-var{background:rgba(255,255,255,.18)}
+.an-barra{height:6px;border-radius:99px;background:var(--verde-tinte);margin-top:7px;overflow:hidden}.an-barra i{display:block;height:100%;border-radius:99px;background:var(--verde)}
+.an-barra.nar{background:var(--naranja-tinte)}.an-barra.nar i{background:var(--naranja)}
+.an-quieto{display:inline-block;background:var(--coral-tinte);color:#a8432b;border-radius:99px;padding:4px 11px;font-size:12.5px;font-weight:500}
+html.oscuro .an-quieto{color:#f3a08f}html.oscuro .tile.an-hero{background:#2f5f46}html.oscuro .tile.an-hero>span,html.oscuro .tile.an-hero>i{color:rgba(255,255,255,.85)}
