@@ -3076,6 +3076,27 @@ def _():
         assert 'title="Saldo a favor $15.00"' in h
 
 
+@prueba("Cliente nuevo con solo el GPS: Inicio avisa que falta la dirección escrita y se escribe ahí mismo")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        c.post("/clientes/nuevo", data={"nombre_pila": "Solo Gps", "telefono": "04140000101", "maps": "https://maps.app.goo.gl/abc"})
+        c.post("/clientes/nuevo", data={"nombre_pila": "Con Todo", "telefono": "04140000102", "direccion": "Res. Los Pinos", "maps": "https://maps.app.goo.gl/xyz"})
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid, did = con.execute("SELECT c.id, d.id FROM clientes c JOIN direcciones d ON d.cliente_id=c.id WHERE c.nombre_pila='Solo Gps'").fetchone()
+        con.close()
+        h = c.get("/inicio").text
+        assert "Solo Gps: tiene el GPS pero falta la dirección escrita" in h and "Con Todo: tiene el GPS" not in h
+        sesion_de(c, "logistica")
+        assert "Solo Gps: tiene el GPS pero falta" in c.get("/inicio").text
+        r = c.post(f"/clientes/{cid}/direccion", data={"id": did, "etiqueta": "Principal", "maps": "https://maps.app.goo.gl/abc", "direccion": "Torre B, apto 4", "volver": "/inicio"}, follow_redirects=False)
+        assert r.headers["location"] == "/inicio"
+        con = sqlite3.connect(A.DB)
+        assert con.execute("SELECT direccion, maps FROM direcciones WHERE id=?", (did,)).fetchone() == ("Torre B, apto 4", "https://maps.app.goo.gl/abc")
+        con.close()
+        assert "Solo Gps: tiene el GPS" not in c.get("/inicio").text
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

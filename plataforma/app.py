@@ -1231,6 +1231,11 @@ def inicio(request: Request, con=Depends(db)):
                           AND NOT EXISTS (SELECT 1 FROM mascotas m WHERE m.cliente_id=c.id)
                           AND EXISTS (SELECT 1 FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada')
                         ORDER BY c.creado_en DESC LIMIT 20""", (desde_r,))]
+    # clientes nuevos que se guardaron con solo el GPS: falta la dirección escrita (Cristina, 9 nov)
+    c["sin_direccion"] = [dict(r) for r in con.execute("""SELECT c.id, c.nombre, d.id did, d.etiqueta, d.maps, d.ciudad FROM clientes c
+                        JOIN direcciones d ON d.cliente_id=c.id AND d.principal=1
+                        WHERE substr(c.creado_en,1,10) >= ? AND TRIM(COALESCE(d.direccion,''))='' AND TRIM(COALESCE(d.maps,''))!=''
+                        ORDER BY c.creado_en DESC LIMIT 20""", (desde_r,))]
     for x in c["sin_mascota"]:   # el mismo mensaje con que Cristina pide los datos del perro
         x["msj"] = f"¡Hola {x['quien']}! 👋🏻 Para nuestra base de datos, ¿crees que nos puedes pasar porfa el nombre, raza y cumpleaños de tu perro? 🐶💚"
         x["wa"] = (wa_api(x["telefono"]) + "&text=" + quote(x["msj"])) if wa_api(x["telefono"]) else ""
@@ -2377,9 +2382,9 @@ async def crear_orden(request: Request, con=Depends(db)):
                            int(f["cliente_referido_id"]) if (f.get("cliente_referido_id") or "").isdigit() else None))
         cid = cur.lastrowid
         guardar_mascotas(con, cid, f, prefijo="cliente_mascota_")
-        if (f.get("cliente_direccion") or "").strip():   # dirección habitual del cliente nuevo
+        if (f.get("cliente_direccion") or "").strip() or (f.get("cliente_maps") or "").strip():   # dirección habitual del cliente nuevo (solo el GPS también: la escrita se pide después)
             zona_hab = (f.get("cliente_zona") or "").strip() or ((f.get("zona_tarifa") or "").strip() if f.get("tipo_entrega") in ("delivery", "delivery_fuera") and f.get("dir_modo", "hab") == "hab" else "")
-            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,1)", (cid, "Principal", f["cliente_direccion"].strip(), zona_hab or None, ciu if ciu != "Pendiente" else None, edo, (f.get("cliente_maps") or "").strip() or None))
+            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,zona,ciudad,estado,maps,principal) VALUES (?,?,?,?,?,?,?,1)", (cid, "Principal", (f.get("cliente_direccion") or "").strip(), zona_hab or None, ciu if ciu != "Pendiente" else None, edo, (f.get("cliente_maps") or "").strip() or None))
     if cid and not cliente_recien_creado:   # cliente que ya existía al que le faltaban datos: se completan desde la orden
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
         for campo, dato in (("telefono", normalizar_telefono(f.get("cl_add_telefono"))), ("correo", (f.get("cl_add_correo") or "").strip()), ("cedula", normalizar_cedula(f.get("cl_add_cedula")))):
@@ -6647,7 +6652,8 @@ async def cliente_direccion(request: Request, cid: int, con=Depends(db)):
     elif f.get("direccion"):
         primera = con.execute("SELECT COUNT(*) FROM direcciones WHERE cliente_id=?", (cid,)).fetchone()[0] == 0
         con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,maps,ciudad,principal) VALUES (?,?,?,?,?,?)", (cid, f.get("etiqueta") or ("Principal" if primera else "Otra"), f["direccion"], f.get("maps") or None, normalizar_ciudad(f.get("ciudad"))[0], 1 if primera else 0))
-    con.commit(); return RedirectResponse(f"/clientes/{cid}", 303)
+    volver = f.get("volver") or ""
+    con.commit(); return RedirectResponse(volver if volver.startswith("/") and not volver.startswith("//") else f"/clientes/{cid}", 303)
 
 
 def parsear_cumple(txt):
