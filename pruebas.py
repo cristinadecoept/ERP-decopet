@@ -3123,12 +3123,12 @@ def _():
         h = c.get("/taller").text
         ingrid = h.split("<b>Ingrid</b>")[1].split("</tr>")[0]
         cristina = h.split("<b>Cristina</b>")[1].split("</tr>")[0]
-        assert "va a Tealca Catia" in ingrid and "embalar" not in ingrid, ingrid
+        assert "1× Bar Prueba" in ingrid and "embalar" not in ingrid and "Tealca" not in ingrid, ingrid
         assert "2× Bar Prueba" in cristina and "va a la agencia · embalar" in cristina and "Tealca Catia" not in cristina, cristina
         juan = h.split("<b>Juan</b>")[1].split("</tr>")[0]
         para = h.split("<b>Para Tealca</b>")[1].split("</tr>")[0]
-        assert "va a Tealca Catia" in juan and "embalar" not in juan, juan
-        assert "Tealca Catia" in para and "embalar" not in para, para
+        assert "1× Bar Prueba" in juan and "embalar" not in juan, juan
+        assert "1× Bar Prueba" in para and "embalar" not in para, para
 
 
 print()

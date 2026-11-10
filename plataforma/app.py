@@ -7617,9 +7617,9 @@ def taller_hoy(request: Request, con=Depends(db)):
     # Sin nombres de clientes y sin fechas: es una lista de bultos, todo lo de hoy.
     salidas = {}
     def sale(quien_lleva, producto, n, agencia=False, falta=False, sin_embalar=False):
-        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}, "agencia_sin": {}, "falta": falta, "notas": []})
-        # lo de la agencia va aparte: eso hay que embalarlo, salvo lo que va a Tealca Catia, que no se embala (Cristina, 10 nov)
-        d = (g["agencia_sin"] if sin_embalar else g["agencia"]) if agencia else g["cosas"]
+        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})
+        # lo de la agencia va aparte: eso hay que embalarlo; lo de Tealca Catia no se embala y va con lo demás (Cristina, 10 nov)
+        d = g["agencia"] if agencia and not sin_embalar else g["cosas"]
         d[producto] = d.get(producto, 0) + n
 
     for o in con.execute("""SELECT o.id, COALESCE(NULLIF(TRIM(o.despachador),''),   -- un envío nacional lo lleva quien tiene el viaje a la agencia
@@ -7639,7 +7639,7 @@ def taller_hoy(request: Request, con=Depends(db)):
         falta = not (o["despachador"] or "").strip()
         lleva = (o["despachador"] or "").strip() or ((f"Para {o['agencia']}" if o["agencia"] else "Para la agencia") if a_agencia else "Sin despachador")
         if o["nota_taller"]:
-            salidas.setdefault(lleva, {"quien_lleva": lleva, "cosas": {}, "agencia": {}, "agencia_sin": {}, "falta": falta, "notas": []})["notas"].append(o["nota_taller"])
+            salidas.setdefault(lleva, {"quien_lleva": lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})["notas"].append(o["nota_taller"])
         for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo, l.malla,
                                 TRIM(COALESCE(l.personalizacion,'')) perso
                                 FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? AND l.extra_en IS NULL
@@ -7669,7 +7669,7 @@ def taller_hoy(request: Request, con=Depends(db)):
             sale((r["despachador"] or "").strip() or "Sin despachador", f"Repuesto {r['tamano'] or ''}".strip() + (" + malla" if prepagado_con_malla(con, r) else ""), 1)
 
     for g in salidas.values():
-        for k_ in ("cosas", "agencia", "agencia_sin"):
+        for k_ in ("cosas", "agencia"):
             g[k_] = " · ".join(f"{n}× {nom}" for nom, n in sorted(g[k_].items()))
     salidas = sorted(salidas.values(), key=lambda g: (g["falta"] or g["quien_lleva"] == "Sin despachador", g["quien_lleva"]))
     llegadas = con.execute("""SELECT pr.id, pr.cantidad, pr.recibido, pr.fecha_esperada, pr.responsable, pr.pieza, pr.descripcion,
