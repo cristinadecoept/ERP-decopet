@@ -3097,6 +3097,30 @@ def _():
         assert "Solo Gps: tiene el GPS" not in c.get("/inicio").text
 
 
+
+@prueba("Hoy en el taller: lo que va a Tealca Catia no dice 'embalar'; a cualquier otra agencia, sí")
+def _():
+    assert A.no_se_embala("Tealca Catia") and A.no_se_embala("tealca  CATIA") and not A.no_se_embala("Tealca Los Palos Grandes") and not A.no_se_embala("MRW ")
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pid = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('BAR9','Bar Prueba','producto',60)").lastrowid
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Envio Nac','Envio','04145559901')").lastrowid
+        def orden(num, agencia, oficina, desp):
+            vid = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,oficina,monto,pedidos) VALUES (date('now','localtime'),?,?,?,5,1)", (desp, agencia, oficina)).lastrowid
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,tipo_entrega,agencia,viaje_id,subtotal,total,origen_excel)
+                                 VALUES (?,?,'whatsapp','pendiente','pagada','nacional',?,?,60,60,0)""", (num, cid, agencia, vid)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio) VALUES (?,?,1,60)", (oid, pid))
+        orden("#T1", "Tealca", "Catia", "Ingrid")
+        orden("#T2", "Tealca", "Los Palos Grandes", "Cristina")
+        orden("#T3", "MRW", None, "Cristina")
+        con.commit(); con.close(); sesion_de(c, "taller")
+        h = c.get("/taller").text
+        ingrid = h.split("<b>Ingrid</b>")[1].split("</tr>")[0]
+        cristina = h.split("<b>Cristina</b>")[1].split("</tr>")[0]
+        assert "va a Tealca Catia" in ingrid and "embalar" not in ingrid, ingrid
+        assert "2× Bar Prueba" in cristina and "va a la agencia · embalar" in cristina and "Tealca Catia" not in cristina, cristina
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
