@@ -130,7 +130,7 @@
  {% else %}<div class="vacio">Sin órdenes este mes.</div>{% endif %}</div>
 </div>
 <div class="an-col">
- <div class="tarjeta"><h3>Clientes nuevos · cómo llegaron</h3>
+ <div class="tarjeta"><h3>Clientes nuevos</h3>
  {% if am.como_llegaron %}<table data-cols="Cómo llegó:70|Clientes:30" class="lineas"><tr><th>Cómo llegó</th><th class="num">Clientes</th></tr>
  {% set mx = am.como_llegaron|map(attribute=1)|max %}{% for k, n in am.como_llegaron %}<tr><td>{{ k }}{{ barra(n, mx, 'nar') }}</td><td class="num"><b>{{ n }}</b></td></tr>{% endfor %}</table>
  {% else %}<div class="vacio">Ningún cliente nuevo este mes.</div>{% endif %}</div>
