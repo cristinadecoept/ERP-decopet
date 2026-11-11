@@ -27,7 +27,8 @@
     const p = document.createElement('div');
     p.className = 'ctl-pop ' + (clase || '');
     p._dueno = dueno; dueno.setAttribute('aria-expanded', 'true');
-    document.body.appendChild(p); abierto = p;
+    // dentro de una ventana (dialog) va en la misma ventana: si no, queda detrás y no se puede tocar
+    (dueno.closest("dialog[open]") || document.body).appendChild(p); abierto = p;
     return p;
   }
   function colocar(p) {
