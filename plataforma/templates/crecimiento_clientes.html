@@ -1,0 +1,62 @@
+{% extends "base.html" %}{% block titulo %}Clientes que se quedan · Decopet{% endblock %}{% block cuerpo %}
+{% macro barra(v, mx, c='') %}<div class="an-barra {{ c }}"><i style="width:{{ ((v / mx * 100) if mx else 0)|round(1) }}%"></i></div>{% endmacro %}
+<div class="fila-titulo"><div><h1>Clientes que se quedan</h1><div class="sub">{{ d.seg_total }} clientes con compras</div></div></div>
+
+{# ---------- 1 · Cómo está la base (el mismo segmento que en Clientes) #}
+{% set desc = {'vip': 'el 10 % que más gasta', 'frecuente': '4 compras o más', 'activo': 'compró en los últimos 90 días', 'nuevo': 'una compra, hace poco', 'inactivo': '3 a 6 meses sin comprar', 'perdido': 'más de 6 meses sin comprar'} %}
+<div class="tiles cc-seg">
+{% for k, n in d.seg.items() %}<a class="tile {{ 'cc-mal' if k in ['inactivo','perdido'] and n }}" href="/clientes?ver={{ k }}" style="text-decoration:none;color:inherit"><b>{{ n }}</b><span>{{ TIPOS_CLIENTE[k] }}</span><i>{{ desc[k] }}</i></a>{% endfor %}
+</div>
+
+{# ---------- 2 · ¿Vuelven? #}
+<h2 class="seccion-t">¿Vuelven a comprar?</h2>
+<div class="an-g2"><div class="an-col">
+ <div class="tarjeta"><h3>Clientes nuevos de cada mes</h3>
+ {% if d.nuevos_mes %}<table class="lineas" data-cols="Mes:34|Nuevos:20|Volvieron:22|%:24"><tr><th>Mes</th><th class="num">Nuevos</th><th class="num">Volvieron</th><th class="num">en 60 días</th></tr>
+ {% for m in d.nuevos_mes %}<tr><td>{{ m.txt }}{{ barra(m.pct, 100) }}</td><td class="num">{{ m.nuevos }}</td><td class="num"><b>{{ m.volvieron }}</b></td><td class="num">{{ m.pct }} %{% if m.abierto %}<div class="mini">sigue corriendo</div>{% endif %}</td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Todavía no hay clientes con compras.</div>{% endif %}</div>
+</div><div class="an-col">
+ <div class="tarjeta"><h3>Con qué entran y qué compran después</h3>
+ {% if d.caminos %}{% set mx = d.caminos[0].n %}<table class="lineas" data-cols="Primero:40|Después:40|Clientes:20"><tr><th>Primero compró</th><th>Después compró</th><th class="num">Clientes</th></tr>
+ {% for c in d.caminos %}<tr><td class="mini">{{ c.antes }}</td><td><b>{{ c.despues }}</b>{{ barra(c.n, mx) }}</td><td class="num"><b>{{ c.n }}</b></td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Todavía nadie ha comprado dos veces.</div>{% endif %}</div>
+</div></div>
+
+{# ---------- 3 · Seguimientos #}
+<h2 class="seccion-t">Seguimientos</h2>
+<div class="an-g2"><div class="an-col">
+ <div class="tarjeta"><h3>Cómo terminaron</h3>
+ {% if d.res_tipo %}{% for t in d.res_tipo %}<div class="cc-res"><div class="cc-res-t"><b>{{ t.tipo }}</b><span class="mini">{{ t.total }}</span></div>
+  <div class="cc-chips">{% for k, n in t.res %}<span class="cc-chip {{ 'ok' if k in ['Compró','Pagó','Se pasó a la Versión PRO','Felicitado'] else ('mal' if k in ['El perro no se adaptó','Ya no lo usa','No le interesa por ahora'] else '') }}">{{ k }} <b>{{ n }}</b></span>{% endfor %}</div></div>{% endfor %}
+ {% else %}<div class="vacio">Todavía no hay seguimientos hechos.</div>{% endif %}</div>
+ <div class="tarjeta"><h3>En qué mensaje compran</h3>
+ {% set mx = d.intentos|map(attribute='c')|max %}{% if mx %}<table class="lineas" data-cols="Mensaje:60|Compraron:40"><tr><th>Compraron al</th><th class="num">Clientes</th></tr>
+ {% for i in d.intentos %}<tr><td>{{ i.txt }}{{ barra(i.c, mx) }}</td><td class="num"><b>{{ i.c }}</b></td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Nadie ha comprado desde un seguimiento todavía.</div>{% endif %}</div>
+</div><div class="an-col">
+ <div class="tiles cc-mini">
+  <div class="tile"><b>{{ d.cumple.compraron }}<small> de {{ d.cumple.felicitados }}</small></b><span>Felicitados que compraron</span><i>en los 30 días siguientes al cumpleaños</i></div>
+  <div class="tile"><b>{{ d.basico.pro }}<small> de {{ d.basico.total }}</small></b><span>Básico → PRO</span><i>se pasaron a la Versión PRO</i></div>
+ </div>
+ <div class="tarjeta"><h3>¿Se adaptó al porche? <a class="mini" href="/clientes?ver=no_adapto" style="margin-left:6px">ver quiénes no</a></h3>
+ {% if d.adapt.tamano or d.adapt.edad %}
+ {% for titulo, clave in [('Según el tamaño del porche', 'tamano'), ('Según la edad del perro', 'edad')] %}{% if d.adapt[clave] %}
+ <table class="lineas cc-adapt" data-cols="{{ titulo }}:46|Sí:18|No:18|%:18"><tr><th>{{ titulo }}</th><th class="num">Se adaptó</th><th class="num">No</th><th class="num">No se adaptó</th></tr>
+ {% for g in d.adapt[clave] %}<tr><td>{{ g.k }}</td><td class="num">{{ g.si }}</td><td class="num">{{ g.no }}</td><td class="num"><b class="{{ 'cc-rojo' if g.pct_no >= 30 }}">{{ g.pct_no }} %</b></td></tr>{% endfor %}</table>{% endif %}{% endfor %}
+ {% else %}<div class="vacio">Todavía no hay seguimientos de primer repuesto con respuesta.</div>{% endif %}</div>
+</div></div>
+
+{# ---------- 4 · Productos #}
+<h2 class="seccion-t">Productos</h2>
+<div class="an-g2"><div class="an-col">
+ <div class="tarjeta"><h3>Se piden juntos</h3>
+ {% if d.juntos %}{% set mx = d.juntos[0].n %}<table class="lineas" data-cols="Productos:78|Órdenes:22"><tr><th>En la misma orden</th><th class="num">Órdenes</th></tr>
+ {% for j in d.juntos %}<tr><td>{{ j.a }} <span class="mini">+</span> {{ j.b }}{{ barra(j.n, mx, 'nar') }}</td><td class="num"><b>{{ j.n }}</b></td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Todavía no hay productos que se pidan juntos seguido.</div>{% endif %}</div>
+</div><div class="an-col">
+ <div class="tarjeta"><h3>Cuánto tardan en volver</h3>
+ {% if d.vuelta %}{% set mx = d.vuelta|map(attribute='dias')|max %}<table class="lineas" data-cols="Después de comprar:60|Días:40"><tr><th>Después de comprar</th><th class="num">Vuelve en</th></tr>
+ {% for v in d.vuelta %}<tr><td>{{ v.k }}{{ barra(v.dias, mx, 'nar') }}</td><td class="num"><b>{{ v.dias }} días</b><div class="mini">{{ v.n }} veces</div></td></tr>{% endfor %}</table>
+ {% else %}<div class="vacio">Faltan clientes que hayan vuelto para calcularlo.</div>{% endif %}</div>
+</div></div>
+{% endblock %}

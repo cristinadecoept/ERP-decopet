@@ -3189,11 +3189,66 @@ def _():
         sesion_de(c, "admin")
         h = c.get("/mapa?mes=2026-03").text
         assert "Mapa de ventas" in h and "Barquisimeto" in h and 'href="/mapa"' in h and "leaflet" in h
+        # sin decir de qué sitio se pide, OpenStreetMap bloquea el mapa ("Access blocked"): el ERP no manda referer por defecto
+        assert "referrerPolicy: 'strict-origin'" in h
         assert c.get("/mapa?mes=todo").status_code == 200 and c.get(f"/mapa?mes=2026-03&producto={p1}").status_code == 200
         for rol in ("logistica", "taller"):
             sesion_de(c, rol)
             r = c.get("/mapa", follow_redirects=False)
             assert r.status_code in (302, 303) and "Mapa de ventas" not in r.text, rol
+
+
+
+@prueba("Clientes que se quedan: segmentos, nuevos que vuelven en 60 días, qué compran después, seguimientos, adaptación y qué se pide junto")
+def _():
+    con = base_limpia()
+    pid = {k: con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES (?,?,'producto',?)", (k, n, pr)).lastrowid
+           for k, n, pr in (("CPRO", "Porche PRO", 93), ("CREP", "Repuesto", 24), ("CRAM", "Rampa", 80), ("CBOW", "Bowl", 20))}
+    num = iter(range(1, 999))
+    def cli(nombre, tam=None):
+        return con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,porche_tamano) VALUES (?,?,?,?)", (nombre, nombre, f"0414{next(num):07d}", tam)).lastrowid
+    def orden(cid, dia, *prods):
+        tot = sum(con.execute("SELECT precio FROM productos WHERE sku=?", (p,)).fetchone()[0] for p in prods)
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',?,?,?)",
+                          (f"#CC{next(num)}", cid, dia + " 10:00:00", tot, tot)).lastrowid
+        for p in prods:
+            pr = con.execute("SELECT precio FROM productos WHERE sku=?", (p,)).fetchone()[0]
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,(SELECT nombre FROM productos WHERE sku=?),1,?,?)", (oid, pid[p], p, pr, pr))
+    ana, beto, caro, dani, eva = cli("Ana", "Mediano"), cli("Beto", "Grande"), cli("Caro"), cli("Dani"), cli("Eva")
+    orden(ana, "2026-09-01", "CPRO"); orden(ana, "2026-10-01", "CREP"); orden(ana, "2026-11-01", "CREP")
+    orden(beto, "2026-09-05", "CRAM"); orden(beto, "2026-09-20", "CPRO", "CBOW")
+    orden(caro, "2026-05-01", "CPRO", "CBOW")
+    orden(dani, "2026-11-05", "CREP")
+    for dia in ("2026-08-01", "2026-08-31", "2026-09-30", "2026-10-30"): orden(eva, dia, "CREP")
+    for cid, tipo, res, inten, hecho in ((ana, "primer_repuesto", "compro", 1, "2026-10-01"), (beto, "primer_repuesto", "no_se_adapto", 2, "2026-10-20"),
+                                         (caro, "primer_repuesto", "mensaje", 1, "2026-06-01"), (dani, "cumple", "felicitado", 1, "2026-11-01")):
+        con.execute("INSERT INTO seguimientos (cliente_id,tipo,clave,resultado,intentos,hecho_en) VALUES (?,?,?,?,?,?)", (cid, tipo, f"{tipo}-{cid}", res, inten, hecho))
+    con.execute("INSERT INTO mascotas (cliente_id,nombre,fecha_nacimiento) VALUES (?,'Toby','2026-03-01')", (ana,))
+    con.execute("INSERT INTO mascotas (cliente_id,nombre,fecha_nacimiento) VALUES (?,'Rex','2015-01-01')", (beto,))
+    con.commit()
+    d = A.crecimiento_clientes(con, hoy=datetime.date(2026, 11, 10))
+    assert d["seg_total"] == 5 and d["seg"]["perdido"] == 1 and d["seg"]["nuevo"] == 1, d["seg"]
+    nm = {m["mes"]: (m["nuevos"], m["volvieron"], m["pct"], m["abierto"]) for m in d["nuevos_mes"]}
+    assert nm == {"2026-11": (1, 0, 0, True), "2026-09": (2, 2, 100, False), "2026-08": (1, 1, 100, False), "2026-05": (1, 0, 0, False)}, nm
+    cam = {(c["antes"], c["despues"]): c["n"] for c in d["caminos"]}
+    assert cam == {("Porche PRO", "Repuesto"): 1, ("Rampa", "Porche PRO"): 1, ("Rampa", "Bowl"): 1, ("Repuesto", "Repuesto"): 1}, cam
+    assert [(j["a"], j["b"], j["n"]) for j in d["juntos"]] == [("Bowl", "Porche PRO", 2)]
+    assert d["vuelta"] == [{"k": "Repuesto", "dias": 30, "n": 4}], d["vuelta"]
+    pr = d["res_tipo"][0]
+    assert pr["tipo"] == "Primer repuesto" and pr["total"] == 3 and dict(pr["res"]) == {"Compró": 1, "El perro no se adaptó": 1, "Mensaje enviado": 1}
+    assert [i["c"] for i in d["intentos"]] == [1, 0, 0, 0]
+    assert [(g["k"], g["si"], g["no"], g["pct_no"]) for g in d["adapt"]["tamano"]] == [("Grande", 0, 1, 100), ("Mediano", 1, 0, 0)]
+    assert [(g["k"], g["si"], g["no"]) for g in d["adapt"]["edad"]] == [("Cachorro (menos de 1 año)", 1, 0), ("Mayor (8 años o más)", 0, 1)]
+    assert d["cumple"] == {"felicitados": 1, "compraron": 1} and d["basico"] == {"total": 0, "pro": 0}
+    con.close()
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        h = c.get("/crecimiento-clientes").text
+        assert "Clientes que se quedan" in h and "¿Vuelven a comprar?" in h and 'href="/crecimiento-clientes"' in h
+        for rol in ("logistica", "taller"):
+            sesion_de(c, rol)
+            r = c.get("/crecimiento-clientes", follow_redirects=False)
+            assert r.status_code in (302, 303), rol
 
 
 print()

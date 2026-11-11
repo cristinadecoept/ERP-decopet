@@ -1364,7 +1364,7 @@ def fecha_larga(d=None):
     d = d or datetime.date.today(); return f"{DIAS[d.weekday()]} {d.day} de {MESES[d.month-1]}"
 
 SECCIONES = {"proveedores": "Proveedores",
-             "marketing": "Marketing", "analitica": "Analítica", "mapa": "Mapa de ventas", "configuracion": "Configuración"}
+             "marketing": "Marketing", "analitica": "Analítica", "mapa": "Mapa de ventas", "crec_clientes": "Clientes que se quedan", "configuracion": "Configuración"}
 
 
 
@@ -8027,6 +8027,136 @@ def mapa(request: Request, mes: str = "", producto: int = 0, con=Depends(db)):
     d = datos_mapa(con, desde, hasta, producto or None)
     return render(request, "mapa.html", seccion="mapa", d=d, mes=mes or "todo", mes_txt=mes_txt, producto=producto, prods=prods,
                   meses=[(m, f"{MESES_N[int(m[5:]) - 1].capitalize()} {m[:4]}") for m in meses])
+
+
+# ------------------------------------------------------------------ CRECIMIENTO › CLIENTES
+SEG_NOMBRES = {"primer_repuesto": "Primer repuesto", "repuesto": "Le toca repuesto", "prepagado": "Repuesto prepagado",
+               "basico": "Porche Básico", "cumple": "Cumpleaños", "cobro": "Cobro"}
+SEG_MUESTRA = ["vip", "frecuente", "activo", "nuevo", "inactivo", "perdido"]   # en este orden, de mejor a peor
+
+
+def _mediana(xs):
+    xs = sorted(xs); return xs[len(xs) // 2] if xs else None
+
+
+def _edad_perro(fn, hoy):
+    try: d = datetime.date.fromisoformat((fn or "")[:10])
+    except ValueError: return "Sin dato"
+    a = (hoy - d).days / 365.25
+    return "Cachorro (menos de 1 año)" if a < 1 else ("Adulto (1 a 7 años)" if a < 8 else "Mayor (8 años o más)")
+
+
+def crecimiento_clientes(con, hoy=None):
+    """Los números para saber si el negocio crece por sus clientes: si se quedan, si vuelven, qué compran después,
+    qué dicen los seguimientos y qué se compra junto. Cuenta todas las órdenes no canceladas (también las de Airtable)."""
+    hoy = hoy or datetime.date.today()
+    ords = [dict(r) for r in con.execute("""SELECT id, cliente_id, substr(creado_en,1,10) dia, total FROM ordenes
+                                            WHERE estado!='cancelada' AND cliente_id IS NOT NULL ORDER BY creado_en, id""")]
+    lineas = {}
+    for r in con.execute("""SELECT l.orden_id, COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.total FROM orden_lineas l
+                            JOIN productos p ON p.id=l.producto_id JOIN ordenes o ON o.id=l.orden_id
+                            WHERE o.estado!='cancelada' AND l.extra_en IS NULL AND COALESCE(p.tipo,'producto')='producto'"""):
+        lineas.setdefault(r["orden_id"], []).append((r["nombre"], r["total"] or 0))
+    por_cli = {}
+    for o in ords: por_cli.setdefault(o["cliente_id"], []).append(o)
+
+    # 1 · cómo está la base: el mismo segmento que en Clientes
+    cv = corte_vip(con); seg = {k: 0 for k in SEG_MUESTRA}
+    for cid, os_ in por_cli.items():
+        dias = (hoy - datetime.date.fromisoformat(os_[-1]["dia"])).days
+        t = tipo_cliente(len(os_), dias, sum(o["total"] or 0 for o in os_), cv)
+        if t in seg: seg[t] += 1
+
+    # 2 · los nuevos de cada mes: cuántos volvieron a comprar en los 60 días siguientes a su primera compra
+    meses = {}
+    for cid, os_ in por_cli.items():
+        d0 = datetime.date.fromisoformat(os_[0]["dia"])
+        m = meses.setdefault(os_[0]["dia"][:7], {"mes": os_[0]["dia"][:7], "nuevos": 0, "volvieron": 0, "abierto": False})
+        m["nuevos"] += 1
+        if any(0 < (datetime.date.fromisoformat(o["dia"]) - d0).days <= 60 for o in os_[1:]): m["volvieron"] += 1
+        if (hoy - d0).days < 60: m["abierto"] = True   # todavía le queda tiempo para volver
+    nuevos_mes = sorted(meses.values(), key=lambda m: m["mes"], reverse=True)[:6]
+    for m in nuevos_mes:
+        m["pct"] = round(m["volvieron"] / m["nuevos"] * 100) if m["nuevos"] else 0
+        m["txt"] = f"{MESES_N[int(m['mes'][5:]) - 1].capitalize()} {m['mes'][:4]}"
+
+    # 3 · con qué entran y qué compran después (la compra siguiente, otro día)
+    def principal(oid):
+        ls = lineas.get(oid) or []
+        return max(ls, key=lambda x: x[1])[0] if ls else None
+    caminos = {}
+    for cid, os_ in por_cli.items():
+        dias = [o for o in os_ if principal(o["id"])]
+        if len(dias) < 2: continue
+        a = principal(dias[0]["id"])
+        sig = next((o for o in dias[1:] if o["dia"] > dias[0]["dia"]), None)
+        if not sig: continue
+        for b in {n for n, _ in lineas[sig["id"]]}:
+            caminos[(a, b)] = caminos.get((a, b), 0) + 1
+    caminos = [{"antes": a, "despues": b, "n": n} for (a, b), n in sorted(caminos.items(), key=lambda x: (-x[1], x[0]))[:8]]
+
+    # 4 · seguimientos: cómo terminó cada uno, por tipo
+    segs = [dict(r) for r in con.execute("SELECT cliente_id, tipo, resultado, intentos, hecho_en FROM seguimientos WHERE resultado IS NOT NULL")]
+    res_tipo = {}
+    for x in segs:
+        if x["tipo"] not in SEG_NOMBRES: continue
+        d = res_tipo.setdefault(x["tipo"], {"tipo": SEG_NOMBRES[x["tipo"]], "total": 0, "res": {}})
+        d["total"] += 1; k = RESULTADOS.get(x["resultado"], x["resultado"]); d["res"][k] = d["res"].get(k, 0) + 1
+    res_tipo = [dict(v, res=sorted(v["res"].items(), key=lambda r: -r[1])) for k, v in sorted(res_tipo.items(), key=lambda kv: list(SEG_NOMBRES).index(kv[0]))]
+    # en qué intento compran (1er mensaje, 2º…): si casi nadie compra después del 2º, no hace falta insistir tanto
+    intentos = {}
+    for x in segs:
+        if x["resultado"] in ("compro", "paso_pro") and x["tipo"] in ("primer_repuesto", "repuesto", "prepagado", "basico"):
+            n = min(int(x["intentos"] or 1), 4); intentos[n] = intentos.get(n, 0) + 1
+    intentos = [{"n": n, "txt": f"{n}{'º' if n < 4 else 'º o más'} mensaje", "c": intentos.get(n, 0)} for n in range(1, 5)]
+    # ¿se adaptó? (primer repuesto: compró o no se adaptó) según el tamaño del porche y la edad del perro
+    primer = {x["cliente_id"]: x["resultado"] for x in segs if x["tipo"] == "primer_repuesto" and x["resultado"] in ("compro", "no_se_adapto")}
+    adapt = {"tamano": {}, "edad": {}}
+    if primer:
+        q = ",".join("?" * len(primer))
+        tam = {r[0]: (r[1] or "").split(",")[0].strip() or "Sin dato" for r in con.execute(f"SELECT id, porche_tamano FROM clientes WHERE id IN ({q})", list(primer))}
+        edad = {}
+        for r in con.execute(f"SELECT cliente_id, fecha_nacimiento FROM mascotas WHERE fallecida IS NULL AND cliente_id IN ({q}) ORDER BY id", list(primer)):
+            edad.setdefault(r[0], _edad_perro(r[1], hoy))   # el primer perro anotado
+        for cid, r in primer.items():
+            for clave, grupo in (("tamano", tam.get(cid, "Sin dato")), ("edad", edad.get(cid, "Sin dato"))):
+                g = adapt[clave].setdefault(grupo, {"k": grupo, "si": 0, "no": 0})
+                g["si" if r == "compro" else "no"] += 1
+    for clave in adapt:
+        adapt[clave] = sorted(({**g, "pct_no": round(g["no"] / (g["si"] + g["no"]) * 100)} for g in adapt[clave].values()), key=lambda g: (g["k"] == "Sin dato", g["k"]))
+    # cumpleaños: de los que se felicitaron, cuántos compraron algo en los 30 días siguientes
+    felic = [x for x in segs if x["tipo"] == "cumple" and x["resultado"] == "felicitado"]
+    def compro_despues(cid, desde, dias):
+        d0 = datetime.date.fromisoformat(desde[:10])
+        return any(0 <= (datetime.date.fromisoformat(o["dia"]) - d0).days <= dias for o in por_cli.get(cid, []))
+    cumple = {"felicitados": len(felic), "compraron": sum(1 for x in felic if compro_despues(x["cliente_id"], x["hecho_en"], 30))}
+    basico = {"total": sum(1 for x in segs if x["tipo"] == "basico" and x["resultado"] not in ("mensaje", "fecha")),
+              "pro": sum(1 for x in segs if x["tipo"] == "basico" and x["resultado"] == "paso_pro")}
+
+    # 5 · productos: qué se pide junto en la misma orden, y cuánto tarda el cliente en volver después de cada producto
+    juntos = {}
+    for oid, ls in lineas.items():
+        ns = sorted({n for n, _ in ls})
+        for i, a in enumerate(ns):
+            for b in ns[i + 1:]: juntos[(a, b)] = juntos.get((a, b), 0) + 1
+    juntos = [{"a": a, "b": b, "n": n} for (a, b), n in sorted(juntos.items(), key=lambda x: (-x[1], x[0])) if n >= 2][:8]
+    vuelta = {}
+    for cid, os_ in por_cli.items():
+        for i, o in enumerate(os_):
+            sig = next((x for x in os_[i + 1:] if x["dia"] > o["dia"]), None)
+            if not sig: continue
+            d = (datetime.date.fromisoformat(sig["dia"]) - datetime.date.fromisoformat(o["dia"])).days
+            for n in {n for n, _ in lineas.get(o["id"], [])}: vuelta.setdefault(n, []).append(d)
+    vuelta = sorted(({"k": k, "dias": _mediana(v), "n": len(v)} for k, v in vuelta.items() if len(v) >= 3), key=lambda x: (x["dias"], x["k"]))[:10]
+
+    return {"seg": seg, "seg_total": sum(seg.values()), "nuevos_mes": nuevos_mes, "caminos": caminos, "res_tipo": res_tipo,
+            "intentos": intentos, "adapt": adapt, "cumple": cumple, "basico": basico, "juntos": juntos, "vuelta": vuelta}
+
+
+@app.get("/crecimiento-clientes", response_class=HTMLResponse)
+def crecimiento_clientes_vista(request: Request, con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    return render(request, "crecimiento_clientes.html", seccion="crec_clientes", d=crecimiento_clientes(con), TIPOS_CLIENTE=TIPOS_CLIENTE)
 
 
 def grafica_ventas_mes(con, m0, ant, hoy):

@@ -36,7 +36,7 @@
  const VISTAS = {ve: {centro: [7.6, -66.2], zoom: 6}, ccs: {centro: [10.475, -66.86], zoom: 12}};
  const mapa = L.map('mapa', {zoomControl: true, scrollWheelZoom: false, attributionControl: true}).setView(VISTAS.ve.centro, VISTAS.ve.zoom);
  // mapa base de OpenStreetMap (gratis, sin clave); el tono gris/oscuro se lo da el CSS (.mp-mapa .leaflet-tile-pane)
- L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap'}).addTo(mapa);
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap', referrerPolicy: 'strict-origin'}).addTo(mapa);   // OpenStreetMap exige saber de qué sitio se pide: solo va el nombre del sitio, nunca la página
  const css = getComputedStyle(document.documentElement);
  const color = {ve: css.getPropertyValue('--verde').trim() || '#28563E', ccs: css.getPropertyValue('--naranja').trim() || '#E1782E'};
  const usd = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
