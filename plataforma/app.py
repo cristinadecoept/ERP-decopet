@@ -4383,11 +4383,12 @@ def historial_exportar(request: Request, anio: str = "", mes: str = "", semana: 
 
 # ------------------------------------------------------------------ MIEMBROS VERSIÓN PRO
 @app.get("/miembros", response_class=HTMLResponse)
-def miembros(request: Request, q: str = "", ver: str = "todos", con=Depends(db)):
+def miembros(request: Request, q: str = "", ver: str = "todos", nuevos: str = "", con=Depends(db)):
     rows = con.execute("""
       SELECT c.id, c.nombre, c.telefono, c.ciudad,
-        MIN(CASE WHEN p.sku LIKE 'PRO-%' THEN substr(o.creado_en,1,10) END) desde,
-        COALESCE(c.porche_tamano, GROUP_CONCAT(DISTINCT CASE WHEN p.sku='PRO-G' THEN 'Grande' WHEN p.sku='PRO-M' THEN 'Mediano' END)) tamanos,
+        -- miembro desde su primer porche PRO (o kit completo, que lo trae): igual que cuenta Analítica
+        MIN(CASE WHEN p.sku LIKE 'PRO-%' OR p.sku LIKE 'KIT-COMPLETO-%' THEN substr(o.creado_en,1,10) END) desde,
+        COALESCE(c.porche_tamano, GROUP_CONCAT(DISTINCT CASE WHEN p.sku IN ('PRO-G','KIT-COMPLETO-G') THEN 'Grande' WHEN p.sku IN ('PRO-M','KIT-COMPLETO-M') THEN 'Mediano' END)) tamanos,
         SUM(CASE WHEN p.categoria='repuesto' THEN l.cantidad * (CASE WHEN p.sku LIKE 'PACK3%' THEN 3 WHEN p.sku LIKE 'PACK4%' THEN 4 WHEN p.sku LIKE 'PACK8%' THEN 8 ELSE 1 END) ELSE 0 END) repuestos,
         MAX(CASE WHEN p.categoria='repuesto' THEN substr(o.creado_en,1,10) END) ultimo_repuesto,
         (SELECT GROUP_CONCAT(m.nombre || CASE WHEN m.fallecida IS NOT NULL THEN ' 🕊️' ELSE '' END, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros
@@ -4417,9 +4418,14 @@ def miembros(request: Request, q: str = "", ver: str = "todos", con=Depends(db))
                  AND hecho_en = (SELECT MAX(hecho_en) FROM seguimientos s2 WHERE s2.cliente_id=s.cliente_id AND s2.tipo IN ('primer_repuesto','repuesto'))""")}
     for d in lista: d["no_usa"] = no_usa.get(d["id"])
     conteos["no_adapto"] = sum(1 for d in lista if d["no_usa"] == "no_se_adapto"); conteos["no_usa"] = sum(1 for d in lista if d["no_usa"] == "ya_no_usa")
-    if ver in ("no_adapto", "no_usa") and not q: lista = [d for d in lista if d["no_usa"] == {"no_adapto": "no_se_adapto", "no_usa": "ya_no_usa"}[ver]]
+    nuevos_txt = None
+    if re.fullmatch(r"\d{4}-\d{2}", nuevos or "") and not q:   # desde Analítica: los que se hicieron miembros ese mes, exactamente esos
+        lista = sorted((d for d in lista if (d["desde"] or "").startswith(nuevos)), key=lambda d: d["desde"], reverse=True)
+        nuevos_txt = f"{MESES_N[int(nuevos[5:]) - 1].capitalize()} {nuevos[:4]}"
+    elif ver in ("no_adapto", "no_usa") and not q: lista = [d for d in lista if d["no_usa"] == {"no_adapto": "no_se_adapto", "no_usa": "ya_no_usa"}[ver]]
     elif ver != "todos" and not q: lista = [d for d in lista if d["situacion"] == {"toca": "toca repuesto", "aldia": "al día", "inactivos": "inactivo", "sin_historial": "sin historial"}[ver]]
-    return render(request, "miembros.html", hoy_d=hoy, seccion="miembros", miembros=lista[:300], q=q, ver=ver, conteos=conteos, truncado=len(lista) > 300)
+    return render(request, "miembros.html", hoy_d=hoy, seccion="miembros", miembros=lista[:300], q=q, ver=("nuevos" if nuevos_txt else ver), conteos=conteos,
+                  truncado=len(lista) > 300, nuevos_txt=nuevos_txt, n_nuevos=len(lista))
 
 
 # ------------------------------------------------------------------ PRODUCTOS: catálogo · inventario · galería
@@ -7976,10 +7982,11 @@ def datos_mapa(con, desde, hasta, producto_id=None):
     """Ventas por ciudad (Venezuela) y por zona (Caracas) en el período. Con producto: solo lo de ese producto.
     Las órdenes canceladas y las viejas de Airtable/Excel no cuentan, igual que en Analítica."""
     filas = con.execute("""SELECT o.id, o.numero, COALESCE(NULLIF(c.nombre,''), '—') cliente, c.telefono, o.cliente_id, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente, o.zona, o.maps,
-                           (SELECT d.zona FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) zona_cliente,
+                           o.direccion dir_orden, d.zona zona_cliente, d.direccion dir_cliente, d.municipio mun_cliente, d.maps maps_cliente,
                            (SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=?) del_producto,
                            (SELECT SUM(l.cantidad) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=? AND l.extra_en IS NULL) unidades
                            FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
+                           LEFT JOIN direcciones d ON d.id=(SELECT d2.id FROM direcciones d2 WHERE d2.cliente_id=o.cliente_id ORDER BY d2.principal DESC, d2.id LIMIT 1)
                            WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ?""",
                         (producto_id, producto_id, desde, hasta)).fetchall()
     ciudades, zonas, sin_ciudad, sin_zona, puntos = {}, {}, {}, {"n": 0, "m": 0.0, "ordenes": []}, []
@@ -7993,11 +8000,20 @@ def datos_mapa(con, desde, hasta, producto_id=None):
             x = sin_ciudad.setdefault(ciu, {"k": ciu, "n": 0, "m": 0.0, "cl": set()})
         x["n"] += 1; x["m"] += monto; x["cl"].add(o["cliente_id"])
         if ciu != "Caracas": continue
-        z = zona_ccs(o["zona"]) or zona_ccs(o["zona_cliente"])
-        ll = COORD_ZONAS_CCS[z] if z else coords_de_link(o["maps"])
+        # la zona: la de la orden o la del cliente; si no, se busca en la dirección escrita (de la orden o de la ficha)
+        z = next((zona_ccs(t) for t in (o["zona"], o["zona_cliente"], o["dir_orden"], o["dir_cliente"], o["mun_cliente"]) if zona_ccs(t)), None)
+        ll = COORD_ZONAS_CCS[z] if z else (coords_de_link(o["maps"]) or coords_de_link(o["maps_cliente"]))
         if not ll or not (10.3 < ll[0] < 10.6 and -67.1 < ll[1] < -66.7):   # fuera de Caracas: no se dibuja en el zoom
+            gps = o["maps"] or o["maps_cliente"]
+            # por qué no se pudo ubicar, para que se vea qué falta de verdad
+            zona_txt = (o["zona"] or o["zona_cliente"] or "").strip()
+            porque = (f"zona “{zona_txt}” no está en Tarifas" if zona_txt else
+                      "el GPS es un enlace corto, sin coordenadas" if gps and ll is None else
+                      "el GPS cae fuera de Caracas" if gps else
+                      "la dirección no dice la zona" if (o["dir_orden"] or o["dir_cliente"] or "").strip() else "sin dirección ni GPS")
             sin_zona["n"] += 1; sin_zona["m"] += monto
-            sin_zona["ordenes"].append({"id": o["id"], "numero": o["numero"], "cliente": o["cliente"], "tel": o["telefono"], "m": round(monto, 2)}); continue
+            sin_zona["ordenes"].append({"id": o["id"], "numero": o["numero"], "cliente": o["cliente"], "tel": o["telefono"], "m": round(monto, 2), "porque": porque,
+                                        "dir": (o["dir_orden"] or o["dir_cliente"] or "").strip()}); continue
         if not z:   # sin zona conocida pero con GPS exacto: un punto suelto en el mapa
             puntos.append({"ll": ll, "m": round(monto, 2), "id": o["id"], "numero": o["numero"], "cliente": o["cliente"], "tel": o["telefono"]}); continue
         y = zonas.setdefault(z, {"k": z, "ll": ll, "n": 0, "m": 0.0, "cl": set()})
@@ -8010,9 +8026,12 @@ def datos_mapa(con, desde, hasta, producto_id=None):
 
 
 @app.get("/mapa", response_class=HTMLResponse)
-def mapa(request: Request, mes: str = "", producto: int = 0, con=Depends(db)):
-    """Dónde se vende: un círculo por ciudad (más grande donde más se vende) y, en Caracas, por zona."""
+def mapa(request: Request, mes: str = "", producto: int = 0, parcial: int = 0, con=Depends(db)):
+    """Dónde se vende: un círculo por ciudad (más grande donde más se vende) y, en Caracas, por zona.
+    No es una sección aparte: se abre en una ventana dentro de Analítica, que pide este pedazo (parcial=1)."""
     if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    if not parcial:   # enlaces viejos: a Analítica, con la ventana del mapa abierta
+        return RedirectResponse("/analitica?mapa=1" + (f"&mes={mes}" if re.fullmatch(r"\d{4}-\d{2}", mes or "") else ""), status_code=303)
     hoy = datetime.date.today()
     if mes == "todo":
         desde, hasta, mes_txt = "0000-01-01", "9999-12-31", "Desde el inicio"
@@ -8027,7 +8046,7 @@ def mapa(request: Request, mes: str = "", producto: int = 0, con=Depends(db)):
     if hoy.strftime("%Y-%m") not in meses: meses.insert(0, hoy.strftime("%Y-%m"))
     prods = con.execute("""SELECT id, nombre FROM productos WHERE COALESCE(tipo,'producto')='producto' AND COALESCE(activo,1)=1 ORDER BY nombre""").fetchall()
     d = datos_mapa(con, desde, hasta, producto or None)
-    return render(request, "mapa.html", seccion="mapa", d=d, mes=mes or "todo", mes_txt=mes_txt, producto=producto, prods=prods,
+    return render(request, "_mapa.html", seccion="analitica", d=d, mes=mes or "todo", mes_txt=mes_txt, producto=producto, prods=prods,
                   meses=[(m, f"{MESES_N[int(m[5:]) - 1].capitalize()} {m[:4]}") for m in meses])
 
 

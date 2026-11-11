@@ -32,8 +32,8 @@
   <div class="an-x">{% for d in [1, 10, 20, graf.n] %}<span style="left:{{ ((d - 1) / (graf.n - 1) * 100)|round(2) }}%">{{ d }}</span>{% endfor %}</div>
  </div>
 </div>{% endif %}
-{# vista previa del mapa: un toque lleva a Crecimiento › Mapa de ese mes #}
-<a class="tarjeta an-mapa" href="/mapa?mes={{ mes_act }}"><div class="an-graf-t"><h3>Dónde se vendió</h3><span class="mini">Ver mapa ›</span></div><div id="an-mapa"></div></a>
+{# vista previa del mapa: un toque abre el mapa de ese mes en una ventana, sin salir de Analítica #}
+<a class="tarjeta an-mapa" href="/analitica?mes={{ mes_act }}&mapa=1" data-mes="{{ mes_act }}"><div class="an-graf-t"><h3>Dónde se vendió</h3><span class="mini">Ver de cerca ›</span></div><div id="an-mapa"></div></a>
 </div>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -49,11 +49,67 @@
  if (C.length > 1) m.fitBounds(g.getBounds(), {padding: [24, 24], maxZoom: 7});
 })();
 </script>
+<dialog class="dlg mp-dlg" id="dlg-mapa"><div class="mp-cuerpo"></div></dialog>
+<script>
+// la ventana del mapa: trae el mapa del mes (y producto) elegido y lo dibuja; cambiar el filtro lo vuelve a traer, sin salir de Analítica
+(function(){
+ const dlg = document.getElementById('dlg-mapa'), cuerpo = dlg.querySelector('.mp-cuerpo'), tarjeta = document.querySelector('.an-mapa');
+ let mapa = null;
+ async function abrir(mes, producto){
+  if (!dlg.open) dlg.showModal();
+  cuerpo.style.opacity = .5;
+  const r = await fetch('/mapa?parcial=1&mes=' + encodeURIComponent(mes) + '&producto=' + (producto || 0));
+  if (mapa) { mapa.remove(); mapa = null; }
+  cuerpo.innerHTML = await r.text(); cuerpo.style.opacity = 1;
+  dibujar(JSON.parse(cuerpo.querySelector('.mp-datos').textContent));
+  const [sm, sp] = cuerpo.querySelectorAll('.mp-filtros select');
+  sm.onchange = sp.onchange = () => abrir(sm.value, sp.value);
+  cuerpo.querySelector('.mp-cerrar').onclick = () => dlg.close();
+ }
+ function dibujar(D){
+  const VISTAS = {ve: {centro: [7.6, -66.2], zoom: 6}, ccs: {centro: [10.475, -66.86], zoom: 12}};
+  mapa = L.map(cuerpo.querySelector('.mp-mapa'), {scrollWheelZoom: false}).setView(VISTAS.ve.centro, VISTAS.ve.zoom);
+  // OpenStreetMap exige saber de qué sitio se pide: solo va el nombre del sitio, nunca la página
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap', referrerPolicy: 'strict-origin'}).addTo(mapa);
+  const css = getComputedStyle(document.documentElement);
+  const color = {ve: css.getPropertyValue('--verde').trim() || '#28563E', ccs: css.getPropertyValue('--naranja').trim() || '#E1782E'};
+  const usd = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  function circulos(lista, c, rmax){
+   const mx = Math.max(1, ...lista.map(x => x.m));
+   return L.layerGroup(lista.map(x => L.circleMarker(x.ll, {radius: 6 + rmax * Math.sqrt(x.m / mx), color: c, weight: 1.5, fillColor: c, fillOpacity: .35})
+    .bindPopup('<b>' + x.k + '</b><br>' + usd(x.m) + ' · ' + x.n + ' orden' + (x.n != 1 ? 'es' : '') + ' · ' + x.cl + ' cliente' + (x.cl != 1 ? 's' : ''))));
+  }
+  const capas = {ve: circulos(D.ciudades, color.ve, 30), ccs: circulos(D.zonas, color.ccs, 26)};
+  D.puntos.forEach(p => capas.ccs.addLayer(L.circleMarker(p.ll, {radius: 4, color: color.ccs, weight: 1, fillColor: color.ccs, fillOpacity: .7}).bindPopup(usd(p.m))));
+  function encuadrar(v){
+   const g = L.featureGroup(capas[v].getLayers());
+   if (g.getLayers().length) mapa.fitBounds(g.getBounds(), {padding: [40, 40], maxZoom: v === 've' ? 8 : 14});
+   else mapa.setView(VISTAS[v].centro, VISTAS[v].zoom);
+  }
+  let vista = 've'; capas.ve.addTo(mapa); encuadrar('ve');
+  function ver(v){
+   if (v === vista) return;
+   mapa.removeLayer(capas[vista]); capas[v].addTo(mapa); vista = v; encuadrar(v);
+   cuerpo.querySelectorAll('.mp-tabs button').forEach(b => b.classList.toggle('act', b.dataset.vista === v));
+   cuerpo.querySelectorAll('[data-lista]').forEach(x => x.hidden = x.dataset.lista !== v);
+  }
+  cuerpo.querySelectorAll('.mp-tabs button').forEach(b => b.onclick = () => ver(b.dataset.vista));
+  cuerpo.querySelectorAll('.mp-lista tr[data-ll]').forEach(tr => tr.onclick = () => {
+   const ll = tr.dataset.ll.split(',').map(Number); mapa.flyTo(ll, +tr.dataset.z, {duration: .6});
+   capas[vista].eachLayer(m => { const p = m.getLatLng(); if (Math.abs(p.lat - ll[0]) < 1e-6 && Math.abs(p.lng - ll[1]) < 1e-6) setTimeout(() => m.openPopup(), 650); });
+   if (window.innerWidth < 900) cuerpo.querySelector('.mp-mapa').scrollIntoView({behavior: 'smooth', block: 'center'});
+  });
+ }
+ tarjeta.onclick = e => { e.preventDefault(); abrir(tarjeta.dataset.mes, 0); };
+ dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });   // tocar afuera la cierra
+ if (new URLSearchParams(location.search).get('mapa')) abrir(tarjeta.dataset.mes, 0);
+})();
+</script>
 
 {# ---------- Repuestos y packs: lo que más importa saber #}
 <h2 class="seccion-t">Repuestos y packs</h2>
 <div class="tiles an-tiles">
- <a class="tile" href="/miembros" style="text-decoration:none;color:inherit"><b>{{ am.pro_total }}</b><span>Miembros PRO</span><i>{{ am.pro_nuevos }} nuevo{{ 's' if am.pro_nuevos != 1 }} este mes · <u>ver quiénes</u></i></a>
+ <a class="tile" href="/miembros?nuevos={{ mes_act }}" style="text-decoration:none;color:inherit"><b>{{ am.pro_total }}</b><span>Miembros PRO</span><i>{{ am.pro_nuevos }} nuevo{{ 's' if am.pro_nuevos != 1 }} este mes · <u>ver quiénes</u></i></a>
  <div class="tile"><b>{{ am.rep_clientes }}</b><span>Clientes que compraron repuesto</span><i>{{ am.rep_unidades }} repuesto{{ 's' if am.rep_unidades != 1 }} · {{ flecha(comp.rep_clientes) }} antes {{ bm.rep_clientes }}</i></div>
  <div class="tile"><b>{{ am.pack_clientes }}</b><span>Clientes que compraron pack</span><i>{{ am.packs }} pack{{ 's' if am.packs != 1 }} · {{ flecha(comp.pack_clientes) }} antes {{ bm.pack_clientes }}</i></div>
  <div class="tile"><b>{{ am.prepagados }}</b><span>Repuestos dejados pagados</span><i>para entregar después · antes {{ bm.prepagados }}</i></div>

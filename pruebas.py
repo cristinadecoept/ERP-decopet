@@ -3151,7 +3151,7 @@ def _():
         sesion_de(c, "admin")
         h = c.get("/analitica").text
         assert "Ventas día a día" in h and 'class="an-p-este"' in h
-        assert 'class="tarjeta an-mapa" href="/mapa?mes=' in h and "Dónde se vendió" in h   # la vista previa lleva al Mapa de ese mes
+        assert 'class="tarjeta an-mapa"' in h and 'id="dlg-mapa"' in h and "Dónde se vendió" in h   # la vista previa abre el mapa de ese mes en una ventana
 
 
 
@@ -3178,28 +3178,51 @@ def _():
         orden("#M5", "Agencia Tealca, CC Las Trinitarias, Barquisimeto", None, None, [(p1, 1, 80)])
         orden("#M6", "Pueblo Raro", None, None, [(p2, 1, 20)])
         con.commit()
+        # la zona o el GPS que están en la ficha del cliente (no en la orden) también ubican la orden
+        con2 = sqlite3.connect(A.DB); con2.row_factory = sqlite3.Row
+        def cliente_con(nombre, tel, direccion, zona, maps):
+            k = con2.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,ciudad) VALUES (?,?,?,'Caracas')", (nombre, nombre, tel)).lastrowid
+            con2.execute("INSERT INTO direcciones (cliente_id,direccion,zona,maps,principal) VALUES (?,?,?,?,1)", (k, direccion, zona, maps))
+            oid = con2.execute("""INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total,tipo_entrega,ciudad,origen_excel)
+                                  VALUES (?,?,'whatsapp','entregada','pagada','2026-04-05 10:00:00',10,10,'delivery','Caracas',0)""", ("#F" + nombre, k)).lastrowid
+            con2.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio,total) VALUES (?,?,1,10,10)", (oid, p2))
+        cliente_con("Dir", "04145551301", "Calle 3, Los Palos Grandes, edif. Sol", None, None)
+        cliente_con("Gps", "04145551302", "Casa azul", None, "https://www.google.com/maps?q=10.4301,-66.8201")
+        cliente_con("Corto", "04145551303", "Casa verde", None, "https://maps.app.goo.gl/abc")
+        cliente_con("Rara", "04145551304", "Casa roja", "Zona Inventada", None)
+        con2.commit()
+        f = A.datos_mapa(con2, "2026-04-01", "2026-04-30")
+        assert [(x["k"], x["n"]) for x in f["zonas"]] == [("Los Palos Grandes", 1)], f["zonas"]
+        assert [p["numero"] for p in f["puntos"]] == ["#FGps"], f["puntos"]
+        assert {o["numero"]: o["porque"] for o in f["sin_zona"]["ordenes"]} == {"#FCorto": "el GPS es un enlace corto, sin coordenadas",
+                                                                                "#FRara": "zona “Zona Inventada” no está en Tarifas"}, f["sin_zona"]
+        con2.close()
         d = A.datos_mapa(con, "2026-03-01", "2026-03-31")
         ciu = {x["k"]: (x["n"], x["m"]) for x in d["ciudades"]}
         assert ciu == {"Caracas": (4, 220), "Barquisimeto": (1, 80)}, ciu
         assert [(x["k"], x["n"], x["m"]) for x in d["zonas"]] == [("Chacao", 2, 120)], d["zonas"]
         assert [(p["ll"], p["m"], p["numero"]) for p in d["puntos"]] == [((10.4301, -66.8201), 20, "#M3")], d["puntos"]
         assert (d["sin_zona"]["n"], d["sin_zona"]["m"], [o["numero"] for o in d["sin_zona"]["ordenes"]]) == (1, 80, ["#M4"]), d["sin_zona"]
+        assert d["sin_zona"]["ordenes"][0]["porque"] == "sin dirección ni GPS"
         assert [x["k"] for x in d["sin_ciudad"]] == ["Pueblo Raro"] and d["total"] == 320
         r = A.datos_mapa(con, "2026-03-01", "2026-03-31", p1)
         assert {x["k"]: x["m"] for x in r["ciudades"]} == {"Caracas": 160, "Barquisimeto": 80} and r["total"] == 240
         con.close()
         sesion_de(c, "admin")
-        h = c.get("/mapa?mes=2026-03").text
-        assert "Mapa de ventas" in h and "Barquisimeto" in h and 'href="/mapa"' in h and "leaflet" in h
-        # sin decir de qué sitio se pide, OpenStreetMap bloquea el mapa ("Access blocked"): el ERP no manda referer por defecto
-        assert "referrerPolicy: 'strict-origin'" in h
-        assert "ver cuáles" in h and "<b>#M4</b>" in h and "<b>#M3</b>" in h   # las órdenes sin zona se pueden ver y abrir
+        h = c.get("/mapa?mes=2026-03&parcial=1").text   # el pedazo que la ventana de Analítica pide
+        assert "Dónde se vendió" in h and "Barquisimeto" in h and 'class="mp-datos"' in h and "<nav>" not in h
+        an = c.get("/analitica").text
+        assert 'href="/mapa"' not in an and "referrerPolicy: 'strict-origin'" in an   # ya no es sección aparte en el menú
+        r = c.get("/mapa?mes=2026-03", follow_redirects=False)   # enlaces viejos: a Analítica con el mapa abierto
+        assert r.status_code == 303 and r.headers["location"] == "/analitica?mapa=1&mes=2026-03"
+        # sin decir de qué sitio se pide, OpenStreetMap bloquea el mapa ("Access blocked"): el ERP no manda referer por defecto (va arriba, en Analítica)
+        assert "no pudo ubicar" in h and "ver cuáles" in h and "<b>#M4</b>" in h and "<b>#M3</b>" in h   # las órdenes sin zona se pueden ver y abrir
         assert "WhatsApp ↗" in h and "wa.me" in h   # y escribirle al cliente para pedirle la zona
-        assert c.get("/mapa?mes=todo").status_code == 200 and c.get(f"/mapa?mes=2026-03&producto={p1}").status_code == 200
+        assert c.get("/mapa?mes=todo&parcial=1").status_code == 200 and c.get(f"/mapa?mes=2026-03&producto={p1}&parcial=1").status_code == 200
         for rol in ("logistica", "taller"):
             sesion_de(c, rol)
-            r = c.get("/mapa", follow_redirects=False)
-            assert r.status_code in (302, 303) and "Mapa de ventas" not in r.text, rol
+            r = c.get("/mapa?parcial=1", follow_redirects=False)
+            assert r.status_code in (302, 303) and "Dónde se vendió" not in r.text, rol
 
 
 
@@ -3248,11 +3271,40 @@ def _():
     with erp_de_prueba() as c:
         sesion_de(c, "admin")
         h = c.get("/crecimiento-clientes").text
-        assert "Clientes que se quedan" in h and "¿Vuelven a comprar?" in h and 'href="/crecimiento-clientes"' in h
+        assert "Clientes que se quedan" in h and "¿Vuelven a comprar?" in h
+        assert 'href="/crecimiento-clientes"' not in c.get("/analitica").text   # la dueña lo sacó del menú hasta pensarlo mejor
         for rol in ("logistica", "taller"):
             sesion_de(c, rol)
             r = c.get("/crecimiento-clientes", follow_redirects=False)
             assert r.status_code in (302, 303), rol
+
+
+@prueba("Analítica › Miembros PRO › ver quiénes: muestra exactamente los nuevos de ese mes (porche PRO o kit completo), ni uno más")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pro = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('PRO-PRUEBA','Porche PRO prueba','producto',93)").lastrowid
+        kit = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('KIT-COMPLETO-PRUEBA','Kit completo prueba','producto',150)").lastrowid
+        def orden(nombre, dia, pid):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,?)", (nombre, nombre, "0414" + str(abs(hash(nombre)) % 10**7).zfill(7))).lastrowid
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total) VALUES (?,?,'whatsapp','entregada','pagada',?,93,93)",
+                              ("#N" + nombre, cid, dia + " 10:00:00")).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio,total) VALUES (?,?,1,93,93)", (oid, pid))
+            return cid
+        orden("Nueva Pro", "2025-02-10", pro); orden("Nueva Kit", "2025-02-20", kit)
+        viejo = orden("Viejo Pro", "2025-01-05", pro)
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total) VALUES ('#Nviejo2',?,'whatsapp','entregada','pagada','2025-02-15 10:00:00',93,93)", (viejo,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio,total) VALUES (?,?,1,93,93)", (oid, pro))   # volvió a comprar: no es nuevo
+        con.commit()
+        n = A.resumen_mes(con, datetime.date(2025, 2, 1))["pro_nuevos"]
+        con.close()
+        assert n == 2, n
+        sesion_de(c, "admin")
+        assert 'href="/miembros?nuevos=' in c.get("/analitica").text
+        h = c.get("/miembros?nuevos=2025-02").text
+        assert "Nueva Pro" in h and "Nueva Kit" in h and "Viejo Pro" not in h
+        assert "Nuevos de Febrero 2025" in h and f'<span class="bf-n">{n}</span>' in h
+        assert "Viejo Pro" in c.get("/miembros").text
 
 
 print()

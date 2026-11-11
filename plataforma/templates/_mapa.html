@@ -1,0 +1,34 @@
+{# el mapa de ventas, dentro de la ventana que se abre en Analítica (lo arma el script de analitica.html) #}
+<div class="mp-cab"><div><h2>Dónde se vendió</h2><div class="sub">{{ mes_txt }} · {{ d.total|usd }}</div></div>
+ <div class="mp-filtros">
+  <select name="mes"><option value="todo" {{ 'selected' if mes=='todo' }}>Desde el inicio</option>{% for m, t in meses %}<option value="{{ m }}" {{ 'selected' if m==mes }}>{{ t }}</option>{% endfor %}</select>
+  <select name="producto"><option value="0">Todos los productos</option>{% for p in prods %}<option value="{{ p.id }}" {{ 'selected' if p.id==producto }}>{{ p.nombre }}</option>{% endfor %}</select>
+ </div>
+ <button type="button" class="mp-cerrar" aria-label="Cerrar">✕</button></div>
+<div class="mp-tabs" role="tablist"><button type="button" class="act" data-vista="ve">Venezuela</button><button type="button" data-vista="ccs">Caracas por zona</button></div>
+
+<div class="mp-g">
+ <div class="tarjeta mp-mapa-t"><div class="mp-mapa"></div></div>
+ <div class="tarjeta mp-lista">
+  <div data-lista="ve">
+   <h3>Ciudades</h3>
+   {% if d.ciudades %}{% set mx = d.ciudades[0].m or 1 %}<table class="lineas" data-cols="Ciudad:50|Órdenes:20|Ventas:30"><tr><th>Ciudad</th><th class="num">Órdenes</th><th class="num">Ventas</th></tr>
+   {% for x in d.ciudades %}<tr class="fila" data-ll="{{ x.ll|join(',') }}" data-z="{{ 9 if x.k != 'Caracas' else 11 }}"><td>{{ x.k }}<div class="an-barra"><i style="width:{{ (x.m / mx * 100)|round(1) }}%"></i></div></td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
+   {% else %}<div class="vacio">Sin ventas en este período.</div>{% endif %}
+   {% if d.sin_ciudad %}<div class="mini mp-nota">Sin ubicar en el mapa: {% for x in d.sin_ciudad %}{{ x.k }} ({{ x.n }}){{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+  </div>
+  <div data-lista="ccs" hidden>
+   <h3>Zonas de Caracas</h3>
+   {# las órdenes que no tienen zona: se pueden abrir para ponérsela #}
+   {% for titulo, lista in [((d.puntos|length) ~ ' orden' ~ ('es' if d.puntos|length != 1 else '') ~ ' sin zona salen como punto, por su GPS', d.puntos),
+                            ((d.sin_zona.n) ~ ' orden' ~ ('es' if d.sin_zona.n != 1 else '') ~ ' de Caracas que el mapa no pudo ubicar (' ~ (d.sin_zona.m|usd) ~ ')', d.sin_zona.ordenes)] if lista %}
+   <details class="mp-sin"><summary class="mini">{{ titulo }} <u>ver cuáles</u></summary>
+    {% for o in lista|sort(attribute='numero') %}<div class="mp-sin-o"><a href="/ordenes?estado=todas&abrir={{ o.id }}"><b>{{ o.numero }}</b> {{ o.cliente }}{% if o.porque %}<span class="mini mp-porque" title="{{ o.dir }}">{{ o.porque }}</span>{% endif %}</a><span class="num">{{ o.m|usd }}</span>{% if o.tel and o.tel != 'Pendiente' %}<a class="wa-link" href="{{ o.tel|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% else %}<span class="mini">sin teléfono</span>{% endif %}</div>{% endfor %}
+   </details>{% endfor %}
+   {% if d.zonas %}{% set mx = d.zonas[0].m or 1 %}<table class="lineas" data-cols="Zona:50|Órdenes:20|Ventas:30"><tr><th>Zona</th><th class="num">Órdenes</th><th class="num">Ventas</th></tr>
+   {% for x in d.zonas %}<tr class="fila" data-ll="{{ x.ll|join(',') }}" data-z="15"><td>{{ x.k }}<div class="an-barra nar"><i style="width:{{ (x.m / mx * 100)|round(1) }}%"></i></div></td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
+   {% else %}<div class="vacio">Ninguna orden de Caracas con zona en este período.</div>{% endif %}
+  </div>
+ </div>
+</div>
+<script type="application/json" class="mp-datos">{{ d|tojson }}</script>
