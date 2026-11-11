@@ -8003,14 +8003,16 @@ def coords_de_link(maps):
 
 def datos_mapa(con, desde, hasta, producto_id=None):
     """Ventas por ciudad (Venezuela) y por zona (Caracas) en el período. Con producto: solo lo de ese producto.
-    Las órdenes canceladas y las viejas de Airtable/Excel no cuentan, igual que en Analítica."""
+    Las órdenes canceladas y las viejas de Airtable/Excel no cuentan, igual que en Analítica.
+    Las de pick up tampoco: el mapa es de lo que se lleva (delivery o envío), no de lo que vienen a retirar."""
     filas = con.execute("""SELECT o.id, o.numero, COALESCE(NULLIF(c.nombre,''), '—') cliente, c.telefono, o.cliente_id, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente, o.zona, o.maps,
                            o.direccion dir_orden, d.zona zona_cliente, d.direccion dir_cliente, d.municipio mun_cliente, d.maps maps_cliente,
                            (SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=?) del_producto,
                            (SELECT SUM(l.cantidad) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=? AND l.extra_en IS NULL) unidades
                            FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                            LEFT JOIN direcciones d ON d.id=(SELECT d2.id FROM direcciones d2 WHERE d2.cliente_id=o.cliente_id ORDER BY d2.principal DESC, d2.id LIMIT 1)
-                           WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ?""",
+                           WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND COALESCE(o.tipo_entrega,'')!='pickup'
+                             AND substr(o.creado_en,1,10) BETWEEN ? AND ?""",
                         (producto_id, producto_id, desde, hasta)).fetchall()
     ciudades, zonas, sin_ciudad, sin_zona, puntos = {}, {}, {}, {"n": 0, "m": 0.0, "ordenes": []}, []
     for o in filas:

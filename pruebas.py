@@ -3192,12 +3192,17 @@ def _():
         cliente_con("Gps", "04145551302", "Casa azul", None, "https://www.google.com/maps?q=10.4301,-66.8201")
         cliente_con("Corto", "04145551303", "Casa verde", None, "https://maps.app.goo.gl/abc")
         cliente_con("Rara", "04145551304", "Casa roja", "Zona Inventada", None)
+        k = con2.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,ciudad) VALUES ('Retira','Retira','04145551305','Caracas')").lastrowid
+        oid = con2.execute("""INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total,tipo_entrega,ciudad,origen_excel)
+                              VALUES ('#FRetira',?,'whatsapp','entregada','pagada','2026-04-06 10:00:00',10,10,'pickup','Caracas',0)""", (k,)).lastrowid
+        con2.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio,total) VALUES (?,?,1,10,10)", (oid, p2))   # vino a retirar
         con2.commit()
         f = A.datos_mapa(con2, "2026-04-01", "2026-04-30")
         assert [(x["k"], x["n"]) for x in f["zonas"]] == [("Los Palos Grandes", 1)], f["zonas"]
         assert [p["numero"] for p in f["puntos"]] == ["#FGps"], f["puntos"]
         assert {o["numero"]: o["porque"] for o in f["sin_zona"]["ordenes"]} == {"#FCorto": "el GPS es un enlace corto, sin coordenadas",
                                                                                 "#FRara": "zona “Zona Inventada” todavía no está en el mapa"}, f["sin_zona"]
+        assert "#FRetira" not in str(f) and f["total"] == 40   # lo que vienen a retirar no está en el mapa (es de delivery y envíos)
         con2.close()
         d = A.datos_mapa(con, "2026-03-01", "2026-03-31")
         ciu = {x["k"]: (x["n"], x["m"]) for x in d["ciudades"]}
