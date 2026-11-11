@@ -3314,6 +3314,27 @@ def _():
         assert "Viejo Pro" in c.get("/miembros").text
 
 
+@prueba("Mis entregas: si recibe otra persona, tocar el WhatsApp del cliente avisa quién recibe de verdad")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        desp = A.DESPACHADORES[0]
+        pro = con.execute("SELECT id, nombre FROM productos WHERE sku='PRO-M'").fetchone()
+        def orden(n, nombre, tel, receptor=None, rtel=None):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,?)", (nombre, nombre, tel)).lastrowid
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,direccion,zona,despachador,receptor_nombre,receptor_telefono,fecha_prometida)
+                                 VALUES (?,?,'pendiente','pagada',50,0,'delivery','Calle 1','Chacao',?,?,?,date('now'))""", (n, cid, desp, receptor, rtel)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,50,0,50)", (oid, pro["id"], pro["nombre"]))
+        orden("#R1", "Clienta Tercero", "04145550001", "Vecina Recibe", "04145550002")
+        orden("#R2", "Clienta Sola", "04145550003")
+        con.commit(); con.close()
+        sesion_de(c, "despachador")
+        h = c.get("/mis-entregas").text
+        assert 'data-cliente="Clienta Tercero" data-recibe="Vecina Recibe"' in h and "data-recibe-href=" in h, "el WhatsApp del cliente sabe quién recibe"
+        assert h.count('data-recibe="') == 1, "si recibe el mismo cliente, no hay aviso"
+        assert "no es quien recibe" in h
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

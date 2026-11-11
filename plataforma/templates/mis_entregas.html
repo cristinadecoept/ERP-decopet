@@ -38,7 +38,7 @@
 <div class="tabla">
 {% if ruta %}<table data-cols="Quién:15|Dirección:17|Qué lleva:13|Falta pagar:10|Status:14|Marcar como:31" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th><th>Status</th><th style="text-align:center">Marcar como</th></tr>
 {% for f in ruta %}<tr>
- <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}" data-msj="{{ texto_aviso(f.quien, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}" target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
+ <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}" data-msj="{{ texto_aviso(f.quien, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}" {% if f.recibe %}data-cliente="{{ f.quien }}" data-recibe="{{ f.recibe }}"{% if f.recibe_tel %} data-recibe-href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}" data-recibe-msj="{{ texto_aviso(f.recibe, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}"{% endif %}{% endif %} target="_blank" rel="noreferrer">WhatsApp ↗</a></div>{% endif %}
   {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}" data-msj="{{ texto_aviso(f.recibe, quien, f.que_lleva, False, f.direccion, f.maps, f.ciudad) }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% endif %}</div>{% endif %}</td>
  <td class="me-dir" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% else %}<span class="mini">—</span>{% endif %}{% set nav = navegacion(f.maps, f.direccion, f.ciudad) %}{% if nav.maps or nav.waze %}<div class="mini nav-ir">{{ 'Cómo llegar:' if nav.exacto else 'Sin ubicación · buscar la dirección:' }}{% if nav.maps %} <a href="{{ nav.maps }}" target="_blank" rel="noreferrer">Maps ↗</a>{% endif %}{% if nav.waze %} · <a href="{{ nav.waze }}" target="_blank" rel="noreferrer">Waze ↗</a>{% endif %}</div>{% endif %}</td>
  <td class="mini me-lleva" data-t="Qué lleva">{{ f.que_lleva|platos }}{% for t in f.indicaciones %}<div class="op-nota">📌 {{ t }}</div>{% endfor %}{% for av in f.avisos or [] %}<div class="op-nota" style="background:#fbe9e5;color:#b3321b">⚠️ Le avisaste a Cristina: {{ av.tipo }}{% if av.descripcion %} · “{{ av.descripcion }}”{% endif %}</div>{% endfor %}</td>
@@ -83,7 +83,7 @@
 {% for v in viajes_manana %}{{ tarjeta_viaje(v, True) }}{% endfor %}
 {% endif %}{% if ruta_manana %}<div class="tabla"><table data-cols="Quién:22|Dirección:30|Qué lleva:28|Falta pagar:20" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th></tr>
 {% for f in ruta_manana %}<tr>
- <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}" data-msj="{{ texto_aviso(f.quien, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}" target="_blank" rel="noreferrer">{{ f.telefono }} · WhatsApp ↗</a></div>{% endif %}
+ <td class="me-quien"><b>{{ f.quien }}</b>{% if f.telefono %}<div><a class="wa-link" href="{{ wa_aviso(f.telefono, f.quien, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}" data-msj="{{ texto_aviso(f.quien, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}" {% if f.recibe %}data-cliente="{{ f.quien }}" data-recibe="{{ f.recibe }}"{% if f.recibe_tel %} data-recibe-href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}" data-recibe-msj="{{ texto_aviso(f.recibe, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}"{% endif %}{% endif %} target="_blank" rel="noreferrer">{{ f.telefono }} · WhatsApp ↗</a></div>{% endif %}
   {% if f.recibe %}<div class="recibe-t">Recibe: <b>{{ f.recibe }}</b>{% if f.recibe_tel %} · <a class="wa-link" href="{{ wa_aviso(f.recibe_tel, f.recibe, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}" data-msj="{{ texto_aviso(f.recibe, quien, f.que_lleva, True, f.direccion, f.maps, f.ciudad) }}" target="_blank" rel="noreferrer">{{ f.recibe_tel }} ↗</a>{% endif %}</div>{% endif %}</td>
  <td class="me-dir" data-t="Dirección">{% if f.direccion %}<span class="dir-t">{{ f.direccion }}</span>{% else %}<span class="mini">—</span>{% endif %}{% set nav = navegacion(f.maps, f.direccion, f.ciudad) %}{% if nav.maps or nav.waze %}<div class="mini nav-ir">{{ 'Cómo llegar:' if nav.exacto else 'Sin ubicación · buscar la dirección:' }}{% if nav.maps %} <a href="{{ nav.maps }}" target="_blank" rel="noreferrer">Maps ↗</a>{% endif %}{% if nav.waze %} · <a href="{{ nav.waze }}" target="_blank" rel="noreferrer">Waze ↗</a>{% endif %}</div>{% endif %}</td>
  <td class="mini me-lleva" data-t="Qué lleva">{{ f.que_lleva|platos }}</td>
@@ -113,4 +113,22 @@
   {% else %}<div class="vacio">No tienes pagos por confirmar.</div>{% endif %}</div></div>
 </div>
 <script>document.querySelectorAll('a[data-msj]').forEach(a=>a.addEventListener('click',()=>{try{navigator.clipboard.writeText(a.dataset.msj)}catch(e){}}));</script>
+<script>
+// si recibe otra persona, tocar el WhatsApp del cliente avisa antes: es fácil escribirle al que no es
+document.querySelectorAll('a[data-recibe]').forEach(a => a.addEventListener('click', e => {
+ if (a._seguir) { a._seguir = false; return; }
+ e.preventDefault(); e.stopImmediatePropagation();
+ const cli = a.dataset.cliente, rec = a.dataset.recibe, href = a.dataset.recibeHref;
+ const d = document.getElementById('dlg-preg');
+ d.querySelector('.dlg-txt').textContent = '👀 ' + cli + ' es el cliente, pero no es quien recibe. Recibe ' + rec + (href ? '.' : ' (no tiene teléfono anotado).');
+ d.querySelector('[value=si]').textContent = href ? 'Escribirle a ' + rec : 'Escribirle igual a ' + cli;
+ d.querySelector('[value=no]').textContent = href ? 'Escribirle igual a ' + cli : 'Cancelar';
+ d.returnValue = ''; d.showModal();
+ d.addEventListener('close', () => {
+  const r = d.returnValue;
+  if (r === 'si' && href) { try { navigator.clipboard.writeText(a.dataset.recibeMsj) } catch (x) {} window.open(href, '_blank', 'noreferrer'); }
+  else if ((r === 'no' && href) || (r === 'si' && !href)) { a._seguir = true; a.click(); }
+ }, {once: true});
+}, true));
+</script>
 {% endblock %}
