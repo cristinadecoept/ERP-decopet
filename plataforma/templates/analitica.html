@@ -12,6 +12,26 @@
  <div class="tile"><b>{{ am.clientes }}</b><span>Clientes que compraron</span><i>{{ am.nuevos }} nuevo{{ 's' if am.nuevos != 1 }} · {{ am.repiten }} repite{{ 'n' if am.repiten != 1 }}</i></div>
 </div>
 
+{# ---------- Ventas acumuladas día a día, contra el mes anterior #}
+{% if graf.este or graf.antes %}<div class="tarjeta an-graf">
+ <div class="an-graf-t"><h3>Ventas día a día</h3>
+  <div class="an-ley"><span><i class="an-l-este"></i>{{ mes_txt.split(' ')[0] }}{% if graf.ultimo %} · <b>{{ graf.ultimo.acum|usd }}</b> al día {{ graf.ultimo.dia }}{% endif %}</span>
+  <span><i class="an-l-antes"></i>{{ graf.mes_antes|capitalize }} · {{ graf.antes_mismo_dia|usd }}{% if graf.ultimo %} al día {{ graf.ultimo.dia }}{% endif %}</span></div></div>
+ <div class="an-plot">
+  <div class="an-y"><span>{{ graf.techo|usd }}</span><span>{{ (graf.techo / 2)|usd }}</span><span>$0</span></div>
+  <div class="an-lienzo">
+   <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" y1="0" x2="100" y2="0" class="an-guia"/><line x1="0" y1="50" x2="100" y2="50" class="an-guia"/><line x1="0" y1="100" x2="100" y2="100" class="an-guia"/>
+    {% if graf.linea_antes %}<polyline points="{{ graf.linea_antes }}" class="an-p-antes"/>{% endif %}
+    {% if graf.area %}<polygon points="{{ graf.area }}" class="an-p-area"/><polyline points="{{ graf.linea }}" class="an-p-este"/>{% endif %}
+    {% for x in graf.este %}<rect x="{{ ((x.dia - 1.5) / (graf.n - 1) * 100)|round(2) }}" y="0" width="{{ (100 / (graf.n - 1))|round(2) }}" height="100" class="an-col-h"><title>{{ x.dia }} · vendido ese día {{ x.v|usd }} · acumulado {{ x.acum|usd }}</title></rect>{% endfor %}
+   </svg>
+   {% if graf.ultimo %}<span class="an-punto" style="left:{{ ((graf.ultimo.dia - 1) / (graf.n - 1) * 100)|round(2) }}%;top:{{ (100 - graf.ultimo.acum / graf.techo * 100)|round(2) }}%"></span>{% endif %}
+  </div>
+  <div class="an-x">{% for d in [1, 10, 20, graf.n] %}<span style="left:{{ ((d - 1) / (graf.n - 1) * 100)|round(2) }}%">{{ d }}</span>{% endfor %}</div>
+ </div>
+</div>{% endif %}
+
 {# ---------- Repuestos y packs: lo que más importa saber #}
 <h2 class="seccion-t">Repuestos y packs</h2>
 <div class="tiles an-tiles">

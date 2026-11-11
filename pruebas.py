@@ -2906,9 +2906,10 @@ def _():
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
         cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,ciudad) VALUES ('Ciu Dad','Ciu','04145550123','Valencia')").lastrowid
         for n, ciu in (("#90011", "Tealca CC Gran Bazar, Maracaibo, Zulia"), ("#90012", "Av Venezuela entre calles 39 y 40 No 39-55")):
-            con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total,tipo_entrega,ciudad) VALUES (?,?,'whatsapp','entregada','pagada','2026-11-03 10:00:00',10,10,'nacional',?)", (n, cid, ciu))
+            con.execute("INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total,tipo_entrega,ciudad) VALUES (?,?,'whatsapp','entregada','pagada','2026-03-03 10:00:00',10,10,'nacional',?)", (n, cid, ciu))
         con.commit()
-        ciudades = {x["k"] for x in A.resumen_mes(con, A.datetime.date(2026, 11, 1))["ciudades"]}
+        # un mes sin otras órdenes de la base de prueba: en el mes en curso hay más ciudades y la lista muestra solo 8
+        ciudades = {x["k"] for x in A.resumen_mes(con, A.datetime.date(2026, 3, 1))["ciudades"]}
         assert {"Maracaibo", "Valencia"} <= ciudades and not any("," in x for x in ciudades), ciudades
         con.close()
 
@@ -3129,6 +3130,27 @@ def _():
         para = h.split("<b>Para Tealca</b>")[1].split("</tr>")[0]
         assert "1× Bar Prueba" in juan and "embalar" not in juan, juan
         assert "1× Bar Prueba" in para and "embalar" not in para, para
+
+
+
+@prueba("Analítica: gráfica de ventas acumuladas día a día, el mes en curso hasta hoy contra el mes anterior a la misma fecha")
+def _():
+    import datetime as dt
+    falsas = {"2026-11-02": (100, 1), "2026-11-05": (50, 1), "2026-10-03": (80, 1), "2026-10-20": (200, 2)}
+    original = A.ventas_por_dia
+    A.ventas_por_dia = lambda con, d, h: {k: v for k, v in falsas.items() if d <= k <= h}
+    try:
+        g = A.grafica_ventas_mes(None, dt.date(2026, 11, 1), dt.date(2026, 10, 1), dt.date(2026, 11, 10))
+    finally:
+        A.ventas_por_dia = original
+    assert len(g["este"]) == 10 and len(g["antes"]) == 31 and g["n"] == 31
+    assert g["ultimo"] == {"dia": 10, "v": 0, "acum": 150} and g["antes_mismo_dia"] == 80
+    assert g["techo"] == 300 and g["mes_antes"] == "octubre"
+    assert g["linea"].startswith("0.00,100.00") and g["linea_antes"].endswith("100.00,6.67")
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        h = c.get("/analitica").text
+        assert "Ventas día a día" in h and 'class="an-p-este"' in h
 
 
 print()

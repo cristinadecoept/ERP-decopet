@@ -7904,9 +7904,39 @@ def analitica(request: Request, mes: str = "", con=Depends(db)):
         if not y: return None
         return round((x - y) / y * 100)
     comp = {k: var(a[k], b[k]) for k in ("ventas", "pedidos", "ticket", "clientes", "nuevos", "repiten", "rep_clientes", "rep_unidades", "pack_clientes", "packs")}
-    return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp,
+    return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp, graf=grafica_ventas_mes(con, m0, ant, hoy),
                   mes_txt=f"{MESES_N[m0.month - 1].capitalize()} {m0.year}", mes_ant=ant.strftime("%Y-%m"),
                   mes_sig=sig.strftime("%Y-%m") if sig <= hoy.replace(day=1) else None, CANAL=CANAL)
+
+
+def grafica_ventas_mes(con, m0, ant, hoy):
+    """Ventas acumuladas día a día: este mes contra el anterior, para ver a la misma fecha si se va mejor o peor.
+    El mes en curso llega hasta hoy. Los puntos van en un lienzo de 0–100 de ancho y 0–100 de alto."""
+    def dias(m):
+        fin = (m + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)
+        por_dia = ventas_por_dia(con, m.isoformat(), fin.isoformat())
+        hasta = min(fin, hoy) if m <= hoy else fin
+        out, acum = [], 0.0
+        for d in range(1, fin.day + 1):
+            f = m.replace(day=d)
+            if f > hasta: break
+            v = por_dia.get(f.isoformat(), (0, 0))[0]; acum += v
+            out.append({"dia": d, "v": round(v, 2), "acum": round(acum, 2)})
+        return out, fin.day
+    este, n_este = dias(m0)
+    antes, n_antes = dias(ant)
+    n = max(n_este, n_antes)
+    tope = max([x["acum"] for x in este + antes] + [1])
+    paso = 10 ** max(len(str(int(tope))) - 1, 0)   # techo redondo: $1.000, $2.500, $4.000…
+    techo = next(k * paso / 2 for k in range(1, 40) if k * paso / 2 >= tope)
+    def linea(xs):
+        return " ".join(f"{(x['dia'] - 1) / (n - 1) * 100:.2f},{100 - x['acum'] / techo * 100:.2f}" for x in xs)
+    return {"este": este, "antes": antes, "n": n, "techo": techo,
+            "linea": linea(este), "linea_antes": linea(antes),
+            "area": (f"0,100 {linea(este)} {(este[-1]['dia'] - 1) / (n - 1) * 100:.2f},100" if este else ""),
+            "ultimo": este[-1] if este else None,
+            "antes_mismo_dia": next((x["acum"] for x in antes if este and x["dia"] == este[-1]["dia"]), antes[-1]["acum"] if antes else 0),
+            "mes_antes": MESES_N[ant.month - 1]}
 
 
 def resumen_mes(con, m0):
