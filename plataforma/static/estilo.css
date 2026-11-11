@@ -1640,7 +1640,7 @@ html.oscuro .an-quieto{color:#f3a08f}html.oscuro .tile.an-hero{background:#2f5f4
 .an-ley{display:flex;gap:6px 16px;flex-wrap:wrap;font-size:12.5px;color:var(--tinta-3)}.an-ley b{color:var(--tinta)}
 .an-ley i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
 .an-l-este{background:var(--verde)}.an-l-antes{background:var(--gris)}
-.an-plot{display:grid;grid-template-columns:auto 1fr;grid-template-rows:190px auto;gap:6px 10px}
+.an-plot{display:grid;grid-template-columns:auto 1fr;grid-template-rows:150px auto;gap:6px 10px}
 .an-y{display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:var(--tinta-3);text-align:right;margin:-6px 0}
 .an-lienzo{position:relative}.an-lienzo svg{width:100%;height:100%;display:block;overflow:visible}
 .an-guia{stroke:var(--linea);stroke-width:1;vector-effect:non-scaling-stroke}
@@ -1676,3 +1676,11 @@ html.oscuro .mp-mapa .leaflet-tile-pane{filter:grayscale(1) invert(1) contrast(.
 html.oscuro .cc-chip.mal{color:#f0a08c}
 .cc-mini{grid-template-columns:repeat(2,minmax(0,1fr));margin:0}.cc-mini b small{font-size:14px;font-weight:600;color:var(--tinta-3);margin-left:4px}
 .cc-adapt+.cc-adapt{margin-top:14px}.cc-rojo{color:#b3402b}html.oscuro .cc-rojo{color:#f0a08c}
+
+/* Analítica · la gráfica más corta y, al lado, la vista previa del mapa (lleva a Crecimiento › Mapa) */
+.an-gm{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:14px;margin-top:16px;align-items:stretch}.an-gm .tarjeta{margin:0}
+.an-mapa{display:flex;flex-direction:column;text-decoration:none;color:inherit;cursor:pointer}.an-mapa .mini{color:var(--verde)}
+#an-mapa{flex:1;min-height:180px;border-radius:12px;overflow:hidden;pointer-events:none;background:var(--fondo)}
+#an-mapa .leaflet-tile-pane{filter:grayscale(1) contrast(.92) brightness(1.04)}html.oscuro #an-mapa .leaflet-tile-pane{filter:grayscale(1) invert(1) contrast(.85) brightness(.82)}
+.an-mapa:hover{box-shadow:0 0 0 2px var(--verde-tinte),var(--sombra)}
+@media(max-width:900px){.an-gm{grid-template-columns:1fr}#an-mapa{min-height:220px}}

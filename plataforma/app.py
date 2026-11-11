@@ -7905,6 +7905,7 @@ def analitica(request: Request, mes: str = "", con=Depends(db)):
         return round((x - y) / y * 100)
     comp = {k: var(a[k], b[k]) for k in ("ventas", "pedidos", "ticket", "clientes", "nuevos", "repiten", "rep_clientes", "rep_unidades", "pack_clientes", "packs")}
     return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp, graf=grafica_ventas_mes(con, m0, ant, hoy),
+                  mes_act=m0.strftime("%Y-%m"), mapa_ciudades=datos_mapa(con, m0.isoformat(), (sig - datetime.timedelta(days=1)).isoformat())["ciudades"],
                   mes_txt=f"{MESES_N[m0.month - 1].capitalize()} {m0.year}", mes_ant=ant.strftime("%Y-%m"),
                   mes_sig=sig.strftime("%Y-%m") if sig <= hoy.replace(day=1) else None, CANAL=CANAL)
 

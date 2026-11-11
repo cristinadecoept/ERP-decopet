@@ -13,6 +13,7 @@
 </div>
 
 {# ---------- Ventas acumuladas día a día, contra el mes anterior #}
+<div class="an-gm">
 {% if graf.este or graf.antes %}<div class="tarjeta an-graf">
  <div class="an-graf-t"><h3>Ventas día a día</h3>
   <div class="an-ley"><span><i class="an-l-este"></i>{{ mes_txt.split(' ')[0] }}{% if graf.ultimo %} · <b>{{ graf.ultimo.acum|usd }}</b> al día {{ graf.ultimo.dia }}{% endif %}</span>
@@ -31,6 +32,23 @@
   <div class="an-x">{% for d in [1, 10, 20, graf.n] %}<span style="left:{{ ((d - 1) / (graf.n - 1) * 100)|round(2) }}%">{{ d }}</span>{% endfor %}</div>
  </div>
 </div>{% endif %}
+{# vista previa del mapa: un toque lleva a Crecimiento › Mapa de ese mes #}
+<a class="tarjeta an-mapa" href="/mapa?mes={{ mes_act }}"><div class="an-graf-t"><h3>Dónde se vendió</h3><span class="mini">Ver mapa ›</span></div><div id="an-mapa"></div></a>
+</div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+ const C = {{ mapa_ciudades|tojson }};
+ const m = L.map('an-mapa', {zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+                             boxZoom: false, keyboard: false, touchZoom: false}).setView([8.6, -66.4], 5);
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, referrerPolicy: 'strict-origin'}).addTo(m);   // igual que en Mapa
+ const verde = getComputedStyle(document.documentElement).getPropertyValue('--verde').trim() || '#28563E';
+ const mx = Math.max(1, ...C.map(x => x.m));
+ const g = L.featureGroup(C.map(x => L.circleMarker(x.ll, {radius: 4 + 18 * Math.sqrt(x.m / mx), color: verde, weight: 1.2, fillColor: verde, fillOpacity: .35}))).addTo(m);
+ if (C.length > 1) m.fitBounds(g.getBounds(), {padding: [24, 24], maxZoom: 7});
+})();
+</script>
 
 {# ---------- Repuestos y packs: lo que más importa saber #}
 <h2 class="seccion-t">Repuestos y packs</h2>

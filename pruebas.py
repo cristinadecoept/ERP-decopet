@@ -3151,6 +3151,7 @@ def _():
         sesion_de(c, "admin")
         h = c.get("/analitica").text
         assert "Ventas día a día" in h and 'class="an-p-este"' in h
+        assert 'class="tarjeta an-mapa" href="/mapa?mes=' in h and "Dónde se vendió" in h   # la vista previa lleva al Mapa de ese mes
 
 
 
