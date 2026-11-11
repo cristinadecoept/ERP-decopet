@@ -20,11 +20,15 @@
   </div>
   <div data-lista="ccs" hidden>
    <h3>Zonas de Caracas</h3>
+   {# las órdenes que no tienen zona: se pueden abrir para ponérsela #}
+   {% for titulo, lista in [((d.puntos|length) ~ ' orden' ~ ('es' if d.puntos|length != 1 else '') ~ ' sin zona salen como punto, por su GPS', d.puntos),
+                            ((d.sin_zona.n) ~ ' orden' ~ ('es' if d.sin_zona.n != 1 else '') ~ ' de Caracas sin zona ni GPS (' ~ (d.sin_zona.m|usd) ~ '): no salen en el mapa', d.sin_zona.ordenes)] if lista %}
+   <details class="mp-sin"><summary class="mini">{{ titulo }} <u>ver cuáles</u></summary>
+    {% for o in lista|sort(attribute='numero') %}<div class="mp-sin-o"><a href="/ordenes?estado=todas&abrir={{ o.id }}"><b>{{ o.numero }}</b> {{ o.cliente }}</a><span class="num">{{ o.m|usd }}</span>{% if o.tel and o.tel != 'Pendiente' %}<a class="wa-link" href="{{ o.tel|wa }}" target="_blank" rel="noreferrer">WhatsApp ↗</a>{% else %}<span class="mini">sin teléfono</span>{% endif %}</div>{% endfor %}
+   </details>{% endfor %}
    {% if d.zonas %}{% set mx = d.zonas[0].m or 1 %}<table class="lineas" data-cols="Zona:50|Órdenes:20|Ventas:30"><tr><th>Zona</th><th class="num">Órdenes</th><th class="num">Ventas</th></tr>
    {% for x in d.zonas %}<tr class="fila" data-ll="{{ x.ll|join(',') }}" data-z="15"><td>{{ x.k }}<div class="an-barra nar"><i style="width:{{ (x.m / mx * 100)|round(1) }}%"></i></div></td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
    {% else %}<div class="vacio">Ninguna orden de Caracas con zona en este período.</div>{% endif %}
-   {% if d.puntos %}<div class="mini mp-nota">{{ d.puntos|length }} orden{{ 'es' if d.puntos|length != 1 }} sin zona salen como punto, por su GPS.</div>{% endif %}
-   {% if d.sin_zona.n %}<div class="mini mp-nota">{{ d.sin_zona.n }} orden{{ 'es' if d.sin_zona.n != 1 }} de Caracas sin zona ni GPS ({{ d.sin_zona.m|usd }}): no salen en el mapa.</div>{% endif %}
   </div>
  </div>
 </div>

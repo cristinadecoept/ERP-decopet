@@ -3182,7 +3182,8 @@ def _():
         ciu = {x["k"]: (x["n"], x["m"]) for x in d["ciudades"]}
         assert ciu == {"Caracas": (4, 220), "Barquisimeto": (1, 80)}, ciu
         assert [(x["k"], x["n"], x["m"]) for x in d["zonas"]] == [("Chacao", 2, 120)], d["zonas"]
-        assert d["puntos"] == [{"ll": (10.4301, -66.8201), "m": 20}] and d["sin_zona"] == {"n": 1, "m": 80}, (d["puntos"], d["sin_zona"])
+        assert [(p["ll"], p["m"], p["numero"]) for p in d["puntos"]] == [((10.4301, -66.8201), 20, "#M3")], d["puntos"]
+        assert (d["sin_zona"]["n"], d["sin_zona"]["m"], [o["numero"] for o in d["sin_zona"]["ordenes"]]) == (1, 80, ["#M4"]), d["sin_zona"]
         assert [x["k"] for x in d["sin_ciudad"]] == ["Pueblo Raro"] and d["total"] == 320
         r = A.datos_mapa(con, "2026-03-01", "2026-03-31", p1)
         assert {x["k"]: x["m"] for x in r["ciudades"]} == {"Caracas": 160, "Barquisimeto": 80} and r["total"] == 240
@@ -3192,6 +3193,8 @@ def _():
         assert "Mapa de ventas" in h and "Barquisimeto" in h and 'href="/mapa"' in h and "leaflet" in h
         # sin decir de qué sitio se pide, OpenStreetMap bloquea el mapa ("Access blocked"): el ERP no manda referer por defecto
         assert "referrerPolicy: 'strict-origin'" in h
+        assert "ver cuáles" in h and "<b>#M4</b>" in h and "<b>#M3</b>" in h   # las órdenes sin zona se pueden ver y abrir
+        assert "WhatsApp ↗" in h and "wa.me" in h   # y escribirle al cliente para pedirle la zona
         assert c.get("/mapa?mes=todo").status_code == 200 and c.get(f"/mapa?mes=2026-03&producto={p1}").status_code == 200
         for rol in ("logistica", "taller"):
             sesion_de(c, rol)

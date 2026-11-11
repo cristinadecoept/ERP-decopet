@@ -1684,3 +1684,8 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 #an-mapa .leaflet-tile-pane{filter:grayscale(1) contrast(.92) brightness(1.04)}html.oscuro #an-mapa .leaflet-tile-pane{filter:grayscale(1) invert(1) contrast(.85) brightness(.82)}
 .an-mapa:hover{box-shadow:0 0 0 2px var(--verde-tinte),var(--sombra)}
 @media(max-width:900px){.an-gm{grid-template-columns:1fr}#an-mapa{min-height:220px}}
+.mp-sin{margin-top:10px}.mp-sin summary{cursor:pointer;list-style:none}.mp-sin summary::-webkit-details-marker{display:none}.mp-sin u{color:var(--verde);margin-left:4px}
+.mp-sin-o{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--linea);font-size:13px;text-decoration:none;color:inherit}
+.mp-sin-o:last-child{border-bottom:0}.mp-sin-o:hover b{color:var(--verde)}
+.mp-sin{margin:0 0 12px;padding:10px 12px;background:var(--naranja-tinte);border-radius:12px}
+.mp-sin-o>a:first-child{color:inherit;text-decoration:none}.mp-sin-o>a:first-child:hover b{color:var(--verde)}

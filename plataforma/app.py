@@ -7975,14 +7975,14 @@ def coords_de_link(maps):
 def datos_mapa(con, desde, hasta, producto_id=None):
     """Ventas por ciudad (Venezuela) y por zona (Caracas) en el período. Con producto: solo lo de ese producto.
     Las órdenes canceladas y las viejas de Airtable/Excel no cuentan, igual que en Analítica."""
-    filas = con.execute("""SELECT o.id, o.cliente_id, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente, o.zona, o.maps,
+    filas = con.execute("""SELECT o.id, o.numero, COALESCE(NULLIF(c.nombre,''), '—') cliente, c.telefono, o.cliente_id, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente, o.zona, o.maps,
                            (SELECT d.zona FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) zona_cliente,
                            (SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=?) del_producto,
                            (SELECT SUM(l.cantidad) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=? AND l.extra_en IS NULL) unidades
                            FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                            WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ?""",
                         (producto_id, producto_id, desde, hasta)).fetchall()
-    ciudades, zonas, sin_ciudad, sin_zona, puntos = {}, {}, {}, {"n": 0, "m": 0.0}, []
+    ciudades, zonas, sin_ciudad, sin_zona, puntos = {}, {}, {}, {"n": 0, "m": 0.0, "ordenes": []}, []
     for o in filas:
         if producto_id and not o["unidades"]: continue
         monto = (o["del_producto"] or 0) if producto_id else (o["total"] or 0)
@@ -7996,15 +7996,16 @@ def datos_mapa(con, desde, hasta, producto_id=None):
         z = zona_ccs(o["zona"]) or zona_ccs(o["zona_cliente"])
         ll = COORD_ZONAS_CCS[z] if z else coords_de_link(o["maps"])
         if not ll or not (10.3 < ll[0] < 10.6 and -67.1 < ll[1] < -66.7):   # fuera de Caracas: no se dibuja en el zoom
-            sin_zona["n"] += 1; sin_zona["m"] += monto; continue
+            sin_zona["n"] += 1; sin_zona["m"] += monto
+            sin_zona["ordenes"].append({"id": o["id"], "numero": o["numero"], "cliente": o["cliente"], "tel": o["telefono"], "m": round(monto, 2)}); continue
         if not z:   # sin zona conocida pero con GPS exacto: un punto suelto en el mapa
-            puntos.append({"ll": ll, "m": round(monto, 2)}); continue
+            puntos.append({"ll": ll, "m": round(monto, 2), "id": o["id"], "numero": o["numero"], "cliente": o["cliente"], "tel": o["telefono"]}); continue
         y = zonas.setdefault(z, {"k": z, "ll": ll, "n": 0, "m": 0.0, "cl": set()})
         y["n"] += 1; y["m"] += monto; y["cl"].add(o["cliente_id"])
     def lista(d):
         return sorted(({"k": v["k"], "ll": v.get("ll"), "n": v["n"], "m": round(v["m"], 2), "cl": len(v["cl"])} for v in d.values()), key=lambda v: (-v["m"], -v["n"]))
     return {"ciudades": lista(ciudades), "zonas": lista(zonas), "sin_ciudad": lista(sin_ciudad),
-            "sin_zona": {"n": sin_zona["n"], "m": round(sin_zona["m"], 2)}, "puntos": puntos,
+            "sin_zona": {"n": sin_zona["n"], "m": round(sin_zona["m"], 2), "ordenes": sin_zona["ordenes"]}, "puntos": puntos,
             "total": round(sum(v["m"] for v in list(ciudades.values()) + list(sin_ciudad.values())), 2)}
 
 
