@@ -3153,6 +3153,49 @@ def _():
         assert "Ventas día a día" in h and 'class="an-p-este"' in h
 
 
+
+@prueba("Mapa de ventas: suma por ciudad y por zona de Caracas (la de Tarifas o el GPS), filtra por producto y solo lo ve la dueña")
+def _():
+    assert A.zona_ccs("Chacao / Altamira") == "Chacao" and A.zona_ccs("ALTO HATILLO") == "Alto Hatillo" and A.zona_ccs("el hatillo") == "El Hatillo"
+    assert A.zona_ccs("Sebucan") == "Sebucán" and A.zona_ccs("Zona desconocida") is None and A.zona_ccs(None) is None
+    assert A.coords_de_link("https://www.google.com/maps?q=10.4961,-66.8492") == (10.4961, -66.8492) and A.coords_de_link("https://maps.app.goo.gl/abc") is None
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p1 = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('MAPA1','Rampa Mapa','producto',80)").lastrowid
+        p2 = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('MAPA2','Bowl Mapa','producto',20)").lastrowid
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,ciudad) VALUES ('Mapa Uno','Mapa','04145551201','Caracas')").lastrowid
+        def orden(num, ciudad, zona, maps, lineas):
+            tot = sum(pr * n for _, n, pr in lineas)
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,creado_en,subtotal,total,tipo_entrega,ciudad,zona,maps,origen_excel)
+                                 VALUES (?,?,'whatsapp','entregada','pagada','2026-03-05 10:00:00',?,?,'delivery',?,?,?,0)""", (num, cid, tot, tot, ciudad, zona, maps)).lastrowid
+            for pid, n, pr in lineas:
+                con.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio,total) VALUES (?,?,?,?,?)", (oid, pid, n, pr, pr * n))
+        orden("#M1", "Caracas", "Chacao / Altamira", None, [(p1, 1, 80)])
+        orden("#M2", "Caracas", "Chacao", None, [(p2, 2, 20)])
+        orden("#M3", "Caracas", None, "https://www.google.com/maps?q=10.4301,-66.8201", [(p2, 1, 20)])
+        orden("#M4", "Caracas", None, None, [(p1, 1, 80)])
+        orden("#M5", "Agencia Tealca, CC Las Trinitarias, Barquisimeto", None, None, [(p1, 1, 80)])
+        orden("#M6", "Pueblo Raro", None, None, [(p2, 1, 20)])
+        con.commit()
+        d = A.datos_mapa(con, "2026-03-01", "2026-03-31")
+        ciu = {x["k"]: (x["n"], x["m"]) for x in d["ciudades"]}
+        assert ciu == {"Caracas": (4, 220), "Barquisimeto": (1, 80)}, ciu
+        assert [(x["k"], x["n"], x["m"]) for x in d["zonas"]] == [("Chacao", 2, 120)], d["zonas"]
+        assert d["puntos"] == [{"ll": (10.4301, -66.8201), "m": 20}] and d["sin_zona"] == {"n": 1, "m": 80}, (d["puntos"], d["sin_zona"])
+        assert [x["k"] for x in d["sin_ciudad"]] == ["Pueblo Raro"] and d["total"] == 320
+        r = A.datos_mapa(con, "2026-03-01", "2026-03-31", p1)
+        assert {x["k"]: x["m"] for x in r["ciudades"]} == {"Caracas": 160, "Barquisimeto": 80} and r["total"] == 240
+        con.close()
+        sesion_de(c, "admin")
+        h = c.get("/mapa?mes=2026-03").text
+        assert "Mapa de ventas" in h and "Barquisimeto" in h and 'href="/mapa"' in h and "leaflet" in h
+        assert c.get("/mapa?mes=todo").status_code == 200 and c.get(f"/mapa?mes=2026-03&producto={p1}").status_code == 200
+        for rol in ("logistica", "taller"):
+            sesion_de(c, rol)
+            r = c.get("/mapa", follow_redirects=False)
+            assert r.status_code in (302, 303) and "Mapa de ventas" not in r.text, rol
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

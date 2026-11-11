@@ -1651,3 +1651,19 @@ html.oscuro .an-quieto{color:#f3a08f}html.oscuro .tile.an-hero{background:#2f5f4
 .an-punto{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:99px;background:var(--verde);box-shadow:0 0 0 3px var(--sup);pointer-events:none}
 .an-x{grid-column:2;position:relative;height:14px;font-size:11px;color:var(--tinta-3)}.an-x span{position:absolute;transform:translateX(-50%)}
 .an-x span:first-child{transform:none}.an-x span:last-child{transform:translateX(-100%)}
+
+/* Crecimiento › Mapa de ventas */
+.mp-filtros{display:flex;gap:8px;flex-wrap:wrap}.mp-filtros select{width:auto;min-width:150px}
+.mp-tabs{display:inline-flex;gap:4px;background:var(--sup);border-radius:99px;padding:4px;margin:4px 0 14px;box-shadow:var(--sombra)}
+.mp-tabs button{border:0;background:none;padding:7px 16px;border-radius:99px;font:inherit;font-size:13px;font-weight:600;color:var(--tinta-2);cursor:pointer}
+.mp-tabs button.act{background:var(--verde);color:#fff}
+.mp-g{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:14px;align-items:stretch}.mp-g .tarjeta{margin:0}
+.mp-mapa-t{padding:0;overflow:hidden}.mp-mapa{height:560px;width:100%;background:var(--fondo)}
+.mp-lista{max-height:560px;overflow:auto}.mp-lista tr[data-ll]{cursor:pointer}.mp-nota{margin-top:10px}
+.mp-mapa .leaflet-popup-content{font:13px/1.45 Inter,system-ui,sans-serif}
+html.oscuro .mp-mapa .leaflet-popup-content-wrapper,html.oscuro .mp-mapa .leaflet-popup-tip{background:var(--sup);color:var(--tinta)}
+html.oscuro .mp-mapa .leaflet-bar a{background:var(--sup);color:var(--tinta);border-color:var(--linea)}
+html.oscuro .mp-mapa .leaflet-control-attribution{background:rgba(0,0,0,.5);color:var(--tinta-3)}html.oscuro .mp-mapa .leaflet-control-attribution a{color:var(--tinta-2)}
+@media(max-width:900px){.mp-g{grid-template-columns:1fr}.mp-mapa{height:380px}.mp-lista{max-height:none}}
+.mp-mapa .leaflet-tile-pane{filter:grayscale(1) contrast(.92) brightness(1.04)}
+html.oscuro .mp-mapa .leaflet-tile-pane{filter:grayscale(1) invert(1) contrast(.85) brightness(.82)}

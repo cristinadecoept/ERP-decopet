@@ -1,0 +1,74 @@
+{% extends "base.html" %}{% block titulo %}Mapa de ventas · Decopet{% endblock %}{% block cuerpo %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<div class="fila-titulo"><div><h1>Mapa de ventas</h1><div class="sub">{{ mes_txt }} · {{ d.total|usd }}</div></div>
+ <form class="mp-filtros" method="get" action="/mapa">
+  <select name="mes" onchange="this.form.submit()"><option value="todo" {{ 'selected' if mes=='todo' }}>Desde el inicio</option>{% for m, t in meses %}<option value="{{ m }}" {{ 'selected' if m==mes }}>{{ t }}</option>{% endfor %}</select>
+  <select name="producto" onchange="this.form.submit()"><option value="0">Todos los productos</option>{% for p in prods %}<option value="{{ p.id }}" {{ 'selected' if p.id==producto }}>{{ p.nombre }}</option>{% endfor %}</select>
+ </form></div>
+
+<div class="mp-tabs" role="tablist"><button type="button" class="act" data-vista="ve">Venezuela</button><button type="button" data-vista="ccs">Caracas por zona</button></div>
+
+<div class="mp-g">
+ <div class="tarjeta mp-mapa-t"><div id="mapa" class="mp-mapa"></div></div>
+ <div class="tarjeta mp-lista">
+  <div data-lista="ve">
+   <h3>Ciudades</h3>
+   {% if d.ciudades %}{% set mx = d.ciudades[0].m or 1 %}<table class="lineas" data-cols="Ciudad:50|Órdenes:20|Ventas:30"><tr><th>Ciudad</th><th class="num">Órdenes</th><th class="num">Ventas</th></tr>
+   {% for x in d.ciudades %}<tr class="fila" data-ll="{{ x.ll|join(',') }}" data-z="{{ 9 if x.k != 'Caracas' else 11 }}"><td>{{ x.k }}<div class="an-barra"><i style="width:{{ (x.m / mx * 100)|round(1) }}%"></i></div></td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
+   {% else %}<div class="vacio">Sin ventas en este período.</div>{% endif %}
+   {% if d.sin_ciudad %}<div class="mini mp-nota">Sin ubicar en el mapa: {% for x in d.sin_ciudad %}{{ x.k }} ({{ x.n }}){{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+  </div>
+  <div data-lista="ccs" hidden>
+   <h3>Zonas de Caracas</h3>
+   {% if d.zonas %}{% set mx = d.zonas[0].m or 1 %}<table class="lineas" data-cols="Zona:50|Órdenes:20|Ventas:30"><tr><th>Zona</th><th class="num">Órdenes</th><th class="num">Ventas</th></tr>
+   {% for x in d.zonas %}<tr class="fila" data-ll="{{ x.ll|join(',') }}" data-z="15"><td>{{ x.k }}<div class="an-barra nar"><i style="width:{{ (x.m / mx * 100)|round(1) }}%"></i></div></td><td class="num">{{ x.n }}</td><td class="num"><b>{{ x.m|usd }}</b></td></tr>{% endfor %}</table>
+   {% else %}<div class="vacio">Ninguna orden de Caracas con zona en este período.</div>{% endif %}
+   {% if d.puntos %}<div class="mini mp-nota">{{ d.puntos|length }} orden{{ 'es' if d.puntos|length != 1 }} sin zona salen como punto, por su GPS.</div>{% endif %}
+   {% if d.sin_zona.n %}<div class="mini mp-nota">{{ d.sin_zona.n }} orden{{ 'es' if d.sin_zona.n != 1 }} de Caracas sin zona ni GPS ({{ d.sin_zona.m|usd }}): no salen en el mapa.</div>{% endif %}
+  </div>
+ </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+ const D = {{ d|tojson }};
+ const VISTAS = {ve: {centro: [7.6, -66.2], zoom: 6}, ccs: {centro: [10.475, -66.86], zoom: 12}};
+ const mapa = L.map('mapa', {zoomControl: true, scrollWheelZoom: false, attributionControl: true}).setView(VISTAS.ve.centro, VISTAS.ve.zoom);
+ // mapa base de OpenStreetMap (gratis, sin clave); el tono gris/oscuro se lo da el CSS (.mp-mapa .leaflet-tile-pane)
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap'}).addTo(mapa);
+ const css = getComputedStyle(document.documentElement);
+ const color = {ve: css.getPropertyValue('--verde').trim() || '#28563E', ccs: css.getPropertyValue('--naranja').trim() || '#E1782E'};
+ const usd = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+ const capas = {};
+ function circulos(lista, c, rmax){
+  const mx = Math.max(1, ...lista.map(x => x.m));
+  return L.layerGroup(lista.map(x => L.circleMarker(x.ll, {radius: 6 + rmax * Math.sqrt(x.m / mx), color: c, weight: 1.5, fillColor: c, fillOpacity: .35})
+   .bindPopup('<b>' + x.k + '</b><br>' + usd(x.m) + ' · ' + x.n + ' orden' + (x.n != 1 ? 'es' : '') + ' · ' + x.cl + ' cliente' + (x.cl != 1 ? 's' : ''))));
+ }
+ capas.ve = circulos(D.ciudades, color.ve, 30);
+ capas.ccs = circulos(D.zonas, color.ccs, 26);
+ D.puntos.forEach(p => capas.ccs.addLayer(L.circleMarker(p.ll, {radius: 4, color: color.ccs, weight: 1, fillColor: color.ccs, fillOpacity: .7}).bindPopup(usd(p.m))));
+ // se acerca solo a donde hay ventas; sin ventas, la vista de siempre
+ function encuadrar(v){
+  const g = L.featureGroup(capas[v].getLayers());
+  if (g.getLayers().length) mapa.fitBounds(g.getBounds(), {padding: [40, 40], maxZoom: v === 've' ? 8 : 14});
+  else mapa.setView(VISTAS[v].centro, VISTAS[v].zoom);
+ }
+ let vista = 've'; capas.ve.addTo(mapa); encuadrar('ve');
+ function ver(v){
+  if (v === vista) return;
+  mapa.removeLayer(capas[vista]); capas[v].addTo(mapa); vista = v;
+  encuadrar(v);
+  document.querySelectorAll('.mp-tabs button').forEach(b => b.classList.toggle('act', b.dataset.vista === v));
+  document.querySelectorAll('[data-lista]').forEach(x => x.hidden = x.dataset.lista !== v);
+ }
+ document.querySelectorAll('.mp-tabs button').forEach(b => b.onclick = () => ver(b.dataset.vista));
+ document.querySelectorAll('.mp-lista tr[data-ll]').forEach(tr => tr.onclick = () => {
+  const ll = tr.dataset.ll.split(',').map(Number); mapa.flyTo(ll, +tr.dataset.z, {duration: .6});
+  capas[vista].eachLayer(m => { const p = m.getLatLng(); if (Math.abs(p.lat - ll[0]) < 1e-6 && Math.abs(p.lng - ll[1]) < 1e-6) setTimeout(() => m.openPopup(), 650); });
+  if (window.innerWidth < 900) document.getElementById('mapa').scrollIntoView({behavior: 'smooth', block: 'center'});
+ });
+})();
+</script>
+{% endblock %}

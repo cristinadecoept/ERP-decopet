@@ -1364,7 +1364,7 @@ def fecha_larga(d=None):
     d = d or datetime.date.today(); return f"{DIAS[d.weekday()]} {d.day} de {MESES[d.month-1]}"
 
 SECCIONES = {"proveedores": "Proveedores",
-             "marketing": "Marketing", "analitica": "Analítica", "configuracion": "Configuración"}
+             "marketing": "Marketing", "analitica": "Analítica", "mapa": "Mapa de ventas", "configuracion": "Configuración"}
 
 
 
@@ -7907,6 +7907,126 @@ def analitica(request: Request, mes: str = "", con=Depends(db)):
     return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp, graf=grafica_ventas_mes(con, m0, ant, hoy),
                   mes_txt=f"{MESES_N[m0.month - 1].capitalize()} {m0.year}", mes_ant=ant.strftime("%Y-%m"),
                   mes_sig=sig.strftime("%Y-%m") if sig <= hoy.replace(day=1) else None, CANAL=CANAL)
+
+
+# ------------------------------------------------------------------ MAPA DE VENTAS (Crecimiento › Mapa)
+# Dónde queda cada ciudad (aprox., el centro): para dibujar el círculo en el mapa. Una ciudad que no esté aquí sale en la lista "sin ubicar".
+COORD_CIUDADES = {
+    "Caracas": (10.488, -66.879), "Los Teques": (10.345, -67.043), "Guarenas": (10.467, -66.617), "Guatire": (10.476, -66.543),
+    "La Guaira": (10.601, -66.933), "Valencia": (10.162, -68.008), "Maracay": (10.247, -67.596), "Maracaibo": (10.655, -71.641),
+    "Barquisimeto": (10.068, -69.347), "Puerto Ordaz": (8.296, -62.712), "Ciudad Bolívar": (8.122, -63.550), "Puerto La Cruz": (10.213, -64.633),
+    "Barcelona": (10.136, -64.686), "Lechería": (10.189, -64.693), "Mérida": (8.590, -71.156), "San Cristóbal": (7.767, -72.225),
+    "Maturín": (9.746, -63.183), "Cumaná": (10.456, -64.168), "Porlamar": (10.958, -63.870), "Valera": (9.318, -70.604),
+    "Punto Fijo": (11.696, -70.200), "Coro": (11.405, -69.673), "Cabimas": (10.400, -71.452), "Acarigua": (9.555, -69.196),
+    "Guanare": (9.042, -69.742), "San Felipe": (10.340, -68.743), "Barinas": (8.623, -70.208), "El Tigre": (8.888, -64.246),
+    "Carúpano": (10.668, -63.259), "Charallave": (10.243, -66.862), "Cúa": (10.165, -66.886), "Puerto Cabello": (10.473, -68.013),
+    "San Antonio de los Altos": (10.383, -66.950), "Higuerote": (10.485, -66.099), "Anaco": (9.439, -64.473), "Ciudad Ojeda": (10.200, -71.317),
+    "San Francisco": (10.550, -71.633), "Tucacas": (10.791, -68.325), "Cagua": (10.187, -67.459), "Turmero": (10.229, -67.475),
+    "Catia La Mar": (10.604, -67.030), "Quíbor": (9.929, -69.620), "Tucupita": (9.061, -62.051), "San Juan de los Morros": (9.912, -67.354),
+    "San Carlos": (9.661, -68.583), "San Fernando de Apure": (7.888, -67.472), "Trujillo": (9.367, -70.433), "Puerto Ayacucho": (5.664, -67.624),
+}
+# Zonas de Caracas (aprox.): se ubican por el nombre de la zona de la orden (la de Tarifas). Nunca por la dirección escrita.
+COORD_ZONAS_CCS = {
+    "Altamira": (10.496, -66.849), "La Castellana": (10.499, -66.856), "Los Palos Grandes": (10.500, -66.844), "Chacao": (10.493, -66.853),
+    "El Rosal": (10.488, -66.860), "Las Mercedes": (10.481, -66.859), "Chuao": (10.485, -66.843), "Bello Monte": (10.487, -66.871),
+    "Sabana Grande": (10.492, -66.874), "Los Chaguaramos": (10.483, -66.889), "Santa Mónica": (10.476, -66.886), "El Paraíso": (10.487, -66.930),
+    "La Candelaria": (10.504, -66.906), "San Bernardino": (10.513, -66.897), "Altagracia": (10.510, -66.915), "Catia": (10.515, -66.945),
+    "La Pastora": (10.515, -66.920), "El Valle": (10.458, -66.908), "Coche": (10.445, -66.918), "Caricuao": (10.435, -66.975),
+    "Montalbán": (10.474, -66.950), "La Vega": (10.470, -66.935), "Los Rosales": (10.479, -66.902), "Valle Abajo": (10.483, -66.893),
+    "Santa Fe": (10.470, -66.865), "Cumbres de Curumo": (10.464, -66.874), "Prados del Este": (10.464, -66.855), "Santa Paula": (10.470, -66.840),
+    "El Cafetal": (10.465, -66.830), "Los Naranjos": (10.450, -66.835), "La Trinidad": (10.438, -66.865), "El Hatillo": (10.425, -66.825),
+    "La Lagunita": (10.430, -66.815), "Alto Hatillo": (10.415, -66.810), "Baruta": (10.433, -66.875), "La Boyera": (10.440, -66.830),
+    "Los Samanes": (10.450, -66.856), "Macaracuay": (10.473, -66.820), "La California": (10.487, -66.820), "Los Dos Caminos": (10.494, -66.825),
+    "Sebucán": (10.498, -66.830), "La Urbina": (10.487, -66.805), "Petare": (10.477, -66.807), "Terrazas del Ávila": (10.493, -66.800),
+    "Boleíta": (10.487, -66.833), "Los Ruices": (10.491, -66.832), "Campo Alegre": (10.495, -66.852), "Country Club": (10.500, -66.865),
+    "San Román": (10.473, -66.862), "Las Acacias": (10.484, -66.880), "La Florida": (10.501, -66.874), "La Alameda": (10.456, -66.862),
+    "Club Hípico": (10.453, -66.879), "La Tahona": (10.440, -66.855), "Manzanares": (10.431, -66.855), "Las Minas": (10.440, -66.878),
+    "Valle Arriba": (10.473, -66.845), "Los Cortijos": (10.495, -66.827), "Palo Verde": (10.485, -66.795), "El Llanito": (10.484, -66.815),
+    "Caurimare": (10.470, -66.827), "Santa Rosa de Lima": (10.481, -66.848), "Las Palmas": (10.501, -66.879), "Mariperez": (10.505, -66.885),
+    "San José": (10.515, -66.907), "Chacaíto": (10.491, -66.868), "La Carlota": (10.488, -66.840), "Horizonte": (10.484, -66.823),
+    "La Floresta": (10.497, -66.840), "Los Chorros": (10.498, -66.818), "Santa Eduvigis": (10.496, -66.838), "Bello Campo": (10.493, -66.848),
+    "El Marqués": (10.488, -66.813), "San Luis": (10.470, -66.830), "Lomas de la Lagunita": (10.425, -66.835), "El Cementerio": (10.476, -66.913),
+}
+
+
+def _sin_acentos(t):
+    import unicodedata
+    return " ".join("".join(c for c in unicodedata.normalize("NFD", (t or "").lower()) if unicodedata.category(c) != "Mn").split())
+
+
+_ZONAS_ORDEN = sorted(COORD_ZONAS_CCS, key=lambda z: -len(z))   # la más larga primero: "Alto Hatillo" antes que "El Hatillo"
+
+def zona_ccs(texto):
+    """La zona conocida que nombra el texto de la zona (de Tarifas), o None. 'Chacao / Altamira' → la primera que calce."""
+    t = _sin_acentos(texto)
+    if not t: return None
+    hay = [(m.start(), -len(z), z) for z in _ZONAS_ORDEN for m in [re.search(r"\b" + re.escape(_sin_acentos(z)) + r"\b", t)] if m]
+    return min(hay)[2] if hay else None   # la que aparece primero; si empiezan igual, la más larga
+
+
+def coords_de_link(maps):
+    """Las coordenadas que trae un link de Google Maps (los cortos maps.app.goo.gl no las traen)."""
+    from urllib.parse import unquote
+    m = re.search(r"(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})", unquote(maps or ""))
+    return (float(m.group(1)), float(m.group(2))) if m else None
+
+
+def datos_mapa(con, desde, hasta, producto_id=None):
+    """Ventas por ciudad (Venezuela) y por zona (Caracas) en el período. Con producto: solo lo de ese producto.
+    Las órdenes canceladas y las viejas de Airtable/Excel no cuentan, igual que en Analítica."""
+    filas = con.execute("""SELECT o.id, o.cliente_id, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente, o.zona, o.maps,
+                           (SELECT d.zona FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) zona_cliente,
+                           (SELECT SUM(l.total) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=?) del_producto,
+                           (SELECT SUM(l.cantidad) FROM orden_lineas l WHERE l.orden_id=o.id AND l.producto_id=? AND l.extra_en IS NULL) unidades
+                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
+                           WHERE o.estado!='cancelada' AND COALESCE(o.origen_excel,0)=0 AND substr(o.creado_en,1,10) BETWEEN ? AND ?""",
+                        (producto_id, producto_id, desde, hasta)).fetchall()
+    ciudades, zonas, sin_ciudad, sin_zona, puntos = {}, {}, {}, {"n": 0, "m": 0.0}, []
+    for o in filas:
+        if producto_id and not o["unidades"]: continue
+        monto = (o["del_producto"] or 0) if producto_id else (o["total"] or 0)
+        ciu = ciudad_de_texto(o["ciudad_orden"]) or ciudad_de_texto(o["ciudad_cliente"]) or "Sin ciudad"
+        if ciu in COORD_CIUDADES:
+            x = ciudades.setdefault(ciu, {"k": ciu, "ll": COORD_CIUDADES[ciu], "n": 0, "m": 0.0, "cl": set()})
+        else:
+            x = sin_ciudad.setdefault(ciu, {"k": ciu, "n": 0, "m": 0.0, "cl": set()})
+        x["n"] += 1; x["m"] += monto; x["cl"].add(o["cliente_id"])
+        if ciu != "Caracas": continue
+        z = zona_ccs(o["zona"]) or zona_ccs(o["zona_cliente"])
+        ll = COORD_ZONAS_CCS[z] if z else coords_de_link(o["maps"])
+        if not ll or not (10.3 < ll[0] < 10.6 and -67.1 < ll[1] < -66.7):   # fuera de Caracas: no se dibuja en el zoom
+            sin_zona["n"] += 1; sin_zona["m"] += monto; continue
+        if not z:   # sin zona conocida pero con GPS exacto: un punto suelto en el mapa
+            puntos.append({"ll": ll, "m": round(monto, 2)}); continue
+        y = zonas.setdefault(z, {"k": z, "ll": ll, "n": 0, "m": 0.0, "cl": set()})
+        y["n"] += 1; y["m"] += monto; y["cl"].add(o["cliente_id"])
+    def lista(d):
+        return sorted(({"k": v["k"], "ll": v.get("ll"), "n": v["n"], "m": round(v["m"], 2), "cl": len(v["cl"])} for v in d.values()), key=lambda v: (-v["m"], -v["n"]))
+    return {"ciudades": lista(ciudades), "zonas": lista(zonas), "sin_ciudad": lista(sin_ciudad),
+            "sin_zona": {"n": sin_zona["n"], "m": round(sin_zona["m"], 2)}, "puntos": puntos,
+            "total": round(sum(v["m"] for v in list(ciudades.values()) + list(sin_ciudad.values())), 2)}
+
+
+@app.get("/mapa", response_class=HTMLResponse)
+def mapa(request: Request, mes: str = "", producto: int = 0, con=Depends(db)):
+    """Dónde se vende: un círculo por ciudad (más grande donde más se vende) y, en Caracas, por zona."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    hoy = datetime.date.today()
+    if mes == "todo":
+        desde, hasta, mes_txt = "0000-01-01", "9999-12-31", "Desde el inicio"
+    else:
+        try: m0 = datetime.date.fromisoformat((mes or hoy.strftime("%Y-%m")) + "-01")
+        except ValueError: m0 = hoy.replace(day=1)
+        mes = m0.strftime("%Y-%m")
+        desde, hasta = m0.isoformat(), (((m0 + datetime.timedelta(days=32)).replace(day=1)) - datetime.timedelta(days=1)).isoformat()
+        mes_txt = f"{MESES_N[m0.month - 1].capitalize()} {m0.year}"
+    meses = [r[0] for r in con.execute("""SELECT DISTINCT substr(creado_en,1,7) FROM ordenes WHERE COALESCE(origen_excel,0)=0 AND estado!='cancelada'
+                                          ORDER BY 1 DESC""")]
+    if hoy.strftime("%Y-%m") not in meses: meses.insert(0, hoy.strftime("%Y-%m"))
+    prods = con.execute("""SELECT id, nombre FROM productos WHERE COALESCE(tipo,'producto')='producto' AND COALESCE(activo,1)=1 ORDER BY nombre""").fetchall()
+    d = datos_mapa(con, desde, hasta, producto or None)
+    return render(request, "mapa.html", seccion="mapa", d=d, mes=mes or "todo", mes_txt=mes_txt, producto=producto, prods=prods,
+                  meses=[(m, f"{MESES_N[int(m[5:]) - 1].capitalize()} {m[:4]}") for m in meses])
 
 
 def grafica_ventas_mes(con, m0, ant, hoy):
