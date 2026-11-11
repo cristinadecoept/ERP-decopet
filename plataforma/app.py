@@ -5458,6 +5458,8 @@ async def produccion_editar(request: Request, pid: int, con=Depends(db)):
     con.execute("""UPDATE produccion SET cantidad=?, responsable=?, fecha_pedido=?, fecha_esperada=?, costo=?, nota=?, barnizado=?, descripcion=? WHERE id=?""",
                 (int(f.get("cantidad") or 1), g("responsable"), g("fecha_pedido") or datetime.date.today().isoformat(), g("fecha_esperada"),
                  float(f["costo"].replace(",", ".")) if g("costo") else None, g("nota"), 1 if f.get("barnizado") == "1" else 0, g("descripcion"), pid))
+    if "fecha_pago" in f:   # el día que se le paga lo que falta (sale en Inicio ese día)
+        con.execute("UPDATE produccion SET fecha_pago=? WHERE id=?", (g("fecha_pago"), pid))
     r = con.execute("SELECT costo, (SELECT COALESCE(SUM(monto),0) FROM abonos_produccion WHERE produccion_id=?) ab FROM produccion WHERE id=?", (pid, pid)).fetchone()
     con.execute("UPDATE produccion SET pagado=? WHERE id=?", (1 if r["costo"] is not None and r["ab"] >= r["costo"] - 0.009 else 0, pid))
     con.commit(); return volver_produccion(con, pid, "&ver=todas")

@@ -3335,6 +3335,25 @@ def _():
         assert "no es quien recibe" in h
 
 
+@prueba("Producción › Editar: se cambia '¿Cuándo lo pagas?' y el aviso de Inicio se mueve a ese día")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today()
+        pid = con.execute("""INSERT INTO produccion (pieza,cantidad,costo,estado,responsable,fecha_pedido,fecha_esperada,fecha_pago)
+                             VALUES ('Rampa Fecha Pago',5,90,'en_proceso','Walter',?,?,?)""", (hoy.isoformat(), hoy.isoformat(), hoy.isoformat())).lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        assert "Hoy toca pagar Rampa Fecha Pago" in c.get("/inicio").text
+        assert 'name="fecha_pago" value="' + hoy.isoformat() + '"' in c.get("/produccion?ver=todas").text, "se ve en Editar"
+        viernes = (hoy + datetime.timedelta(days=2)).isoformat()
+        c.post(f"/produccion/{pid}/editar", data={"cantidad": "5", "responsable": "Walter", "fecha_pedido": hoy.isoformat(), "fecha_esperada": hoy.isoformat(),
+                                                  "costo": "90", "fecha_pago": viernes}, follow_redirects=False)
+        assert con.execute("SELECT fecha_pago FROM produccion WHERE id=?", (pid,)).fetchone()[0] == viernes
+        assert "Hoy toca pagar Rampa Fecha Pago" not in c.get("/inicio").text, "hoy ya no toca: es otro día"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
