@@ -7953,6 +7953,29 @@ COORD_ZONAS_CCS = {
     "San José": (10.515, -66.907), "Chacaíto": (10.491, -66.868), "La Carlota": (10.488, -66.840), "Horizonte": (10.484, -66.823),
     "La Floresta": (10.497, -66.840), "Los Chorros": (10.498, -66.818), "Santa Eduvigis": (10.496, -66.838), "Bello Campo": (10.493, -66.848),
     "El Marqués": (10.488, -66.813), "San Luis": (10.470, -66.830), "Lomas de la Lagunita": (10.425, -66.835), "El Cementerio": (10.476, -66.913),
+    # zonas de Tarifas que faltaban (el centro aproximado de cada una)
+    "La Campiña": (10.497, -66.875), "El Peñón": (10.468, -66.870), "El Pedregal": (10.502, -66.858), "La Guairita": (10.444, -66.842),
+    "23 de Enero": (10.507, -66.930), "Agua Salud": (10.508, -66.927), "Alta Florida": (10.505, -66.872), "Alto Prado": (10.448, -66.880),
+    "Antímano": (10.465, -66.965), "El Panteón": (10.513, -66.906), "Av Panteon": (10.511, -66.906), "Avenida Fuerzas Armadas": (10.508, -66.912),
+    "Bellas Artes": (10.500, -66.897), "CCCT": (10.484, -66.843), "Caicaguana": (10.427, -66.795), "Campo Claro": (10.490, -66.832),
+    "Carapita": (10.468, -66.973), "Cerro Verde": (10.465, -66.820), "Chapellín": (10.494, -66.880), "Chulavista": (10.470, -66.890),
+    "Ciudad Tiuna": (10.444, -66.905), "Fuerte Tiuna": (10.448, -66.905), "Cochecito": (10.442, -66.928), "Colinas de Tamanaco": (10.477, -66.835),
+    "Colinas de Vista Alegre": (10.482, -66.946), "Vista Alegre": (10.478, -66.940), "Concresa": (10.448, -66.890), "Cota 905": (10.478, -66.920),
+    "El Bosque": (10.497, -66.871), "El Cigarral": (10.432, -66.840), "El Encantado": (10.473, -66.790), "El Helicoide": (10.482, -66.902),
+    "El Junquito": (10.462, -67.040), "El Recreo": (10.494, -66.880), "El Silencio": (10.503, -66.920), "El Solar del Hatillo": (10.413, -66.833),
+    "Filas de Mariche": (10.465, -66.775), "Francisco Solano": (10.494, -66.872), "Gato Negro": (10.512, -66.950), "La Bandera": (10.474, -66.912),
+    "La Bonita": (10.441, -66.866), "La Hoyada": (10.504, -66.912), "La Miranda": (10.483, -66.812), "La Rinconada": (10.447, -66.915),
+    "La Unión": (10.418, -66.840), "La Yaguara": (10.478, -66.958), "Las Adjuntas": (10.443, -67.000), "Las Marías": (10.412, -66.850),
+    "Lebrún": (10.478, -66.790), "Loma Linda": (10.425, -66.860), "Lomas del Sol": (10.430, -66.888), "Lomas del Ávila": (10.496, -66.810),
+    "Los Campitos": (10.465, -66.877), "Los Caobos": (10.500, -66.893), "Los Jardines del Valle": (10.460, -66.910), "Los Símbolos": (10.479, -66.893),
+    "Lídice": (10.517, -66.910), "Macarao": (10.425, -67.020), "Miraflores": (10.511, -66.917), "Montecristo": (10.497, -66.830),
+    "Nueva Caracas": (10.505, -66.950), "Nueva Granada": (10.473, -66.906), "Oripoto": (10.408, -66.830), "Parque Carabobo": (10.503, -66.903),
+    "Parque Central": (10.499, -66.900), "Parque Cristal": (10.496, -66.846), "Plaza Las Américas": (10.474, -66.830), "Plaza Venezuela": (10.497, -66.884),
+    "Prado de María": (10.485, -66.910), "Propatria": (10.506, -66.960), "Puente Hierro": (10.491, -66.910), "Pérez Bonalde": (10.509, -66.950),
+    "Quinta Crespo": (10.497, -66.910), "Ruiz Pineda": (10.452, -66.965), "Rómulo Gallegos": (10.493, -66.815), "San Agustín": (10.497, -66.900),
+    "San Martín": (10.493, -66.915), "Santa Cecilia": (10.495, -66.828), "Santa Inés": (10.453, -66.848), "Santa Rosalía": (10.497, -66.906),
+    "Santa Sofía": (10.465, -66.840), "Sarria": (10.503, -66.887), "UCV": (10.490, -66.890), "Urb. Miranda": (10.491, -66.815),
+    "Vizcaya": (10.459, -66.840), "Guayabitos": (10.420, -66.830), "Guaicay": (10.428, -66.858), "Andrés Bello": (10.502, -66.884),
 }
 
 
@@ -8007,7 +8030,7 @@ def datos_mapa(con, desde, hasta, producto_id=None):
             gps = o["maps"] or o["maps_cliente"]
             # por qué no se pudo ubicar, para que se vea qué falta de verdad
             zona_txt = (o["zona"] or o["zona_cliente"] or "").strip()
-            porque = (f"zona “{zona_txt}” no está en Tarifas" if zona_txt else
+            porque = (f"zona “{zona_txt}” todavía no está en el mapa" if zona_txt else
                       "el GPS es un enlace corto, sin coordenadas" if gps and ll is None else
                       "el GPS cae fuera de Caracas" if gps else
                       "la dirección no dice la zona" if (o["dir_orden"] or o["dir_cliente"] or "").strip() else "sin dirección ni GPS")

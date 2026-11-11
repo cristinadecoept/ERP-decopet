@@ -3158,6 +3158,8 @@ def _():
 @prueba("Mapa de ventas: suma por ciudad y por zona de Caracas (la de Tarifas o el GPS), filtra por producto y solo lo ve la dueña")
 def _():
     assert A.zona_ccs("Chacao / Altamira") == "Chacao" and A.zona_ccs("ALTO HATILLO") == "Alto Hatillo" and A.zona_ccs("el hatillo") == "El Hatillo"
+    assert A.zona_ccs("La Campina") == "La Campiña" and A.zona_ccs("el peñon") == "El Peñón" and A.zona_ccs("La Guairita") == "La Guairita"   # las que faltaban
+    assert all(10.3 < la < 10.6 and -67.1 < lo < -66.7 for la, lo in A.COORD_ZONAS_CCS.values())   # todas caen dentro de Caracas
     assert A.zona_ccs("Sebucan") == "Sebucán" and A.zona_ccs("Zona desconocida") is None and A.zona_ccs(None) is None
     assert A.coords_de_link("https://www.google.com/maps?q=10.4961,-66.8492") == (10.4961, -66.8492) and A.coords_de_link("https://maps.app.goo.gl/abc") is None
     with erp_de_prueba() as c:
@@ -3195,7 +3197,7 @@ def _():
         assert [(x["k"], x["n"]) for x in f["zonas"]] == [("Los Palos Grandes", 1)], f["zonas"]
         assert [p["numero"] for p in f["puntos"]] == ["#FGps"], f["puntos"]
         assert {o["numero"]: o["porque"] for o in f["sin_zona"]["ordenes"]} == {"#FCorto": "el GPS es un enlace corto, sin coordenadas",
-                                                                                "#FRara": "zona “Zona Inventada” no está en Tarifas"}, f["sin_zona"]
+                                                                                "#FRara": "zona “Zona Inventada” todavía no está en el mapa"}, f["sin_zona"]
         con2.close()
         d = A.datos_mapa(con, "2026-03-01", "2026-03-31")
         ciu = {x["k"]: (x["n"], x["m"]) for x in d["ciudades"]}
