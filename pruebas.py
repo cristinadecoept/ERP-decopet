@@ -3615,6 +3615,8 @@ def _():
         sesion_de(c, "admin")
         c.post("/clientes/nuevo", data={"nombre_pila": "andrea gonzález", "apellido": "", "telefono": "04121302994"})
         assert tuple(con.execute("SELECT nombre_pila, apellido, nombre FROM clientes ORDER BY id DESC LIMIT 1").fetchone()) == ("Andrea", "González", "Andrea González")
+        l = c.get("/clientes?ver=pendientes&falta=apellido").text
+        assert "Luisa" in l and "falta=apellido" in l, "se pueden ver los que tienen solo el nombre"
         c.post(f"/clientes/{uno}/editar", data={"nombre_pila": "Luisa Fernández"})
         assert fila(uno) == ("Luisa", "Fernández", "Luisa Fernández"), fila(uno)
         con.close()

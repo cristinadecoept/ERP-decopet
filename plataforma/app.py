@@ -6180,7 +6180,7 @@ def mascotas_lista(request: Request, q: str = "", ver: str = "mascotas", raza: s
 
 
 # lo que le puede faltar a la ficha de un cliente, en el orden en que se muestra
-FALTA_CLIENTE = {"telefono": "teléfono", "correo": "correo", "ciudad": "ciudad", "estado": "estado", "direccion": "dirección", "mascota": "mascota", "raza": "raza del perro"}
+FALTA_CLIENTE = {"apellido": "apellido", "telefono": "teléfono", "correo": "correo", "ciudad": "ciudad", "estado": "estado", "direccion": "dirección", "mascota": "mascota", "raza": "raza del perro"}
 
 def envio_nacional(r):
     """Cliente de envío nacional: se le manda por agencia, así que nunca va a tener dirección ni GPS en su ficha
@@ -6216,7 +6216,8 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
     for r in rows:
         r["pro"] = r["pro"] or (r["porche_version"] == "PRO")
         r["basico"] = (r["porches"] or "").startswith("Básico") or r["porche_version"] == "Básico"
-        r["pendientes"] = ([k for k in ("telefono", "correo", "ciudad") if (r[k] or "Pendiente") == "Pendiente"]
+        r["pendientes"] = ((["apellido"] if not (r["apellido"] or "").strip() and r["nombre"] != "Sin nombre" else [])   # solo el nombre: para completarlo a mano
+                           + [k for k in ("telefono", "correo", "ciudad") if (r[k] or "Pendiente") == "Pendiente"]
                            + (["estado"] if not r["estado"] else [])
                            + (["direccion"] if not r["n_dir"] and not envio_nacional(r) else []) + (["mascota"] if not r["n_perros"] else [])
                            + (["raza"] if r["perro_pend"] else []))
