@@ -3511,7 +3511,7 @@ def _():
         assert r["ultimo_pago"]["monto"] == 20 and r["ultimo_pago"]["adelanto"], r["ultimo_pago"]
         h = c.get(f"/despachadores/{did}").text
         assert "para la moto" in h and "· adelanto" in h and ">Concepto<" in h
-        assert "(adelanto)" in c.get("/despachadores").text
+        assert "Último pago: $20.00 de adelanto" in re.sub(r"\s+", " ", re.sub("<[^>]+>", " ", c.get("/despachadores").text)).replace(" :", ":")
         con.close()
 
 
@@ -3542,6 +3542,34 @@ def _():
         card = l[l.index("Juan Adel"):][:3000]
         assert "al día" in card and "le debes por" not in card and "Sin zona" not in card
         assert all(z in card for z in ("Z1", "Z2", "Z3", "Z4")) and "Z5" not in card, "solo las últimas 4 zonas"
+        con.close()
+
+
+@prueba("Un pack que se compró sin llevar nada no sale 'por entregar' del despachador; un envío sin ciudad toma la de la ficha del cliente y va en lo que se copia para la agencia")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        did = con.execute("INSERT INTO despachadores (nombre, activo) VALUES ('Desp Pack', 1)").lastrowid
+        cid = con.execute("INSERT INTO clientes (nombre_pila,nombre,ciudad,cedula) VALUES ('Darwin','Darwin Pack','Valencia','V-1')").lastrowid
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 LIMIT 1").fetchone()["id"]
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,tipo_entrega,despachador) VALUES ('#PKD',?,'pendiente','pagada',72,'delivery','Desp Pack')", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack 3',1,72,72)", (o, p))
+        con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio) VALUES (?,?,?,3,0)", (cid, o, p))
+        v = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,oficina,monto,pedidos) VALUES (date('now'),'Desp Pack','Tealca','Catia',10,1)").lastrowid
+        e = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,tipo_entrega,direccion,viaje_id) VALUES ('#ENV',?,'pendiente','pagada',40,'nacional','Oficina Dr. Portillo',?)", (cid, v)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,40,40)", (e, p))
+        con.commit(); sesion_de(c, "admin")
+        h = c.get(f"/despachadores/{did}").text
+        assert "#PKD" not in h, "el pack va por Packs, no queda pendiente con el despachador"
+        assert A.resumen_despachador(con, "Desp Pack", datetime.date.today())["n_sin_entregar"] == 0
+        con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,tipo_entrega,despachador,espera_aviso,creado_en) VALUES ('#AVI',?,'pendiente','pagada',40,'delivery','Desp Pack',1,'2026-01-01 10:00')", (cid,))
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (last_insert_rowid(),?,'Comedero',1,40,40)", (p,)); con.commit()
+        h = c.get(f"/despachadores/{did}").text
+        assert "#AVI" in h and "espera que el cliente avise" in h and "atrasado" not in h, "esperando aviso no es atrasado"
+        assert "📍 Oficina Dr. Portillo · Valencia" in A.copia_agencia(A.viajes_por_llevar(con, "Desp Pack")[0]["paquetes"][0])
+        op = c.get("/operaciones?cola=todo&tipo=nacional").text
+        fila = op[op.index("#ENV") - 3000:op.index("#ENV") + 3000]
+        assert "Valencia" in fila, "la ciudad de la ficha del cliente"
         con.close()
 
 

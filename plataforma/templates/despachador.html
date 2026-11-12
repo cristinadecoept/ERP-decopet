@@ -48,7 +48,7 @@
 {% for v in viajes_ruta %}<tr class="viaje-ag">
  <td style="width:130px"><b>{{ v.agencia or 'Agencia' }}</b>{% if v.oficina %}<div class="mini">{{ v.oficina }}</div>{% endif %}
   <button type="button" class="btn sec chico" style="margin-top:6px" onclick="copiarAg(this)">Copiar datos</button>{% for o in v.paquetes %}<span hidden data-copia="{{ copia_agencia(o) }}"></span>{% endfor %}</td>
- <td>{% for o in v.paquetes %}<div>{{ o.recibe or o.nombre }} <span class="mini">{{ o.direccion or o.ciudad or '' }}</span></div>{% endfor %}</td>
+ <td>{% for o in v.paquetes %}<div class="mini" style="white-space:pre-line;{{ 'margin-top:12px' if not loop.first }}">{{ copia_agencia(o) }}</div>{% endfor %}</td>
  <td class="mini">{{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }}</td>
  <td></td>
 </tr>{% endfor %}
@@ -101,7 +101,7 @@ function copiarRuta(b){navigator.clipboard.writeText(document.getElementById('ru
  <td data-t="Qué"><span>{% if h.numero %}<a class="mono" href="/ordenes?estado=todas&abrir={{ h.id }}">{{ h.numero }}</a> · {% endif %}{{ h.cliente or h.quien or '—' }}</span>{% if not h.cliente and h.direccion %}<div class="mini">{{ h.direccion }}</div>{% endif %}</td>
  <td data-t="Zona" class="mini">{{ h.zona or h.ciudad or '—' }}</td>
  <td data-t="Estado">{% if h.grupo == 'viaje' %}<span class="est entregada">Llevado</span>{% else %}<span class="est {{ h.estado }}">{{ 'No le recibieron' if h.estado=='no_entregado' else ('Diligencia' if h.estado=='diligencia' else E_LABEL.get(h.estado, h.estado)) }}</span>{% endif %}{% if h.estado=='no_entregado' and h.nota %}<div class="mini">{{ h.nota }}</div>{% endif %}</td>
- <td data-t="Le toca" class="num">{% if h.cobro == 'al_entregar' %}{% if (h.fecha or '') < hoy %}<span class="mini ln-alerta">atrasado</span>{% else %}<span class="mini">al entregar</span>{% endif %}{% else %}{{ h.pago|usd }}<div class="mini{{ ' ln-alerta' if h.cobro == 'por_pagar' }}">{{ 'pagado' if h.cobro == 'pagado' else 'por pagarle' }}</div>{% endif %}</td>
+ <td data-t="Le toca" class="num">{% if h.cobro == 'al_entregar' %}{% if h.espera_aviso %}<span class="mini">espera que el cliente avise</span>{% elif (h.fecha_prometida or h.fecha or '') < hoy %}<span class="mini ln-alerta">atrasado</span>{% else %}<span class="mini">al entregar</span>{% endif %}{% else %}{{ h.pago|usd }}<div class="mini{{ ' ln-alerta' if h.cobro == 'por_pagar' }}">{{ 'pagado' if h.cobro == 'pagado' else 'por pagarle' }}</div>{% endif %}</td>
 </tr>{% endfor %}</table>
 <div class="vacio hd-vacio" hidden>Nada en este grupo.</div>
 <div class="hd-pie"><span class="mini hd-cuenta"></span><button type="button" class="btn sec chico hd-mas" hidden>Ver más</button></div>

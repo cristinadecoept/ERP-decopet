@@ -1459,7 +1459,7 @@ def pasar_entrega_a_prepagado(con, oid, uid):
 
 
 def cargar_ordenes(con, filtros, rol, sin_limite=False):
-    sql = """SELECT o.*, c.nombre cliente, c.telefono, c.porche_version, u.nombre creada_por_nombre,
+    sql = """SELECT o.*, c.nombre cliente, c.telefono, c.porche_version, NULLIF(TRIM(c.ciudad),'') cliente_ciudad, u.nombre creada_por_nombre,
              (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_direccion,
              (SELECT d.zona      FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_zona,
              (SELECT d.ciudad    FROM direcciones d WHERE d.cliente_id=o.cliente_id ORDER BY d.principal DESC, d.id LIMIT 1) cli_ciudad,
@@ -2670,6 +2670,9 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
         o["nota_log"] = " · ".join(indicaciones_cliente(con, o["cliente_id"], o["notas_entrega"])) or None
         o["pendiente_desde"] = o["pagada_en"] or o["creado_en"]
         o["fecha_op"] = o["fecha_prometida"] or hoy
+        # un envío sin ciudad en el pedido: la de la oficina escrita o la de la ficha del cliente (Paula, Johanna, 12 nov)
+        if o["tipo_entrega"] == "nacional" and not (o["ciudad"] or "").strip():
+            o["ciudad"] = next((x for x in [ciudad_de_texto(o["direccion"])] if x in _CIUDAD_POR_LLAVE.values() and x != "Pendiente"), None) or next((x for x in (o.get("cliente_ciudad"), o.get("cli_ciudad")) if x and x != "Pendiente"), None)
     if dia and dia not in (hoy, manana): cola = "dia"
     elif dia == manana: cola = "manana"; dia = ""
     ids_saldo = {o["id"] for o in con_saldo}
@@ -6781,7 +6784,7 @@ def resumen_despachador(con, nombre, hoy):
     # se le debe lo que ya ENTREGÓ: asignado no es ganado (se puede cambiar el despachador, o pasar a pick-up)
     s = con.execute("""SELECT SUM(CASE WHEN despachador_pagado=0 AND estado='entregada' THEN COALESCE(delivery, 0) ELSE 0 END) debe,
                               SUM(CASE WHEN despachador_pagado=0 AND estado='entregada' THEN 1 ELSE 0 END) n_debe,
-                              SUM(CASE WHEN estado IN ('pendiente','en_ruta') THEN 1 ELSE 0 END) n_sin_entregar
+                              SUM(CASE WHEN estado IN ('pendiente','en_ruta') AND """ + HAY_QUE_ENTREGAR("ordenes") + """ THEN 1 ELSE 0 END) n_sin_entregar
                        FROM ordenes WHERE despachador=? AND estado!='cancelada' AND origen_excel=0""", (nombre,)).fetchone()
     ult = con.execute("""SELECT fecha, ROUND(monto - COALESCE(adelanto_usado,0), 2) monto FROM pagos_despachador
                          WHERE despachador=? AND monto - COALESCE(adelanto_usado,0) > 0.009 ORDER BY fecha DESC, id DESC LIMIT 1""", (nombre,)).fetchone()
@@ -6837,6 +6840,7 @@ def mis_entregas(request: Request, con=Depends(db)):
                                                                   ORDER BY d.principal DESC, d.id LIMIT 1)) direccion
                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
+                            AND (o.estado NOT IN ('pendiente','en_ruta') OR """ + HAY_QUE_ENTREGAR() + """)
                             -- lo que ya le pagaron y él confirmó que le llegó se le quita de la vista (Cristina lo sigue viendo en su ficha)
                             AND NOT (o.despachador_pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=o.despachador_pago_id) IS NOT NULL)
                           ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
@@ -7119,7 +7123,7 @@ def viajes_por_llevar(con, nombre):
         v["paquetes"] = []
         for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, o.a_domicilio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
                                 o.receptor_cedula, NULLIF(TRIM(o.receptor_correo),'') receptor_correo,
-                                c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
+                                c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo, NULLIF(TRIM(c.ciudad),'') cliente_ciudad FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
             o = quien_retira(dict(o))
             if o["a_domicilio"]: o["direccion"] = "🚪 A DOMICILIO: " + (o["direccion"] or o["ciudad"] or "falta la dirección")   # la agencia lo lleva a la puerta
             o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
@@ -7191,11 +7195,21 @@ def ruta_despachador(con, nombre, hoy):
     return filas
 
 
+def lugar_agencia(o):
+    """La oficina y la ciudad: si la oficina escrita no dice la ciudad, se le agrega (la agencia la necesita)."""
+    ofi = (o.get("direccion") or "").strip()
+    ciu = (o.get("ciudad") or "").strip() or o.get("cliente_ciudad") or ""
+    if ciu == "Pendiente": ciu = ""
+    if not ofi: return ciu or "FALTA la oficina"
+    if ciu and _llave_lugar(ciu) not in _llave_lugar(ofi): return f"{ofi} · {ciu}"
+    return ofi
+
+
 def copia_agencia(o):
     """Los datos de un paquete como se le mandan a la agencia: cada dato en su línea con su emoji."""
     t = "\n".join(["👤 " + (o.get("recibe") or o.get("nombre") or ""), "📦 " + re.sub(r"<[^>]+>", "", o.get("lleva") or ""),
                    "📞 Tel. " + (o.get("recibe_tel") or o.get("telefono") or "FALTA"), "📧 " + (o.get("correo") or "FALTA el correo"),
-                   "🪪 C.I. " + (o.get("cedula") or "FALTA"), "📍 " + (o.get("direccion") or o.get("ciudad") or "FALTA la oficina")])
+                   "🪪 C.I. " + (o.get("cedula") or "FALTA"), "📍 " + lugar_agencia(o)])
     return t + ("\n💵 Cobro a destino" if o.get("modalidad_envio") == "cobro_destino" else "")
 
 
@@ -7255,9 +7269,10 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     viajes_ruta = [v for v in viajes_por_llevar(con, d["nombre"]) if (v["fecha"] or "")[:10] <= hoy.isoformat()]   # el de otro día no es de hoy; el atrasado sí
     # su récord: todo lo que ha entregado, pagado o no. Sin esto, al marcar pagado se perdía el rastro.
     hist = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
-                          COALESCE(o.delivery,0) pago, o.zona, o.ciudad, o.estado, o.despachador_pagado,
+                          COALESCE(o.delivery,0) pago, o.zona, o.ciudad, o.estado, o.despachador_pagado, o.espera_aviso, o.fecha_prometida,
                           c.nombre cliente FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
+                            AND (o.estado NOT IN ('pendiente','en_ruta') OR """ + HAY_QUE_ENTREGAR() + """)
                           ORDER BY fecha DESC, o.id DESC""", (d["nombre"],)).fetchall()
     mes = hoy.strftime("%Y-%m")
     record = {"n": len(hist), "entregadas": sum(1 for h in hist if h["estado"] == "entregada"),
@@ -7268,7 +7283,16 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     viajes_hechos = con.execute("""SELECT COUNT(*) n, COALESCE(SUM(monto),0) m FROM viajes_agencia
                                    WHERE despachador=? AND llevado_en IS NOT NULL""", (d["nombre"],)).fetchone()
     record["viajes"] = viajes_hechos["n"]; record["viajes_monto"] = round(viajes_hechos["m"], 2)
-    hist = sorted([dict(h) for h in hist] + viajes_hist(con, d["nombre"]), key=lambda h: h["fecha"] or "", reverse=True)
+    hist = [dict(h) for h in hist] + viajes_hist(con, d["nombre"])
+    # lo que le toca y todavía no lleva también es "por entregar": retiros de pack, prepagados y los viajes a la agencia (Cristina, 12 nov)
+    for f in ruta:
+        if f.get("kind") == "orden": continue
+        hist.append({"fecha": hoy.isoformat(), "quien": f"{f['quien']} · {re.sub(r'<[^>]+>', '', f.get('que_lleva') or '')}", "zona": f.get("zona"),
+                     "estado": "pendiente", "pago": 0, "despachador_pagado": 0})
+    for v in viajes_por_llevar(con, d["nombre"]):
+        hist.append({"fecha": (v["fecha"] or "")[:10], "quien": f"Llevar a {v['agencia'] or 'la agencia'}" + (f" {v['oficina']}" if v["oficina"] else "") +
+                     f" · {v['pedidos']} paquete{'s' if v['pedidos'] != 1 else ''}", "zona": None, "estado": "pendiente", "pago": 0, "despachador_pagado": 0})
+    hist = sorted(hist, key=lambda h: h["fecha"] or "", reverse=True)
     # por estado, sin contar nada dos veces (Cristina, 6 oct): entregas (pedidos y retiros de pack), viajes a la agencia,
     # diligencias, lo que tiene asignado y todavía no entrega, y las veces que fue y no le recibieron
     es_viaje = lambda h: h["estado"] == "entregada" and (h.get("quien") or "").startswith("Viaje a")
