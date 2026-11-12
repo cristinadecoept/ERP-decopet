@@ -7618,7 +7618,7 @@ def salidas_de_hoy(con, orden_id=None, pack_id=None, prepagado_id=None):
                               -- con viaje a la agencia asignado, manda el día del viaje (el pedido puede decir hoy y el viaje ser mañana)
                               AND COALESCE((SELECT v.fecha FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL),
                                            o.fecha_prometida, substr(o.creado_en,1,10)) <= ?
-                              AND (? IS NULL OR o.id=?)""", (hoy, orden_id if uno else None, orden_id)):
+                              AND (? IS NULL OR o.id=?)""", (hoy, 1 if uno else None, orden_id)):   # con un pack o un prepagado, ninguna orden
         # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
         a_agencia = o["tipo_entrega"] == "nacional"
         sin_emb = a_agencia and no_se_embala(o["agencia"], o["oficina_viaje"])
@@ -7680,7 +7680,8 @@ def taller_hoy(request: Request, con=Depends(db)):
                             (CASE WHEN o.estado_pago IN ('sin_pago','abonada','contra_entrega','rechazado') THEN 1 ELSE 0 END) falta_cobrar
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
                             WHERE o.tipo_entrega='pickup' AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0 AND """ + HAY_QUE_ENTREGAR()):
-        pickups.append(dict(o) | {"tipo": "orden", "que_lleva": lo_que_lleva(con, o["id"], cuenta)[0], "accion": f"/taller/{o['id']}/entregado"})
+        pickups.append(dict(o) | {"quien": ((o["quien"] or "").split() or [""])[0],   # solo el nombre de pila, aunque la ficha no lo tenga aparte
+                                  "tipo": "orden", "que_lleva": lo_que_lleva(con, o["id"], cuenta)[0], "accion": f"/taller/{o['id']}/entregado"})
     # retiros de pack que el cliente viene a buscar
     for k in cargar_packs(con):
         if k["saldo"] > 0 and k["fecha_programada"] and (k["tipo_programado"] or k["tipo_entrega"]) == "pickup":

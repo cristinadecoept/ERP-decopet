@@ -1920,6 +1920,19 @@ def _():
         con.close()
 
 
+@prueba("Taller: el pick-up dice solo el nombre de pila, aunque la ficha del cliente no lo tenga aparte")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Cristy Jose Cartagena Infante','')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida)
+                             VALUES ('#PK1',?,'pendiente','pagada',90,0,'pickup',date('now','localtime'))""", (cid,)).lastrowid
+        pid = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('PK-NOMBRE','Porche Nombre','producto',90)").lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Porche Nombre',1,90,90)", (oid, pid)); con.commit(); con.close()
+        sesion_de(c, "taller"); h = c.get("/taller").text
+        assert "<b>Cristy</b>" in h and "Cartagena" not in h
+
+
 @prueba("Taller: cada pick-up sale el día que le toca (y si se atrasa sigue saliendo); el de otro día no")
 def _():
     with erp_de_prueba() as c:
@@ -2709,6 +2722,9 @@ def _():
         assert p["#PK8"]["recibe"] == "Tercero Prueba" and p["#PK8"]["cedula"] == "V-222" and p["#PK8"]["direccion"] == "Tealca Mérida Norte", p["#PK8"]
         assert "1× Repuesto Mediano" in p["#PK8"]["lleva"] and "1/3" in p["#PK8"]["lleva"]
         assert "Tealca Mérida Norte" in A.texto_ruta([], datetime.date.today(), A.viajes_por_llevar(con, d["nombre"]))
+        assert [g["agencia"] or g["cosas"] for g in A.salidas_de_hoy(con, pack_id=pid)] == ["1× Repuesto Mediano"], "solo ese repuesto, nada más del día"
+        c.post("/taller/montar", data={"tipo": "pack", "id": pid})   # el taller lo ve cuando Cristina le da Montar
+        assert [r[0] or r[1] for r in con.execute("SELECT agencia, cosas FROM cargas_taller")] == ["1× Repuesto Mediano"]
         assert "Repuesto Mediano" in c.get("/taller").text
         assert "Tealca Mérida Norte" in c.get(f"/despachadores/{d['id']}").text
         sesion_de(c, "despachador"); h = c.get("/mis-entregas").text
