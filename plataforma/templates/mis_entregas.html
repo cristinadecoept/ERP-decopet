@@ -20,10 +20,8 @@
  <div class="mini" style="margin-top:6px">Cristina la revisa y, cuando la aprueba, se suma a lo que te deben.</div></details>{% endif %}{% if r.n_dil_aprobar %}<p class="mini" style="margin:-6px 0 14px">{{ r.n_dil_aprobar }} diligencia{{ 's' if r.n_dil_aprobar != 1 }} esperando que Cristina la{{ 's' if r.n_dil_aprobar != 1 }} apruebe.</p>{% endif %}
 
 <h2 class="seccion-t">Lo que te toca hoy</h2>
-{% if montar %}<div class="tarjeta" style="margin-bottom:12px">{% if montar.n %}<form method="post" action="/mis-entregas/montar">
- {% for f in montar.falta %}<label class="chk" style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><input type="checkbox" style="margin:0" name="item" value="{{ f.item }}" checked onchange="this.form.querySelector('button').disabled=!this.form.querySelector('[name=item]:checked')"><span><b>{{ f.quien }}</b> <span class="mini">{{ f.texto|platos }}</span></span></label>{% endfor %}
- <button class="btn">Montar</button></form>
- {% elif montar.listo %}<span class="mini">{{ montar.texto|platos }}</span> <span class="pago pagada">✓ Montado</span>{% else %}<span class="mini">{{ montar.texto|platos }}</span> <span class="pago por_confirmar">El taller lo está montando</span>{% endif %}</div>{% endif %}
+
+{% macro montar_b(x) %}{% set e = montar.get(x) %}{% if e == 'falta' %}<form method="post" action="/mis-entregas/montar" style="display:inline"><input type="hidden" name="item" value="{{ x }}"><button class="btn chico">Montar</button></form>{% elif e == 'pendiente' %}<form method="post" action="/mis-entregas/montar" style="display:inline"><input type="hidden" name="item" value="{{ x }}"><input type="hidden" name="quitar" value="1"><button class="btn sec chico" title="Ya se lo pediste al taller: tocar para quitárselo">Deshacer</button></form>{% elif e == 'listo' %}<span class="pago pagada">✓ Montado</span>{% endif %}{% endmacro %}
 {% macro tarjeta_viaje(v, es_manana=False) %}<div class="tarjeta viaje-ag" style="margin-bottom:12px">
  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b>Llevar a {{ v.agencia or 'la agencia' }}{% if v.oficina %} {{ v.oficina }}{% endif %}</b> <span class="mini">· {{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }} · {{ v.monto|usd }}</span></div>
   <button type="button" class="btn sec chico" onclick="copiarAg(this)">Copiar datos para la agencia</button>
@@ -36,7 +34,7 @@
    <dt>Correo</dt><dd>{% if o.correo %}{{ o.correo }}{% else %}<span class="op-punto">Falta · pídelo antes de ir</span>{% endif %}</dd>
    <dt>Oficina</dt><dd>{% if o.direccion or o.ciudad %}{{ o.direccion or o.ciudad }}{% else %}<span class="op-punto">Falta · pídela antes de ir</span>{% endif %}</dd>
    <dt>Lleva</dt><dd>{{ o.lleva|platos }}</dd>
-  </dl></div>{% endfor %}</div></div>{% endmacro %}
+  </dl>{% if not es_manana %}<div style="margin-top:8px">{{ montar_b('pack:' ~ o.pack_id if o.pack_id else 'orden:' ~ o.id) }}</div>{% endif %}</div>{% endfor %}</div></div>{% endmacro %}
 {% for v in viajes_pend %}{{ tarjeta_viaje(v) }}{% endfor %}
 <script>function copiarAg(b){const t=[...b.closest('.viaje-ag').querySelectorAll('[data-copia]')].map(r=>r.dataset.copia).join('\n\n');navigator.clipboard.writeText(t).then(()=>{const o=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=o,1500)});}</script>
 <div class="tabla">
@@ -50,7 +48,8 @@
  <td data-t="Status" style="white-space:nowrap">{% if f.en_ruta %}<span class="est en_ruta">En ruta</span>{% if f.id or f.rid %}{% set ret0 = '/mis-entregas/retiro/' ~ f.kind ~ '/' ~ f.rid if f.kind != 'orden' else '' %}<form method="post" action="{{ ret0 ~ '/aun-no' if ret0 else '/mis-entregas/' ~ f.id ~ '/aun-no' }}" style="margin-top:6px"><button class="no-link" style="font-size:12px;padding:0" title="Lo tocaste sin querer">↩ todavía no salgo</button></form>{% endif %}{% else %}<span class="est pendiente">Pendiente</span>{% endif %}</td>
  <td class="me-acc">{% if f.id or f.rid %}
   {% set ret = '/mis-entregas/retiro/' ~ f.kind ~ '/' ~ f.rid if f.kind != 'orden' else '' %}
-  {% if not f.en_ruta %}<form method="post" action="{{ ret ~ '/salgo' if ret else '/ordenes/' ~ f.id ~ '/estado' }}" style="display:inline">
+  {% if not f.en_ruta %}{{ montar_b(('orden:' ~ f.id) if f.kind == 'orden' or not f.kind else ('pack:' ~ f.rid if f.kind == 'pack' else 'prepagado:' ~ f.rid)) }}
+  <form method="post" action="{{ ret ~ '/salgo' if ret else '/ordenes/' ~ f.id ~ '/estado' }}" style="display:inline">
    <input type="hidden" name="estado" value="en_ruta"><button class="btn sec chico">Voy saliendo</button></form>
   {% else %}<details class="cobro"><summary class="btn sec chico">No pude entregar</summary>
     <form method="post" action="{{ ret ~ '/no-pude' if ret else '/ordenes/' ~ f.id ~ '/no-recibio' }}" class="cobro-f" style="min-width:260px;text-align:left">

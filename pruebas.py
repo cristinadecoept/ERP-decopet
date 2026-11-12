@@ -1898,17 +1898,19 @@ def _():
         sesion_de(c, "admin"); h = c.get("/operaciones").text
         assert "Montar" not in h.replace("montar", "") and "✓ montado" not in h, "Cristina no tiene botón: en cada pedido no sale nada hasta que se monta"
         sesion_de(c, "despachador"); h = c.get("/mis-entregas").text
-        assert 'action="/mis-entregas/montar"' in h and f'value="orden:{o1}" checked' in h and f'value="orden:{o2}" checked' in h, "cada pedido con su casilla, marcada"
-        c.post("/mis-entregas/montar", data={"item": [f"orden:{o1}", f"orden:{otro}"]})   # escoge solo uno para esta tanda (y uno ajeno no cuela)
-        assert [r[0] for r in con.execute("SELECT orden_id FROM cargas_taller")] == [o1], "solo lo que escogió, y solo lo suyo"
+        assert f'name="item" value="orden:{o1}"><button class="btn chico">Montar' in h and f'name="item" value="orden:{o2}"><button class="btn chico">Montar' in h, "cada pedido con su botón Montar"
+        c.post("/mis-entregas/montar", data={"item": f"orden:{o1}"}); c.post("/mis-entregas/montar", data={"item": f"orden:{otro}"})   # uno ajeno no cuela
+        assert [r[0] for r in con.execute("SELECT orden_id FROM cargas_taller")] == [o1], "solo lo que tocó, y solo lo suyo"
         h = c.get("/mis-entregas").text
-        assert f'value="orden:{o2}"' in h and f'value="orden:{o1}"' not in h, "lo que no escogió sigue para la próxima tanda"
-        c.post("/mis-entregas/montar"); c.post("/mis-entregas/montar")
+        assert f'name="item" value="orden:{o2}"><button class="btn chico">Montar' in h and 'name="quitar" value="1"><button class="btn sec chico" title="Ya se lo pediste al taller: tocar para quitárselo">Deshacer' in h, "lo que no tocó sigue para la próxima ronda"
+        c.post("/mis-entregas/montar", data={"item": f"orden:{o1}", "quitar": "1"})   # se equivocó: lo quita
+        assert con.execute("SELECT COUNT(*) FROM cargas_taller").fetchone()[0] == 0
+        for o in (o1, o2, o1): c.post("/mis-entregas/montar", data={"item": f"orden:{o}"})
         mios = {r[0] for r in con.execute("SELECT orden_id FROM cargas_taller WHERE orden_id IS NOT NULL")}
         assert {o1, o2} <= mios and otro not in mios and manana not in mios, "solo lo suyo y de hoy"
         assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE orden_id=?", (o1,)).fetchone()[0] == 1, "dos toques: una sola vez"
         h = c.get("/mis-entregas").text
-        assert 'action="/mis-entregas/montar"' not in h and "El taller lo está montando" in h
+        assert '<button class="btn chico">Montar' not in h.split("Lo que te toca hoy")[1].split("mañana")[0] and h.count(">Deshacer</button>") >= 2
         sesion_de(c, "taller"); h = c.get("/taller").text
         assert h.count(f"Montar a {yo}") == 1 and "2× Porche Lote" in h, "todo lo suyo junto, con un solo Listo"
         assert "Otro Prueba" not in h
@@ -1928,10 +1930,19 @@ def _():
         con.execute("UPDATE ordenes SET estado='en_ruta' WHERE id=?", (o1,)); con.commit()
         assert c.get("/operaciones").text.count("✓ montado") == n_antes - 1, "salió en ruta: ya no dice ✓ montado"
         con.execute("UPDATE ordenes SET estado='pendiente' WHERE id=?", (o1,)); con.commit()
+        k1 = con.execute("SELECT id FROM cargas_taller WHERE orden_id=?", (o1,)).fetchone()[0]
+        assert f'action="/taller/carga/{k1}/deshacer"' in c.get("/operaciones").text
+        sesion_de(c, "logistica"); c.post(f"/taller/carga/{k1}/deshacer")
+        assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE id=?", (k1,)).fetchone()[0] == 1, "solo Cristina lo quita"
+        sesion_de(c, "admin"); c.post(f"/taller/carga/{k1}/deshacer")
+        assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE orden_id=?", (o1,)).fetchone()[0] == 0, "se quitó el ✓ montado"
+        sesion_de(c, "despachador"); assert f'name="item" value="orden:{o1}"><button class="btn chico">Montar' in c.get("/mis-entregas").text, "el despachador lo puede volver a pedir"
+        sesion_de(c, "admin")
         orden("#L4")   # entra otro: el despachador puede volver a pedir, solo ese
-        sesion_de(c, "despachador"); assert "Montar · " not in c.get("/mis-entregas").text and 'action="/mis-entregas/montar"' in c.get("/mis-entregas").text
-        sesion_de(c, "logistica"); c.post("/mis-entregas/montar")
-        sesion_de(c, "taller"); c.post("/mis-entregas/montar")
+        o4 = con.execute("SELECT id FROM ordenes WHERE numero='#L4'").fetchone()[0]
+        sesion_de(c, "despachador"); assert f'name="item" value="orden:{o4}"><button class="btn chico">Montar' in c.get("/mis-entregas").text
+        sesion_de(c, "logistica"); c.post("/mis-entregas/montar", data={"item": f"orden:{o4}"})
+        sesion_de(c, "taller"); c.post("/mis-entregas/montar", data={"item": f"orden:{o4}"})
         assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE listo_en IS NULL").fetchone()[0] == 0, "ni logística ni el taller lo piden"
         con.close()
 

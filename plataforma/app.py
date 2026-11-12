@@ -7093,7 +7093,7 @@ def viajes_por_llevar(con, nombre):
             if k["retira_nombre"] is not None:   # lo dijeron al programar esta entrega: manda sobre lo de la compra
                 o |= {"recibe": k["retira_nombre"] or None, "recibe_tel": k["retira_telefono"], "receptor_cedula": k["retira_cedula"], "receptor_correo": k["retira_correo"]}
             dest = destino_pack(k)[1]
-            o = quien_retira(o) | {"id": None, "numero": k["orden"] or "", "ciudad": dest, "direccion": dest, "lleva": f"{lleva_pack(k, con)} · {repuesto_de_pack(k)[1]}"}
+            o = quien_retira(o) | {"id": None, "pack_id": k["id"], "numero": k["orden"] or "", "ciudad": dest, "direccion": dest, "lleva": f"{lleva_pack(k, con)} · {repuesto_de_pack(k)[1]}"}
             v["paquetes"].append(o)
     return viajes
 
@@ -7755,35 +7755,27 @@ def texto_carga(g):
 
 
 def montar_de(con, despachador):
-    """Lo de hoy de un despachador para el taller: qué falta por mandar y si ya se lo montaron."""
+    """Cada pedido de hoy del despachador y cómo va con el taller: 'falta' (puede pedir Montar), 'pendiente' o 'listo'."""
     g = next((g for g in salidas_de_hoy(con) if g["quien_lleva"] == despachador), None)
-    if not g or not (g["cosas"] or g["agencia"]): return None
+    if not g: return {}
     ya = {}
     for t, col in (("orden", "orden_id"), ("pack", "pack_id"), ("prepagado", "prepagado_id")):
         for k in con.execute(f"SELECT {col} x, listo_en FROM cargas_taller WHERE {col} IS NOT NULL"): ya[f"{t}:{k['x']}"] = k["listo_en"]
-    falta = [x for x in g["items"] if x not in ya]
-    def etiqueta(x):   # cada pedido con lo que lleva y de quién es, para que escoja qué monta en esta tanda
-        t, _, id_ = x.partition(":")
-        uno = next(iter(salidas_de_hoy(con, **{{"orden": "orden_id", "pack": "pack_id", "prepagado": "prepagado_id"}[t]: int(id_)})), None)
-        cli = con.execute({"orden": "SELECT c.nombre_pila, c.nombre FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?",
-                           "pack": "SELECT c.nombre_pila, c.nombre FROM packs k JOIN clientes c ON c.id=k.cliente_id WHERE k.id=?",
-                           "prepagado": "SELECT c.nombre_pila, c.nombre FROM repuestos_prepagados r JOIN clientes c ON c.id=r.cliente_id WHERE r.id=?"}[t], (int(id_),)).fetchone()
-        quien = ((cli["nombre_pila"] or cli["nombre"] or "").split() or [""])[0] if cli else ""
-        return {"item": x, "texto": texto_carga(uno) if uno else "", "quien": quien}
-    return {"falta": [etiqueta(x) for x in falta], "n": len(falta), "listo": not falta and all(ya.get(x) for x in g["items"]), "texto": texto_carga(g)}
+    return {x: ("falta" if x not in ya else "listo" if ya[x] else "pendiente") for x in g["items"]}
 
 
 @app.post("/mis-entregas/montar")
-async def mis_entregas_montar(request: Request, con=Depends(db)):
-    """El despachador le dice al taller que le monte: escoge qué pedidos van en esta tanda (todos, si no escoge)."""
+def mis_entregas_montar(request: Request, item: str = Form(""), quitar: str = Form(""), con=Depends(db)):
+    """El despachador, pedido por pedido, le dice al taller qué le monte en esta ronda (o lo quita si se equivocó)."""
     u = quien_es(request); nombre = (u or {}).get("despachador")
-    escogidos = set((await request.form()).getlist("item"))
     if not u or u["rol"] == "admin": nombre = (request.cookies.get("ver_desp") or "").strip()   # Cristina viendo como él
     if rol_de(request) not in ("despachador", "admin") or not nombre: return RedirectResponse("/mis-entregas", status_code=303)
-    m = montar_de(con, nombre)
-    for x in [f["item"] for f in (m or {}).get("falta", [])]:
-        if escogidos and x not in escogidos: continue   # solo lo suyo y solo lo que escogió
-        t, _, id_ = x.partition(":"); montar_uno(uid_de(request), con, t, int(id_))
+    estado = montar_de(con, nombre).get(item)   # solo un pedido suyo de hoy
+    t, _, id_ = item.partition(":")
+    if estado == "falta" and not quitar: montar_uno(uid_de(request), con, t, int(id_))
+    elif estado == "pendiente" and quitar:
+        col = {"orden": "orden_id", "pack": "pack_id", "prepagado": "prepagado_id"}[t]
+        con.execute(f"DELETE FROM cargas_taller WHERE {col}=? AND listo_en IS NULL", (int(id_),))
     con.commit()
     return RedirectResponse("/mis-entregas", status_code=303)
 
@@ -7796,6 +7788,15 @@ def montar_uno(uid, con, tipo, id):
             if con.execute(f"SELECT 1 FROM cargas_taller WHERE {col}=?", (id,)).fetchone(): return   # ya se le había mandado
             con.execute(f"INSERT INTO cargas_taller (despachador, cosas, agencia, notas, pedido_por, {col}) VALUES (?,?,?,?,?,?)",
                         (g["quien_lleva"], g["cosas"] or None, g["agencia"] or None, "\n".join(g["notas"]) or None, uid, id))
+
+
+@app.post("/taller/carga/{cid}/deshacer")
+def taller_carga_deshacer(request: Request, cid: int, volver: str = Form("/operaciones"), con=Depends(db)):
+    """Cristina quita un '✓ montado' que no era (una prueba, un error): el pedido queda como si no se hubiera pedido montar."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    con.execute("DELETE FROM cargas_taller WHERE id=?", (cid,))
+    con.execute("UPDATE notas_taller SET visto=1 WHERE carga_id=?", (cid,)); con.commit()
+    return RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
 
 
 @app.post("/taller/montado")
