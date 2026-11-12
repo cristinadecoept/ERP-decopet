@@ -82,7 +82,7 @@
 </tr>{% endfor %}
 {% if ruta_cobrar is defined and ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td><b>{{ ruta_cobrar|usd }}</b></td><td colspan="2"></td></tr>{% endif %}</table>
 {% else %}<div class="vacio">Hoy no tienes entregas asignadas.</div>{% endif %}</div>
-{% if ruta_manana or viajes_manana %}<div class="manana-caja"><h2 class="dia-t manana"><span class="dia-p">Mañana</span>{{ manana_iso|dia }}{% if ruta_manana %} <span class="mini">· {{ ruta_manana|length }} entrega{{ 's' if ruta_manana|length != 1 }}</span>{% endif %}</h2>
+{% if ruta_manana or viajes_manana %}<div class="manana-caja"><h2 class="dia-t manana"><span class="dia-p">Mañana</span>{{ manana_iso|dia }}</h2>
 {% for v in viajes_manana %}{{ tarjeta_viaje(v, True) }}{% endfor %}
 {% endif %}{% if ruta_manana %}<div class="tabla"><table data-cols="Quién:22|Dirección:30|Qué lleva:28|Falta pagar:20" class="me-t"><tr><th>Quién</th><th>Dirección</th><th>Qué lleva</th><th>Falta pagar</th></tr>
 {% for f in ruta_manana %}<tr>
