@@ -7408,9 +7408,17 @@ async def viaje_crear(request: Request, con=Depends(db)):
     monto = cifra(f.get("monto")) if (f.get("monto") or "").strip() else (ofis[oficina] if oficina else tarifa_agencia(con, agencia))
     fecha = f.get("fecha") or datetime.date.today().isoformat()
     uid = uid_de(request)
-    cur = con.execute("""INSERT INTO viajes_agencia (fecha, despachador, agencia, oficina, monto, pedidos, nota, usuario_id)
-                         VALUES (?,?,?,?,?,?,?,?)""", (fecha, desp, agencia or None, oficina or None, monto, len(filas) + len(packs_v), (f.get("nota") or "").strip() or None, uid))
-    vid = cur.lastrowid
+    hoy = datetime.date.today().isoformat()
+    # si ya tiene un viaje por llevar a esa misma oficina, es la misma ida: entra ahí en vez de abrir otro (Cristina, 12 nov)
+    abierto = con.execute("""SELECT * FROM viajes_agencia WHERE despachador=? AND COALESCE(agencia,'')=? AND COALESCE(oficina,'')=?
+                             AND llevado_en IS NULL AND pagado=0 AND (fecha=? OR (fecha<=? AND ?<=?)) ORDER BY id LIMIT 1""",
+                          (desp, agencia or "", oficina or "", fecha, hoy, fecha, hoy)).fetchone()
+    if abierto:
+        vid = abierto["id"]   # se paga una sola ida: la tarifa del viaje, no una por pedido
+        con.execute("UPDATE viajes_agencia SET pedidos=pedidos+?, monto=MAX(monto,?), fecha=MAX(fecha,?) WHERE id=?", (len(filas) + len(packs_v), monto, fecha, vid))
+    else:
+        vid = con.execute("""INSERT INTO viajes_agencia (fecha, despachador, agencia, oficina, monto, pedidos, nota, usuario_id)
+                             VALUES (?,?,?,?,?,?,?,?)""", (fecha, desp, agencia or None, oficina or None, monto, len(filas) + len(packs_v), (f.get("nota") or "").strip() or None, uid)).lastrowid
     con.execute(f"UPDATE ordenes SET viaje_id=?, agencia=COALESCE(NULLIF(agencia,''),?) WHERE id IN ({','.join('?' * len(filas))})",
                 (vid, agencia or None, *[r["id"] for r in filas]))
     for r in filas: registrar(con, r["id"], uid, "despachador", f"{desp} lo va a llevar a {agencia or 'la agencia'}" + (f" {oficina}" if oficina else ""))

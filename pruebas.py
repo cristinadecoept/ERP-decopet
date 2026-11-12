@@ -1978,6 +1978,44 @@ def _():
         con.close()
 
 
+@prueba("Viajes a la agencia: lo que se asigna al mismo despachador y la misma oficina entra al viaje que ya está por llevar (una sola ida); los separados de antes se juntan")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat(); ayer = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        manana = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        ofi = list(A.oficinas_agencia(con).get("Tealca") or {"": 0})[0]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Viaje Junto','Viaje')").lastrowid; con.commit()
+        pr = con.execute("SELECT id FROM productos WHERE COALESCE(tipo,'producto')='producto' LIMIT 1").fetchone()[0]
+        def orden(n):
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,agencia) VALUES (?,?,'pendiente','pagada',60,0,'nacional','Tealca')", (n, cid)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio) VALUES (?,?,1,60)", (oid, pr)); con.commit(); return oid
+        sesion_de(c, "admin")
+        asignar = lambda oid, fecha, desp="Pepa Viaje": c.post("/viajes/crear", data={"despachador": desp, "agencia": "Tealca", "oficina": ofi, "monto": "10", "fecha": fecha, "orden_id": str(oid), "volver": "/operaciones"})
+        a, b, d, e, m = orden("#VJ1"), orden("#VJ2"), orden("#VJ3"), orden("#VJ4"), orden("#VJ5")
+        asignar(a, hoy); asignar(b, hoy); asignar(d, hoy, "Otra Persona"); asignar(m, manana)
+        vs = con.execute("SELECT id, despachador, pedidos, monto, fecha FROM viajes_agencia WHERE despachador IN ('Pepa Viaje','Otra Persona') ORDER BY id").fetchall()
+        assert [(v["despachador"], v["pedidos"], v["monto"], v["fecha"]) for v in vs] == [("Pepa Viaje", 2, 10, hoy), ("Otra Persona", 1, 10, hoy), ("Pepa Viaje", 1, 10, manana)], [dict(v) for v in vs]
+        assert con.execute("SELECT viaje_id FROM ordenes WHERE id=?", (a,)).fetchone()[0] == con.execute("SELECT viaje_id FROM ordenes WHERE id=?", (b,)).fetchone()[0], "una sola ida"
+        v1 = vs[0]["id"]; con.execute("UPDATE viajes_agencia SET llevado_en=datetime('now') WHERE id=?", (v1,)); con.commit()
+        asignar(e, hoy)   # el de antes ya se llevó: esto es otra ida
+        assert con.execute("SELECT viaje_id FROM ordenes WHERE id=?", (e,)).fetchone()[0] != v1
+        # los que quedaron separados antes de este cambio se juntan con la migración
+        con.execute("DELETE FROM viajes_agencia WHERE despachador='Separado'")
+        ids = []
+        for f_, mo in ((ayer, 10), (hoy, 0), (hoy, 0)):
+            vid = con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,oficina,monto,pedidos) VALUES (?, 'Separado','Tealca',?,?,1)", (f_, ofi, mo)).lastrowid
+            o_ = orden(f"#SP{vid}"); con.execute("UPDATE ordenes SET viaje_id=? WHERE id=?", (vid, o_)); ids.append(vid)
+        con.execute("INSERT INTO viajes_agencia (fecha,despachador,agencia,oficina,monto,pedidos) VALUES (?, 'Separado','Tealca',?,10,1)", (manana, ofi)); con.commit()
+        con.commit(); con.close()
+        m_ = sqlite3.connect(A.DB, timeout=10); m_.executescript((A.MIGRACIONES / "024_juntar_viajes_misma_oficina.sql").read_text()); m_.close()
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        vs = con.execute("SELECT id, pedidos, monto, fecha FROM viajes_agencia WHERE despachador='Separado' ORDER BY id").fetchall()
+        assert [(v["id"], v["pedidos"], v["monto"], v["fecha"]) for v in vs][0] == (ids[0], 3, 10, hoy) and len(vs) == 2, [dict(v) for v in vs]
+        assert con.execute("SELECT COUNT(*) FROM ordenes WHERE viaje_id=?", (ids[0],)).fetchone()[0] == 3, "los paquetes pasan al viaje que queda"
+        con.close()
+
+
 @prueba("Taller: el pick-up dice solo el nombre de pila, aunque la ficha del cliente no lo tenga aparte")
 def _():
     with erp_de_prueba() as c:
