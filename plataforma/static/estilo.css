@@ -891,7 +891,7 @@ html.oscuro .est.no_entregado{background:rgba(201,74,47,.25);color:#ffb8a4}
 @media (min-width:721px){   /* en la computadora los botones van en columna, todos del mismo ancho: cada fila se ve igual (Cristina, 12 nov) */
  .me-acc{width:170px}.me-acc>form,.me-acc>details{display:block!important;margin:0 0 6px auto!important;width:150px}
  .me-acc>form>.btn,.me-acc>details>summary.btn{width:100%;justify-content:center;text-align:center;box-sizing:border-box}
- .me-acc>.me-prob{width:auto;margin-top:2px!important}}
+ .me-acc>.me-prob{margin-top:2px!important}.me-acc>.me-prob>summary{display:block;text-align:center}}
 @media (max-width:720px){   /* en el teléfono cada entrega es una tarjeta, sin tabla que se corte */
  .me-t,.me-t tbody,.me-t tr,.me-t td{display:block;width:auto!important;max-width:none!important}
  .me-t tr:first-child{display:none}
@@ -956,7 +956,6 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .me-acc{white-space:normal}.me-acc>form,.me-acc>details{margin:3px}
 @media (min-width:721px){
  .me-acc{width:auto!important;min-width:260px;white-space:nowrap!important}
- .me-acc .me-prob{display:block!important;margin-top:6px!important}
  .me-acc summary,.me-acc button{white-space:nowrap}
 }
 .op-card{max-width:100%;overflow-x:auto}.op-card:has(details[open]){overflow:visible}
@@ -1702,4 +1701,6 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .mp-cuerpo{transition:opacity .15s}
 @media(max-width:900px){.dlg.mp-dlg{max-width:100vw;max-height:100vh;height:100%;margin:0;border-radius:0;padding:14px 16px}.mp-cab>div:first-child{flex:1 1 0;min-width:0}.mp-filtros{order:2;width:100%}.mp-filtros select{flex:1;min-width:0}
  .mp-dlg .mp-mapa{height:340px}.mp-dlg .mp-lista{max-height:none}}
-
+.pk-recibe{display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--verde-osc);opacity:.45;padding:2px 1px 2px 6px;margin:-2px 0 -2px 3px;border-left:1px solid currentColor;cursor:pointer;line-height:1}
+.pk-recibe:hover{opacity:1}.pk-recibe.si{opacity:1;color:var(--naranja,#d9772b)}
+.op-cli-n{color:inherit;text-decoration:none}.op-cli-n:hover{text-decoration:underline}

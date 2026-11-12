@@ -71,13 +71,13 @@
      <div class="mini">Si pagó menos, pon lo que pagó de verdad.</div></div>
     {% else %}<div class="mini" style="margin-bottom:6px">Ya está pagado, no hay que cobrar nada.</div>{% endif %}
     <p style="margin:8px 0 0"><button class="btn chico">Marcar entregado</button></p></form></details>
-  {% if not ret %}<details class="cobro me-prob"><summary class="no-link" style="font-size:12px">Hubo un problema</summary>
-   <form method="post" action="/mis-entregas/{{ f.id }}/incidencia" class="cobro-f" style="min-width:250px">
+  <details class="cobro me-prob"><summary class="no-link" style="font-size:12px">Hubo un problema</summary>
+   <form method="post" action="{{ ret ~ '/incidencia' if ret else '/mis-entregas/' ~ f.id ~ '/incidencia' }}" class="cobro-f" style="min-width:250px;text-align:left">
     <label style="margin-top:0">¿Qué pasó?</label>
     <select name="tipo"><option>Cliente molesto</option><option>No estaba</option><option>Dirección mala</option>
      <option>Producto con defecto</option><option>No pudo pagar</option><option>Otro</option></select>
     <label>Cuéntalo</label><textarea name="descripcion" rows="3" placeholder="la clienta se molestó porque…"></textarea>
-    <p style="margin:8px 0 0"><button class="btn chico">Avisar a Cristina</button></p></form></details>{% endif %}
+    <p style="margin:8px 0 0"><button class="btn chico">Avisar a Cristina</button></p></form></details>
  {% endif %}</td>
 </tr>{% endfor %}
 {% if ruta_cobrar is defined and ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td><b>{{ ruta_cobrar|usd }}</b></td><td colspan="2"></td></tr>{% endif %}</table>

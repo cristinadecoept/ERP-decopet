@@ -3400,14 +3400,23 @@ def _():
                            VALUES (?,?,?,3,1,'activo',?,'delivery',?,5,1,1)""", (cid, o, pk, hoy_, yo)).lastrowid
         con.commit()
         sesion_de(c, "admin")
-        assert "Recibe otra persona" in c.get("/operaciones?cola=todo").text
+        h = c.get("/operaciones?cola=todo").text
+        assert 'class="pk-recibe"' in h and f'id="dlg-pk-{k}"' in h, "un iconito en la pastilla del pack abre '¿Quién recibe?'"
+        assert f"abrirPanel('/ordenes/{o}/panel')" in h and f'href="/clientes/{cid}" onclick="event.stopPropagation()"' in h, \
+            "tocar el retiro abre el pedido; tocar el nombre, la ficha del cliente (Cristina, 12 nov)"
         c.post(f"/packs/{k}/campo", data={"recibe": "1", "recibe_nombre": "Luis Tercero", "recibe_telefono": "04147778899", "volver": "/operaciones"})
         h = c.get("/operaciones?cola=todo").text
-        assert 'value="Luis Tercero"' in h and 'value="0414-7778899"' in h and f'id="dlg-pk-{k}"' in h, "se ve al tocar el retiro, no en la fila"
+        assert 'value="Luis Tercero"' in h and 'value="0414-7778899"' in h and 'class="pk-recibe si"' in h, "se ve al tocar el iconito, no en la fila"
         assert "Recibe <b>" not in h and "Cambiar quién recibe" not in h, "la fila no se recarga de texto (Cristina, 12 nov)"
         f = next(f for f in A.ruta_despachador(con, yo, hoy_) if f.get("rid") == k)
         assert f["recibe"] == "Luis Tercero" and f["recibe_tel"] == "0414-7778899"
         assert "Recibe: Luis Tercero" in A.texto_ruta([f], datetime.date.today())
+        sesion_de(c, "despachador")
+        c.post(f"/mis-entregas/retiro/pack/{k}/incidencia", data={"tipo": "No estaba", "descripcion": "no abrió nadie"})
+        assert tuple(con.execute("SELECT orden_id, tipo, responsable FROM incidencias WHERE descripcion='no abrió nadie'").fetchone()) == (o, "No estaba", yo), \
+            "'Hubo un problema' también en un retiro de pack: queda en su orden"
+        assert c.get("/mis-entregas").text.count(f"/mis-entregas/retiro/pack/{k}/incidencia") == 1
+        sesion_de(c, "admin")
         c.post(f"/packs/{k}/campo", data={"recibe": "1", "recibe_nombre": "", "volver": "/operaciones"})
         assert tuple(con.execute("SELECT retira_nombre, retira_telefono FROM packs WHERE id=?", (k,)).fetchone()) == (None, None)
         con.close()

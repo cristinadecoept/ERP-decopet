@@ -2749,7 +2749,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             te = k["tipo_programado"] or k["tipo_entrega"]
             if tipo and te != tipo: continue
             ag_k, dest_k = destino_pack(k) if te == "nacional" else (None, None)
-            lista.append(dict(id=None, es_pack=True, pack_id=k["id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
+            lista.append(dict(id=None, es_pack=True, pack_id=k["id"], orden_id=k["orden_id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
                               fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_pack(k, con), pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
                               receptor_nombre=k["retira_nombre"], receptor_telefono=k["retira_telefono"], agencia=ag_k, guia=None, distribuidor=None, despachador=k["despachador_programado"],
                               ciudad=dest_k or (d["ciudad"] if d else k["ciudad"]), falta_oficina=te == "nacional" and not k["direccion_programada"], oficina_compra=dest_k, zona=None,
@@ -7058,8 +7058,10 @@ def cobro_en_visita(con, oid, monto, forma, pago, uid):
 
 @app.post("/mis-entregas/retiro/{kind}/{rid}/{accion}")
 def mis_entregas_retiro(request: Request, kind: str, rid: int, accion: str, forma_recibida: str = Form(""), monto_recibido: str = Form(""),
-                        fue: str = Form(""), motivo: str = Form(""), forma_otro: str = Form(""), con=Depends(db)):
-    """El despachador con un retiro de pack o un repuesto prepagado: sale, se arrepiente, lo entrega o no pudo entregarlo."""
+                        fue: str = Form(""), motivo: str = Form(""), forma_otro: str = Form(""),
+                        tipo: str = Form("Otro"), descripcion: str = Form(""), con=Depends(db)):
+    """El despachador con un retiro de pack o un repuesto prepagado: sale, se arrepiente, lo entrega, no pudo entregarlo
+    o cuenta un problema (queda en la orden de donde salió el pack o el repuesto)."""
     u = quien_es(request); yo = (u or {}).get("despachador")
     es_admin = rol_de(request) == "admin" or (u and u["rol"] == "admin")
     tabla, col = ("packs", "despachador_programado") if kind == "pack" else ("repuestos_prepagados", "despachador")
@@ -7069,6 +7071,11 @@ def mis_entregas_retiro(request: Request, kind: str, rid: int, accion: str, form
     if accion == "salgo": con.execute(f"UPDATE {tabla} SET en_ruta=1 WHERE id=?", (rid,))
     elif accion == "aun-no": con.execute(f"UPDATE {tabla} SET en_ruta=0 WHERE id=?", (rid,))
     elif accion == "no-pude": retiro_no_recibio(con, "pack" if kind == "pack" else "prep", rid, uid, fue, motivo)
+    elif accion == "incidencia" and k["orden_id"]:
+        quien = yo or k[col]
+        con.execute("INSERT INTO incidencias (orden_id,clase,tipo,descripcion,responsable,autor_id) VALUES (?,?,?,?,?,?)",
+                    (k["orden_id"], "incidencia", tipo, descripcion.strip(), quien, uid))
+        registrar(con, k["orden_id"], uid, "incidencia", f"{quien} avisó · {tipo}: {descripcion.strip()[:120]}")
     elif accion == "entregado":
         debe = float((k["delivery_programado"] if kind == "pack" else k["delivery"]) or 0) if not k["delivery_pagado"] else 0
         forma_recibida = forma_del_despachador(forma_recibida, forma_otro)
