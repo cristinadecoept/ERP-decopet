@@ -886,8 +886,12 @@ html.oscuro .no-pago input.falta-monto{background:rgba(225,120,46,.14)}
 .est.no_entregado{background:#fbe9e5;color:#b3321b}.est.no_entregado:before{background:#c94a2f}
 html.oscuro .est.no_entregado{background:rgba(201,74,47,.25);color:#ffb8a4}
 /* Mis entregas: los botones en una fila, centrados bajo "Marcar como" */
-.me-t td{vertical-align:top}.me-acc{text-align:center;white-space:nowrap}
+.me-t td{vertical-align:top}.me-acc{text-align:right;white-space:nowrap}
 .me-acc>form,.me-acc>details{display:inline-block;margin:2px 3px;vertical-align:top}.me-acc details.cobro form{text-align:left}
+@media (min-width:721px){   /* en la computadora los botones van en columna, todos del mismo ancho: cada fila se ve igual (Cristina, 12 nov) */
+ .me-acc{width:170px}.me-acc>form,.me-acc>details{display:block!important;margin:0 0 6px auto!important;width:150px}
+ .me-acc>form>.btn,.me-acc>details>summary.btn{width:100%;justify-content:center;text-align:center;box-sizing:border-box}
+ .me-acc>.me-prob{width:auto;margin-top:2px!important}}
 @media (max-width:720px){   /* en el teléfono cada entrega es una tarjeta, sin tabla que se corte */
  .me-t,.me-t tbody,.me-t tr,.me-t td{display:block;width:auto!important;max-width:none!important}
  .me-t tr:first-child{display:none}
