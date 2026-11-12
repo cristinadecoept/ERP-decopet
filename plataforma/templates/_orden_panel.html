@@ -121,6 +121,8 @@
 {% endif %}
 {% for x in o.proximas %}<div class="bloque"><h3>Próxima entrega · repuesto {{ x.pos|replace('/', ' de ') }}</h3>
 <div class="dato"><b>Tipo</b><span>{{ ENTREGA.get(x.tipo,'—') }}</span><b>Cuándo</b><span>{{ 'hoy' if x.fecha==hoy else x.fecha|dia }}</span>{% if x.despachador %}<b>Despachador</b><span>{{ x.despachador }}</span>{% endif %}{% if x.recibe %}<b>Recibe</b><span>{{ x.recibe }}</span>{% endif %}</div></div>
+{% endfor %}{% for x in o.hechas %}<div class="bloque"><h3>{{ x.n }}ª entrega · repuesto {{ x.n }} de {{ x.de }}</h3>
+<div class="dato"><b>Tipo</b><span>{{ ENTREGA.get(x.tipo,'—') if x.tipo else '—' }}</span><b>Cuándo</b><span>entregada {{ x.fecha|dia }}</span>{% if x.despachador %}<b>Despachador</b><span>{{ x.despachador }}</span>{% endif %}</div></div>
 {% endfor %}<div class="bloque"><h3>{{ '1ª entrega del pack' if o.primera_de_pack else 'Entrega' }}</h3>
 <div class="dato"><b>Tipo</b><span>{{ ENTREGA.get(o.tipo_entrega,'—') }}{% if o.tipo_entrega=='nacional' and o.modalidad_envio %} · <b>{{ MODALIDAD[o.modalidad_envio] }}</b>{% endif %}{% if o.promo_envio %} · {{ o.promo_envio }}{% endif %}</span>
 <b>Cuándo</b><span>{% if o.tipo_entrega=='nacional' %}despachar antes de {{ o.fecha_prometida|dia }}{% else %}{{ 'hoy' if o.fecha_prometida==hoy else o.fecha_prometida|dia }}{% endif %}{% if o.franja %} · {{ o.franja }}{% endif %}{% if o.fecha_entrega %} · <b>entregada {{ o.fecha_entrega|fecha(true) }}</b>{% endif %}</span>
@@ -149,7 +151,7 @@
 <p><button class="btn chico">Guardar entrega</button></p></form>
 <script>function feTipo(){const f=document.getElementById('fe-form'),t=document.getElementById('fe-tipo').value;f.querySelectorAll('[data-para]').forEach(el=>{el.hidden=!el.dataset.para.split(' ').includes(t);});f.querySelectorAll('[data-lbl]').forEach(el=>{el.hidden=!el.dataset.lbl.split(' ').includes(t);});}feTipo();</script></details>{% endif %}</div>
 
-<div class="bloque"><h3>{{ 'Resumen de la 1ª entrega' if o.primera_de_pack and o.estado=='entregada' else 'Resumen para el despachador' }}</h3><div class="resumen" id="res-{{ o.id }}">{{ (o.resumen if 'ver_cobros' in puede else o.resumen_sin_plata) }}</div>
-<p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ o.id }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>
+{% if not (o.primera_de_pack and o.estado=='entregada') %}<div class="bloque"><h3>Resumen para el despachador</h3><div class="resumen" id="res-{{ o.id }}">{{ (o.resumen if 'ver_cobros' in puede else o.resumen_sin_plata) }}</div>
+<p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ o.id }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>{% endif %}
 
 {% if rol=='admin' %}<div class="bloque"><h3>Historial</h3><ul class="hist" style="padding:0;margin:0">{% for h in o.historial %}<li><b>{{ h.usuario or 'Sistema' }}</b> <span class="m">{{ h.creado_en|fecha(true) }}</span> — {{ h.accion }}: {{ h.detalle or '' }}{% if h.motivo %} <i>({{ h.motivo }})</i>{% endif %}</li>{% endfor %}</ul></div>{% endif %}

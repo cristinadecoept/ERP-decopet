@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block titulo %}Mis entregas · Decopet{% endblock %}{% block cuerpo %}
 {% if viendo %}<div class="chips" style="align-items:center"><span class="mini" style="margin-right:4px">Viendo como</span>{% for d in DESPACHADORES %}<a class="chip {{ 'act' if d==quien }}" href="/ver-como/despachador?quien={{ d|urlencode }}&volver=/mis-entregas">{{ d }}</a>{% endfor %}</div>{% endif %}
-<div class="fila-titulo"><div><h1>Hola, {{ quien }}</h1><div class="sub">{{ hoy_iso|dia }}</div></div></div>
+<div class="fila-titulo"><div><h1>Hola, {{ quien }}</h1></div></div>
 
 <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
  <div class="tile"><b style="color:{{ '#b45a1c' if r.debe else 'var(--verde-osc)' }}">{{ (r.debe or 0)|usd }}</b><span>Te deben</span>

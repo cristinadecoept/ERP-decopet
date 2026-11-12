@@ -1734,6 +1734,13 @@ def orden_panel(request: Request, oid: int, con=Depends(db)):
     o["proximas"] = [dict(fecha=k["fecha_programada"], despachador=k["despachador_programado"], tipo=k["tipo_programado"] or k["tipo_entrega"],
                           pos=repuesto_de_pack(k)[1], recibe=k["retira_nombre"])
                      for k in cargar_packs(con) if k["orden_id"] == oid and k["fecha_programada"] and (k["saldo"] or 0) > 0]
+    # las que ya se hicieron después de la 1ª (2ª, 3ª…), cada una con su día y quién la llevó
+    o["hechas"] = []
+    for k in con.execute("SELECT id, unidades, entregadas_inicio FROM packs WHERE orden_id=? ORDER BY id", (oid,)).fetchall():
+        for i, e in enumerate(con.execute("SELECT fecha, tipo_entrega, despachador FROM entregas_repuesto WHERE pack_id=? ORDER BY fecha, id", (k["id"],)).fetchall()):
+            n = (k["entregadas_inicio"] or 0) + i + 1
+            o["hechas"].append(dict(n=n, de=k["unidades"], fecha=e["fecha"], tipo=e["tipo_entrega"], despachador=e["despachador"]))
+    o["hechas"].sort(key=lambda h: (h["fecha"] or "", h["n"]), reverse=True)
     vendibles = con.execute("""SELECT id, nombre, precio, requiere_color FROM productos WHERE activo=1 AND tipo NOT IN ('opcion','insumo') AND COALESCE(sku,'') NOT LIKE 'PACK%'
                                ORDER BY categoria, nombre""").fetchall()
     return render(request, "_orden_panel.html", o=o, vendibles=vendibles)
@@ -2820,8 +2827,10 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
         grupos["Sin tipo de entrega"] = [o for o in lista if not o["tipo_entrega"]]
         grupos = {k: v for k, v in grupos.items() if v}
     por_desp = {}
+    # el resumen es del día que se está mirando: mañana muestra lo de mañana; hoy, Todo y las demás, lo de hoy (con lo atrasado)
+    dia_res = manana if cola == "manana" else (dia if cola == "dia" and dia else hoy)
     for o in activas:
-        if o["despachador"] and o["fecha_op"] <= hoy and o["estado"] in ("pendiente", "en_ruta") and not o.get("espera_aviso"):
+        if o["despachador"] and (o["fecha_op"] == dia_res if dia_res != hoy else o["fecha_op"] <= hoy) and o["estado"] in ("pendiente", "en_ruta") and not o.get("espera_aviso"):
             por_desp.setdefault(o["despachador"], []).append(resumen_despacho(cargar_orden(con, o["id"]), con_plata="ver_cobros" in PERMISOS[rol]))
     # envío nacional: pedidos que todavía nadie ha llevado a la oficina de la agencia
     por_llevar = con.execute("""SELECT o.id, o.numero, o.agencia, o.ciudad, o.estado, c.nombre cliente,
@@ -2848,7 +2857,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
         for k in con.execute("SELECT * FROM cargas_taller ORDER BY id"):
             for t, col in (("orden", "orden_id"), ("pack", "pack_id"), ("prepagado", "prepagado_id")):
                 if k[col]: montajes[(t, k[col])] = k
-    return render(request, "operaciones.html", montajes=montajes, seccion="operaciones", ventas_auto=ventas_automaticas(con), grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, total=len(lista), hoy_iso=hoy, manana_iso=manana,
+    return render(request, "operaciones.html", montajes=montajes, seccion="operaciones", ventas_auto=ventas_automaticas(con), grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, dia_res=dia_res, total=len(lista), hoy_iso=hoy, manana_iso=manana,
                   por_llevar=por_llevar, por_agencia=por_agencia, viajes=viajes, tarifas_ag=tarifas_ag, oficinas_ag=oficinas_ag,
                   tipo=tipo, agencia=agencia, conteos_tipo=conteos_tipo, conteos_ag=conteos_ag, dia=dia, desp=desp, despachadores=despachadores, conteos_desp=conteos_desp, vista=vista, fecha_larga=fecha_larga, q=q)
 

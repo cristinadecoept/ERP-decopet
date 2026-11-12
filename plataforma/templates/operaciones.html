@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block titulo %}Operaciones · Decopet{% endblock %}{% block cuerpo %}
 {% set qs = '&tipo=' ~ tipo ~ '&agencia=' ~ agencia ~ '&desp=' ~ desp ~ '&vista=' ~ vista ~ ('&q=' ~ q if q else '') %}
 <div class="fila-titulo"><div><h1>Operaciones</h1><div class="sub">{% if cola=='hoy' %}{{ fecha_larga() }} · {{ total }} entrega{{ 's' if total!=1 }}{% elif cola=='manana' %}mañana · {{ total }} entrega{{ 's' if total!=1 }}{% elif cola=='dia' %}{{ dia|dia }} · {{ total }} entrega{{ 's' if total!=1 }}{% else %}{{ colas[cola] }} · {{ total }}{% endif %}</div></div>
-<div class="cab-btns">{% if por_desp %}<button class="btn sec" onclick="document.getElementById('resumenes').scrollIntoView({behavior:'smooth'})">Resumen para despachadores</button>{% endif %}{% if 'crear' in puede %}<button class="btn" onclick="abrirPanel('/ordenes/nueva/panel')">+ Nueva orden</button>{% endif %}</div></div>
+<div class="cab-btns">{% if por_desp %}<button class="btn sec" onclick="const r=document.getElementById('resumenes');r.open=true;r.scrollIntoView({behavior:'smooth'})">Resumen para despachadores</button>{% endif %}{% if 'crear' in puede %}<button class="btn" onclick="abrirPanel('/ordenes/nueva/panel')">+ Nueva orden</button>{% endif %}</div></div>
 
 <div class="op-barra">
  <div class="segm"><a class="{{ 'act' if cola=='hoy' }}" href="/operaciones?cola=hoy{{ qs }}">Hoy <span>{{ conteos.hoy }}</span></a><a class="{{ 'act' if cola=='manana' }}" href="/operaciones?cola=manana{{ qs }}">Mañana <span>{{ conteos.manana }}</span></a><label class="{{ 'act' if cola=='dia' }}">Otro día <input type="date" value="{{ dia }}" onchange="location.href='/operaciones?dia='+this.value+'{{ qs }}'"></label><a class="{{ 'act' if cola=='todo' }}" href="/operaciones?cola=todo{{ qs }}">Todo <span>{{ conteos.todo }}</span></a></div>
@@ -95,9 +95,9 @@
 
 
 
-{% if por_desp %}<div id="resumenes" class="op-grupo" style="margin-top:22px"><div class="op-titulo">Resumen del día por despachador</div>
+{% if por_desp %}<details id="resumenes" class="res-desp"><summary>Resumen por despachador · {{ dia_res|dia }}</summary>
 <div class="op-res">{% for d, lista in por_desp.items() %}<div><b>{{ d }}</b> <span class="mini">{{ lista|length }} entrega{{ 's' if lista|length!=1 }}</span>
-<div class="resumen" id="res-{{ loop.index }}">{{ ('🚚 ' ~ d ~ ' — ' ~ hoy_iso|dia ~ '\n\n') ~ lista|join('\n\n') }}</div><p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ loop.index }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>{% endfor %}</div></div>{% endif %}
+<div class="resumen" id="res-{{ loop.index }}">{{ ('🚚 ' ~ d ~ ' — ' ~ dia_res|dia ~ '\n\n') ~ lista|join('\n\n') }}</div><p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ loop.index }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>{% endfor %}</div></details>{% endif %}
 {% endblock %}
 {% block extra %}
 <div class="velo" id="velo" onclick="cerrarPanel()"></div><aside class="panel" id="panel"><button class="cerrar" onclick="cerrarPanel()">×</button><div class="pc" id="pc"></div></aside>

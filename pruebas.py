@@ -3517,6 +3517,40 @@ def _():
     assert 'class="pack-tag lleva-pk"' in h and "📦</span>1/3" in h and "Lleva 1 de 3" not in h, h
 
 
+@prueba("Detalle de un pedido con pack: salen también las entregas ya hechas (2ª…) con su día y despachador; sin el resumen viejo de la 1ª")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Patricia Pack','Patricia','0414-5576141')").lastrowid
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_entrega) VALUES ('#9037',?,'entregada','pagada',72,0,'delivery','Cristina','2026-09-16')", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack 3 Repuestos Mediano',1,72,72)", (o, pk))
+        k = con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado) VALUES (?,?,?,3,1,'activo')", (cid, o, pk)).lastrowid
+        con.execute("INSERT INTO entregas_repuesto (pack_id,fecha,tipo_entrega,despachador) VALUES (?,'2026-10-16','delivery','Ingrid')", (k,))
+        con.commit(); con.close()
+        sesion_de(c, "admin"); h = c.get(f"/ordenes/{o}/panel").text
+        assert "2ª entrega · repuesto 2 de 3" in h and "<span>Ingrid</span>" in h and "1ª entrega del pack" in h
+        assert "Resumen para el despachador" not in h and "Resumen de la 1ª entrega" not in h, "ya se entregó: el resumen no hace falta"
+
+
+@prueba("Operaciones: el resumen por despachador es del día que se mira (Mañana muestra lo de mañana) y va plegado")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        yo = A.DESPACHADORES[0]; hoy_ = datetime.date.today(); man = (hoy_ + datetime.timedelta(days=1)).isoformat()
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        for num, nom, f in (("#7801", "Hoy Resumen", hoy_.isoformat()), ("#7802", "Manana Resumen", man)):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,'0414-1110000')", (nom, nom.split()[0])).lastrowid
+            o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida) VALUES (?,?,'pendiente','pagada',60,0,'delivery',?,?)", (num, cid, yo, f)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (o, pr))
+        con.commit(); con.close()
+        sesion_de(c, "admin")
+        res = lambda cola: c.get("/operaciones", params={"cola": cola}).text.split('id="resumenes"')[1].split("</details>")[0]
+        assert "#7802" in res("manana") and "#7801" not in res("manana") and A.fmt_dia(man) in res("manana")
+        assert "#7801" in res("hoy") and "#7802" not in res("hoy")
+        assert '<details id="resumenes" class="res-desp">' in c.get("/operaciones").text, "plegado: se abre al tocarlo"
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

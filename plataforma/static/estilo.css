@@ -1713,3 +1713,6 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .tarjeta>h3.tit-fuerte{font-size:17px;font-weight:700;color:var(--tinta);letter-spacing:0}
 .g2:has(>.tarjeta),.g3:has(>.tarjeta),.g2:has(>.tabla){row-gap:16px}
 .pack-tag.lleva-pk{display:flex;width:max-content;margin-top:4px}
+.res-desp{margin-top:22px}.res-desp>summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--tinta-2);padding:8px 14px;border-radius:999px;background:var(--sup);border:1px solid var(--linea)}
+.res-desp>summary::-webkit-details-marker{display:none}.res-desp>summary::after{content:"›";transform:rotate(90deg);font-size:15px}.res-desp[open]>summary::after{transform:rotate(-90deg)}
+.res-desp>.op-res{margin-top:12px;background:var(--sup);border-radius:18px;padding:16px;box-shadow:var(--sombra)}
