@@ -1914,6 +1914,9 @@ def _():
         sesion_de(c, "taller"); h = c.get("/taller").text
         assert h.count(f"Montar a {yo}") == 1 and "2× Porche Lote" in h, "todo lo suyo junto, con un solo Listo"
         assert "Otro Prueba" not in h
+        sesion_de(c, "admin"); h = c.get("/operaciones").text
+        assert h.count(">por montar</span>") >= 2 and "✓ montado" not in h, "lo pidió y el taller no lo ha montado: en Operaciones dice 'por montar'"
+        sesion_de(c, "taller")
         con.execute("UPDATE ordenes SET despachador='Otro Prueba' WHERE id=?", (o2,)); con.commit()   # le cambiaron el despachador: sale con el nuevo
         h = c.get("/taller").text; assert "Montar a Otro Prueba" in h
         con.execute("UPDATE ordenes SET despachador=? WHERE id=?", (yo, o2)); con.commit()
@@ -1929,6 +1932,7 @@ def _():
         sesion_de(c, "admin")
         assert f"Isaías montó lo de {yo}" in c.get("/inicio").text, "a Cristina le llega el aviso"
         assert c.get("/operaciones").text.count("✓ montado") >= 2, "cada pedido dice ✓ montado"
+        assert ">por montar</span>" not in c.get("/operaciones").text, "ya montado: no dice 'por montar'"
         n_antes = c.get("/operaciones").text.count("✓ montado")
         con.execute("UPDATE ordenes SET estado='en_ruta' WHERE id=?", (o1,)); con.commit()
         assert c.get("/operaciones").text.count("✓ montado") == n_antes - 1, "salió en ruta: ya no dice ✓ montado"
