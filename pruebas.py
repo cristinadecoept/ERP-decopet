@@ -3662,6 +3662,24 @@ def _():
     assert '("primer_repuesto", "repuesto", "prepagado", "basico") and x.get("cliente_id")' in src, "Seguimientos también arma el mensaje del Básico"
 
 
+@prueba("Despachadores: cada tarjeta dice cuánto lleva hoy y mañana (no las últimas zonas escritas a mano)")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        yo = A.DESPACHADORES[0]; hoy_ = datetime.date.today(); man = (hoy_ + datetime.timedelta(days=1)).isoformat()
+        con.execute("UPDATE ordenes SET despachador=NULL WHERE despachador=?", (yo,))
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        for num, f in (("#7901", hoy_.isoformat()), ("#7902", hoy_.isoformat()), ("#7903", man)):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Cliente Zona','Cliente','0414-1110000')").lastrowid
+            o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida,zona) VALUES (?,?,'pendiente','pagada',60,0,'delivery',?,?,'Contael Las Mercedes')", (num, cid, yo, f)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (o, pr))
+        con.commit(); con.close()
+        sesion_de(c, "admin"); h = c.get("/despachadores").text
+        tarjeta = h.split(f"<b style=\"font-size:17px\">{yo}</b>")[1].split("</a>")[0]
+        assert "Hoy · 2" in tarjeta and "Mañana · 1" in tarjeta, tarjeta
+        assert "Últimas zonas" not in h and "Contael Las Mercedes" not in h
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
@@ -3920,7 +3938,7 @@ def _():
         con.close()
 
 
-@prueba("Despachador: el adelanto salda lo que ya hizo (lo más viejo primero), queda en su historial y la lista dice al día y sus últimas 4 zonas")
+@prueba("Despachador: el adelanto salda lo que ya hizo (lo más viejo primero), queda en su historial y la lista dice al día (sin zonas: ahora Hoy y Mañana)")
 def _():
     with erp_de_prueba() as c:
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
@@ -3946,7 +3964,7 @@ def _():
         l = c.get("/despachadores").text
         card = l[l.index("Juan Adel"):][:3000]
         assert "al día" in card and "le debes por" not in card and "Sin zona" not in card
-        assert all(z in card for z in ("Z1", "Z2", "Z3", "Z4")) and "Z5" not in card, "solo las últimas 4 zonas"
+        assert not any(z in card for z in ("Z1", "Z2", "Z3", "Z4", "Z5")), "las zonas ya no salen: ahora dice Hoy y Mañana (Cristina, 12 nov)"
         con.close()
 
 

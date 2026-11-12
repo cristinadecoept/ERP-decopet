@@ -7238,6 +7238,10 @@ def despachadores(request: Request, q: str = "", con=Depends(db)):
     hoy = datetime.date.today()
     for (n,) in con.execute("SELECT nombre FROM despachadores").fetchall(): saldar_con_adelanto(con, n)
     rows = [dict(d) | resumen_despachador(con, d["nombre"], hoy) for d in con.execute("SELECT * FROM despachadores WHERE nombre LIKE ? ORDER BY activo DESC, nombre", (f"%{q}%",))]
+    manana = (hoy + datetime.timedelta(days=1)).isoformat()
+    for r in rows:   # lo que tiene asignado hoy (con lo atrasado) y mañana, en vez de las últimas zonas (Cristina, 12 nov)
+        r["n_hoy"] = len(ruta_despachador(con, r["nombre"], hoy.isoformat()))
+        r["n_manana"] = len(ruta_despachador(con, r["nombre"], manana)) - r["n_hoy"]
     return render(request, "despachadores.html", seccion="despachadores", despachadores=rows, q=q)
 
 
