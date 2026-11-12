@@ -34,7 +34,7 @@
 </tr>{% endfor %}</table>
 {% else %}<div class="vacio">No hay nada pedido esperando llegar.</div>{% endif %}</div>
 
-<div class="tarjeta" style="order:1"><h3>Porches armados</h3>
+{% if false %}{# Porches armados: escondido por ahora (Cristina, 12 nov). Para volver a mostrarlo, quitar este if. #}<div class="tarjeta" style="order:1"><h3>Porches armados</h3>
 <table class="lineas tal-arm"><tr><th>Modelo</th><th class="num" style="padding-right:18px">Listos</th><th style="padding-right:22px">Material que hay</th><th class="num" style="padding-right:26px">Puede armar</th><th style="width:230px">¿Cuántos armaron?</th></tr>
 {% for a in armables %}<tr>
  <td><b>{{ a.nombre }}</b>{% if a.color %} <span class="pl-{{ a.color }}">plato {{ a.color }}</span>{% endif %}</td>
@@ -48,7 +48,7 @@
 </tr>{% endfor %}</table>
 {% if armados_hoy %}<table class="lineas" style="margin-top:12px"><tr><th colspan="3">Anotado hoy</th></tr>{% for a in armados_hoy %}<tr><td class="mini" style="width:60px">{{ a.hora }}</td><td>{{ a.cantidad|int }}× {{ a.nombre }}{% if a.color %} <span class="pl-{{ a.color }}">plato {{ a.color }}</span>{% endif %}<span class="mini"> · {{ a.quien or '' }}</span></td>
 <td style="text-align:right"><form method="post" action="/taller/armar/deshacer" onsubmit="return confirm('¿Deshacer {{ a.cantidad|int }}× {{ a.nombre }}? El material vuelve al inventario.')"><input type="hidden" name="lote" value="{{ a.lote }}"><button class="btn sec chico">Deshacer</button></form></td></tr>{% endfor %}</table>{% endif %}
-<div class="mini" style="margin-top:8px">Al anotarlos, el material sale del inventario y entran listos para vender.</div></div>
+<div class="mini" style="margin-top:8px">Al anotarlos, el material sale del inventario y entran listos para vender.</div></div>{% endif %}
 
 <div class="tarjeta" style="order:2"><h3>Avisarle a Cristina</h3>
 <form method="post" action="/taller/nota" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
