@@ -1898,7 +1898,11 @@ def _():
         sesion_de(c, "admin"); h = c.get("/operaciones").text
         assert "Montar" not in h.replace("montar", "") and "✓ montado" not in h, "Cristina no tiene botón: en cada pedido no sale nada hasta que se monta"
         sesion_de(c, "despachador"); h = c.get("/mis-entregas").text
-        assert 'action="/mis-entregas/montar"' in h and "2× Porche Lote" in h
+        assert 'action="/mis-entregas/montar"' in h and f'value="orden:{o1}" checked' in h and f'value="orden:{o2}" checked' in h, "cada pedido con su casilla, marcada"
+        c.post("/mis-entregas/montar", data={"item": [f"orden:{o1}", f"orden:{otro}"]})   # escoge solo uno para esta tanda (y uno ajeno no cuela)
+        assert [r[0] for r in con.execute("SELECT orden_id FROM cargas_taller")] == [o1], "solo lo que escogió, y solo lo suyo"
+        h = c.get("/mis-entregas").text
+        assert f'value="orden:{o2}"' in h and f'value="orden:{o1}"' not in h, "lo que no escogió sigue para la próxima tanda"
         c.post("/mis-entregas/montar"); c.post("/mis-entregas/montar")
         mios = {r[0] for r in con.execute("SELECT orden_id FROM cargas_taller WHERE orden_id IS NOT NULL")}
         assert {o1, o2} <= mios and otro not in mios and manana not in mios, "solo lo suyo y de hoy"
@@ -1920,6 +1924,10 @@ def _():
         sesion_de(c, "admin")
         assert f"Isaías montó lo de {yo}" in c.get("/inicio").text, "a Cristina le llega el aviso"
         assert c.get("/operaciones").text.count("✓ montado") >= 2, "cada pedido dice ✓ montado"
+        n_antes = c.get("/operaciones").text.count("✓ montado")
+        con.execute("UPDATE ordenes SET estado='en_ruta' WHERE id=?", (o1,)); con.commit()
+        assert c.get("/operaciones").text.count("✓ montado") == n_antes - 1, "salió en ruta: ya no dice ✓ montado"
+        con.execute("UPDATE ordenes SET estado='pendiente' WHERE id=?", (o1,)); con.commit()
         orden("#L4")   # entra otro: el despachador puede volver a pedir, solo ese
         sesion_de(c, "despachador"); assert "Montar · " not in c.get("/mis-entregas").text and 'action="/mis-entregas/montar"' in c.get("/mis-entregas").text
         sesion_de(c, "logistica"); c.post("/mis-entregas/montar")

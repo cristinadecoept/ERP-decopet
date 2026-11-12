@@ -20,9 +20,10 @@
  <div class="mini" style="margin-top:6px">Cristina la revisa y, cuando la aprueba, se suma a lo que te deben.</div></details>{% endif %}{% if r.n_dil_aprobar %}<p class="mini" style="margin:-6px 0 14px">{{ r.n_dil_aprobar }} diligencia{{ 's' if r.n_dil_aprobar != 1 }} esperando que Cristina la{{ 's' if r.n_dil_aprobar != 1 }} apruebe.</p>{% endif %}
 
 <h2 class="seccion-t">Lo que te toca hoy</h2>
-{% if montar %}<div class="tarjeta" style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px" class="mini">{{ montar.texto|platos }}</div>
- {% if montar.n %}<form method="post" action="/mis-entregas/montar"><button class="btn">Montar{% if montar.n > 1 %} · {{ montar.n }}{% endif %}</button></form>
- {% elif montar.listo %}<span class="pago pagada">✓ Montado</span>{% else %}<span class="pago por_confirmar">El taller lo está montando</span>{% endif %}</div>{% endif %}
+{% if montar %}<div class="tarjeta" style="margin-bottom:12px">{% if montar.n %}<form method="post" action="/mis-entregas/montar">
+ {% for f in montar.falta %}<label class="chk" style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><input type="checkbox" style="margin:0" name="item" value="{{ f.item }}" checked onchange="const fo=this.form,n=fo.querySelectorAll('[name=item]:checked').length,b=fo.querySelector('button');b.disabled=!n;b.textContent='Montar'+(n>1?' · '+n:'')"><span><b>{{ f.quien }}</b> <span class="mini">{{ f.texto|platos }}</span></span></label>{% endfor %}
+ <button class="btn">Montar{% if montar.n > 1 %} · {{ montar.n }}{% endif %}</button></form>
+ {% elif montar.listo %}<span class="mini">{{ montar.texto|platos }}</span> <span class="pago pagada">✓ Montado</span>{% else %}<span class="mini">{{ montar.texto|platos }}</span> <span class="pago por_confirmar">El taller lo está montando</span>{% endif %}</div>{% endif %}
 {% macro tarjeta_viaje(v, es_manana=False) %}<div class="tarjeta viaje-ag" style="margin-bottom:12px">
  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b>Llevar a {{ v.agencia or 'la agencia' }}{% if v.oficina %} {{ v.oficina }}{% endif %}</b> <span class="mini">· {{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }} · {{ v.monto|usd }}</span></div>
   <button type="button" class="btn sec chico" onclick="copiarAg(this)">Copiar datos para la agencia</button>

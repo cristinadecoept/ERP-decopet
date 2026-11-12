@@ -7762,17 +7762,27 @@ def montar_de(con, despachador):
     for t, col in (("orden", "orden_id"), ("pack", "pack_id"), ("prepagado", "prepagado_id")):
         for k in con.execute(f"SELECT {col} x, listo_en FROM cargas_taller WHERE {col} IS NOT NULL"): ya[f"{t}:{k['x']}"] = k["listo_en"]
     falta = [x for x in g["items"] if x not in ya]
-    return {"falta": falta, "n": len(falta), "listo": not falta and all(ya.get(x) for x in g["items"]), "texto": texto_carga(g)}
+    def etiqueta(x):   # cada pedido con lo que lleva y de quién es, para que escoja qué monta en esta tanda
+        t, _, id_ = x.partition(":")
+        uno = next(iter(salidas_de_hoy(con, **{{"orden": "orden_id", "pack": "pack_id", "prepagado": "prepagado_id"}[t]: int(id_)})), None)
+        cli = con.execute({"orden": "SELECT c.nombre_pila, c.nombre FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.id=?",
+                           "pack": "SELECT c.nombre_pila, c.nombre FROM packs k JOIN clientes c ON c.id=k.cliente_id WHERE k.id=?",
+                           "prepagado": "SELECT c.nombre_pila, c.nombre FROM repuestos_prepagados r JOIN clientes c ON c.id=r.cliente_id WHERE r.id=?"}[t], (int(id_),)).fetchone()
+        quien = ((cli["nombre_pila"] or cli["nombre"] or "").split() or [""])[0] if cli else ""
+        return {"item": x, "texto": texto_carga(uno) if uno else "", "quien": quien}
+    return {"falta": [etiqueta(x) for x in falta], "n": len(falta), "listo": not falta and all(ya.get(x) for x in g["items"]), "texto": texto_carga(g)}
 
 
 @app.post("/mis-entregas/montar")
-def mis_entregas_montar(request: Request, con=Depends(db)):
-    """El despachador le dice al taller que le monte: le aparece 'Montar a Juan' con todo lo suyo de hoy que faltaba."""
+async def mis_entregas_montar(request: Request, con=Depends(db)):
+    """El despachador le dice al taller que le monte: escoge qué pedidos van en esta tanda (todos, si no escoge)."""
     u = quien_es(request); nombre = (u or {}).get("despachador")
+    escogidos = set((await request.form()).getlist("item"))
     if not u or u["rol"] == "admin": nombre = (request.cookies.get("ver_desp") or "").strip()   # Cristina viendo como él
     if rol_de(request) not in ("despachador", "admin") or not nombre: return RedirectResponse("/mis-entregas", status_code=303)
     m = montar_de(con, nombre)
-    for x in (m or {}).get("falta", []):
+    for x in [f["item"] for f in (m or {}).get("falta", [])]:
+        if escogidos and x not in escogidos: continue   # solo lo suyo y solo lo que escogió
         t, _, id_ = x.partition(":"); montar_uno(uid_de(request), con, t, int(id_))
     con.commit()
     return RedirectResponse("/mis-entregas", status_code=303)
