@@ -3601,6 +3601,10 @@ def _():
     assert A.partir_nombre("Ana María de la Rosa Díaz", None)[0] == "Ana María"
     assert A.partir_nombre("Andrea", None) == ("Andrea", None)
     assert A.partir_nombre("Andrea González", "Pérez") == ("Andrea González", "Pérez"), "si ya trae apellido no se toca"
+    assert A.partir_nombre("Cristina Alejandra Raffalli Gomez", None) == ("Cristina Alejandra", "Raffalli Gomez")
+    assert A.partir_nombre("andrea valentina del valle lopez marrero", None) == ("Andrea Valentina del Valle", "Lopez Marrero")
+    assert A.partir_nombre("Ana María de la Rosa Díaz", None) == ("Ana María", "de la Rosa Díaz")
+    assert A.partir_nombre("María de los Ángeles", None) == ("María de los Ángeles", None), "dudoso: a mano"
     with erp_de_prueba() as c:
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
         viejo = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono) VALUES ('Luisa Martínez','Luisa Martínez','04140000001')").lastrowid
@@ -3613,6 +3617,13 @@ def _():
         assert fila(compuesto)[:2] == ("María José", "Pérez"), fila(compuesto)
         assert fila(uno)[:2] == ("Luisa", None)
         sesion_de(c, "admin")
+        cuatro = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono) VALUES ('Cristina Alejandra Raffalli Gomez','Cristina Alejandra Raffalli Gomez','04140000004')").lastrowid
+        angeles = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono) VALUES ('María de los Ángeles','María de los Ángeles','04140000005')").lastrowid
+        con.commit()
+        con.executescript(open(os.path.join(A.BASE, "migraciones", "026_separar_nombre_cuatro_palabras.sql"), encoding="utf-8").read())
+        assert fila(cuatro) == ("Cristina Alejandra", "Raffalli Gomez", "Cristina Alejandra Raffalli Gomez"), fila(cuatro)
+        assert fila(angeles)[:2] == ("María de los Ángeles", None), fila(angeles)
+        assert 'name="apellido" required' not in c.get("/clientes").text + open(os.path.join(A.BASE, "templates", "_cliente_nuevo.html"), encoding="utf-8").read(), "el apellido no es obligatorio: si se deja vacío, se separa solo"
         c.post("/clientes/nuevo", data={"nombre_pila": "andrea gonzález", "apellido": "", "telefono": "04121302994"})
         assert tuple(con.execute("SELECT nombre_pila, apellido, nombre FROM clientes ORDER BY id DESC LIMIT 1").fetchone()) == ("Andrea", "González", "Andrea González")
         l = c.get("/clientes?ver=pendientes&falta=apellido").text

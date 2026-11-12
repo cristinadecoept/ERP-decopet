@@ -885,10 +885,13 @@ _NOMBRE_COMPUESTO = {"maría", "maria", "josé", "jose", "juan", "ana", "luis", 
 def partir_nombre(nombre_pila, apellido):
     """Si se escribió todo en Nombre y Apellido quedó vacío (Cristina, 12 nov): el nombre va a Nombre y el apellido a Apellido.
     'Andrea González' → ('Andrea', 'González'). Los nombres compuestos se respetan: 'María José Pérez' → ('María José', 'Pérez');
-    con cuatro palabras van dos y dos. 'de', 'del', 'la'… se quedan con el apellido."""
+    con cuatro o más, las dos últimas son los apellidos. 'de', 'del', 'la'… delante de un apellido van con el apellido."""
     np_ = (nombre_pila or "").split()
     if (apellido or "").strip() or len(np_) < 2: return nombre_pila, apellido
-    n = 2 if len(np_) >= 4 or (len(np_) == 3 and np_[0].lower() in _NOMBRE_COMPUESTO) else 1
+    if len(np_) >= 4 and np_[1].lower() in {"de", "del", "la", "las", "los", "y"}: return nombre_pila, apellido   # 'María de los Ángeles…': mejor a mano
+    # con cuatro o más, los dos apellidos son las dos últimas palabras (y el 'de la' que los acompañe):
+    # 'Andrea Valentina del Valle López Marrero' → ('Andrea Valentina del Valle', 'López Marrero')
+    n = len(np_) - 2 if len(np_) >= 4 else (2 if np_[0].lower() in _NOMBRE_COMPUESTO and len(np_) == 3 else 1)
     while n > 1 and np_[n - 1].lower() in {"de", "del", "la", "las", "los", "y"}: n -= 1
     return capitalizar(" ".join(np_[:n])), capitalizar(" ".join(np_[n:]), inicio=False)
 

@@ -1,7 +1,7 @@
 {% from "_lugar.html" import lugar %}<div class="pt"><h2>Nuevo cliente</h2></div>
 <form method="post" action="/clientes/nuevo">
 <div class="bloque"><h3>Datos</h3>
-<div class="g2"><div><label>Nombre</label><input name="nombre_pila" required autofocus placeholder="María"></div><div><label>Apellido</label><input name="apellido" required placeholder="Pérez"></div></div>
+<div class="g2"><div><label>Nombre</label><input name="nombre_pila" required autofocus placeholder="María"></div><div><label>Apellido</label><input name="apellido" placeholder="Pérez"></div></div>
 <div class="g2"><div><label>Teléfono <span class="obl">*</span></label><input name="telefono" placeholder="0414-1234567" inputmode="tel" required></div><div><label>Cédula / RIF</label><input name="cedula" placeholder="V-12345678"></div></div>
 <label>Correo <span class="obl">*</span></label><input name="correo" inputmode="email" placeholder="nombre@gmail.com" required>
 </div>
