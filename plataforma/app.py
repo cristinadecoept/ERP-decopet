@@ -6548,6 +6548,9 @@ def mensajes_repuesto(con, s):
         return [t.format(n=f" {quien}" if quien else "", sigue=sigue, cuando=cuando, tam=tam, cual=cual, para=f" para {de}" if de else "")
                 for t in textos[vuelta:] + textos[:vuelta]]
     hola = f"¡Hola {quien}! 👋" if quien else "¡Hola! 👋"
+    if (s.get("estado") or "").startswith(("Lo quiere", "Lo quería")):   # ya dijo que lo quería para ese día: no se le ofrece como la primera vez (Cristina, 12 nov)
+        pagado = " que tienes pagado," if s.get("tipo") == "prepagado" or s.get("pack") else ""
+        return [f"{hola} Te escribo por el repuesto{pagado} que nos pediste para esta semana 🌱 ¿Qué día te lo llevamos? 💚"]
     if s.get("tipo") == "prepagado":
         return [f"{hola} Ya te toca el repuesto{tam} que tienes pagado 🌱 ¿Qué día te lo llevamos? 💚"]
     porche = f"el porche de {de}" if de else "el porche"

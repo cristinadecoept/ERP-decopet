@@ -3634,6 +3634,20 @@ def _():
         assert "no_se_adapto" in A.RESULTADOS_POR_TIPO.get(tipo, A.RESULTADOS_POR_TIPO["*"]), tipo
 
 
+@prueba("Seguimientos: cuando sale 'Lo quiere hoy', el WhatsApp le recuerda que lo pidió (no el mensaje de ofrecer de la primera vez)")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Cristina Yajuri','Cristina','0414-2168776')").lastrowid
+        base = dict(cliente_id=cid, tipo="repuesto", tamano="Mediano", dias=35, intento=1)
+        m = A.mensajes_repuesto(con, dict(base, estado="Lo quiere hoy"))
+        assert m == ["¡Hola Cristina! 👋 Te escribo por el repuesto que nos pediste para esta semana 🌱 ¿Qué día te lo llevamos? 💚"], m
+        m = A.mensajes_repuesto(con, dict(base, estado="Lo quiere hoy", pack=True))
+        assert "repuesto que tienes pagado, que nos pediste" in m[0], m
+        m = A.mensajes_repuesto(con, dict(base, estado="Pendiente"))
+        assert "nos pediste" not in m[0] and "¿Te preparamos" in m[0], "si no lo pidió, sigue el de ofrecer"
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
