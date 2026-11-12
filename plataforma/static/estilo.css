@@ -1708,6 +1708,6 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .rc-sola:has(.si){background:var(--naranja-tinte)}
 .dia-t{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;font-size:17px;font-weight:700;margin:26px 0 12px;color:var(--tinta)}
 .dia-p{font-size:14px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:5px 14px;color:#fff;background:var(--verde)}
-.dia-t.manana .dia-p{background:var(--naranja-tinte);color:#b45a1c;box-shadow:inset 0 0 0 1px #f3d5bd}.dia-t .mini{font-weight:500}
+.dia-t.manana .dia-p{background:var(--naranja);color:#fff}.dia-t .mini{font-weight:500}
 .manana-caja{margin-top:34px}.manana-caja .tabla{opacity:.8}
 .tarjeta>h3.tit-fuerte{font-size:17px;font-weight:700;color:var(--tinta);letter-spacing:0}
