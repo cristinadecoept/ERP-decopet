@@ -5857,7 +5857,7 @@ def cumples_proximos(con, ventana=30):
 @app.get("/seguimientos", response_class=HTMLResponse)
 def seguimientos(request: Request, ver: str = "pendientes", tipo: str = "", q: str = "", con=Depends(db)):
     sincronizar_packs(con)
-    todos = [dict(x, mensajes=mensajes_repuesto(con, x)) if x.get("tipo") in ("primer_repuesto", "repuesto", "prepagado") and x.get("cliente_id") else x
+    todos = [dict(x, mensajes=mensajes_repuesto(con, x)) if x.get("tipo") in ("primer_repuesto", "repuesto", "prepagado", "basico") and x.get("cliente_id") else x
              for x in seguimientos_pendientes(con)]
     n_atr = sum(1 for s in todos if s.get("tarde"))
     pend = [s for s in todos if s.get("tarde") or ver != "atrasados"]   # Atrasados: solo los que siguen en Hoy porque no se contactaron
@@ -6548,6 +6548,12 @@ def mensajes_repuesto(con, s):
         return [t.format(n=f" {quien}" if quien else "", sigue=sigue, cuando=cuando, tam=tam, cual=cual, para=f" para {de}" if de else "")
                 for t in textos[vuelta:] + textos[:vuelta]]
     hola = f"¡Hola {quien}! 👋" if quien else "¡Hola! 👋"
+    if s.get("tipo") == "basico":   # el Básico no lleva repuesto: se le invita a pasarse a la Versión PRO (Cristina, 12 nov)
+        va = "van" if len(perros) > 1 else "va"
+        if (s.get("estado") or "").startswith(("Lo quiere", "Lo quería")):
+            return [f"{hola} Te escribo por la Versión PRO que hablamos 🌱 ¿Te paso los detalles? 💚"]
+        return [f"{hola} ¿Cómo {va} {de or 'todo'} con el porche Básico? 🐾 Te cuento que la Versión PRO trae repuesto: cuando toca, se cambia y listo 🌱 ¿Te paso los detalles? 💚",
+                f"{hola} ¿Has pensado en pasarte a la Versión PRO? 🌱 Es el porche con repuesto, que se cambia cada cierto tiempo. Si te interesa, te cuento 💚"]
     if (s.get("estado") or "").startswith(("Lo quiere", "Lo quería")):   # ya dijo que lo quería para ese día: no se le ofrece como la primera vez (Cristina, 12 nov)
         pagado = " que tienes pagado," if s.get("tipo") == "prepagado" or s.get("pack") else ""
         return [f"{hola} Te escribo por el repuesto{pagado} que nos pediste para esta semana 🌱 ¿Qué día te lo llevamos? 💚"]

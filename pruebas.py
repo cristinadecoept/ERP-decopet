@@ -3648,6 +3648,20 @@ def _():
         assert "nos pediste" not in m[0] and "¿Te preparamos" in m[0], "si no lo pidió, sigue el de ofrecer"
 
 
+@prueba("Seguimiento del Básico: el WhatsApp invita a pasarse a la Versión PRO (el Básico no lleva repuesto), en Inicio y en Seguimientos")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Julio Cesar Morales Novo','Julio Cesar','0424-1699883')").lastrowid
+        con.execute("INSERT INTO mascotas (cliente_id,nombre) VALUES (?,'Eugenio')", (cid,)); con.commit()
+        m = A.mensajes_repuesto(con, dict(cliente_id=cid, tipo="basico", dias=54, intento=3, estado="3º intento"))
+        assert all("Versión PRO" in x for x in m) and not any("¿Te preparamos" in x for x in m), m
+        assert m[0].startswith("¡Hola Julio Cesar! 👋 ¿Cómo va Eugenio con el porche Básico?"), m[0]
+        con.close()
+    src = open(A.__file__, encoding="utf-8").read()
+    assert '("primer_repuesto", "repuesto", "prepagado", "basico") and x.get("cliente_id")' in src, "Seguimientos también arma el mensaje del Básico"
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
