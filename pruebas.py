@@ -3402,7 +3402,9 @@ def _():
         sesion_de(c, "admin")
         assert "Recibe otra persona" in c.get("/operaciones?cola=todo").text
         c.post(f"/packs/{k}/campo", data={"recibe": "1", "recibe_nombre": "Luis Tercero", "recibe_telefono": "04147778899", "volver": "/operaciones"})
-        assert "Recibe <b>Luis Tercero</b> · 0414-7778899" in c.get("/operaciones?cola=todo").text
+        h = c.get("/operaciones?cola=todo").text
+        assert 'value="Luis Tercero"' in h and 'value="0414-7778899"' in h and f'id="dlg-pk-{k}"' in h, "se ve al tocar el retiro, no en la fila"
+        assert "Recibe <b>" not in h and "Cambiar quién recibe" not in h, "la fila no se recarga de texto (Cristina, 12 nov)"
         f = next(f for f in A.ruta_despachador(con, yo, hoy_) if f.get("rid") == k)
         assert f["recibe"] == "Luis Tercero" and f["recibe_tel"] == "0414-7778899"
         assert "Recibe: Luis Tercero" in A.texto_ruta([f], datetime.date.today())
