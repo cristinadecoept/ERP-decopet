@@ -3329,6 +3329,22 @@ def _():
         con.close()
 
 
+@prueba("Operaciones: el cobro del delivery anotado como línea del pedido no sale en Productos; solo lo que se lleva")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Cristy Linea','Cristy')").lastrowid
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 LIMIT 1").fetchone()[0]
+        o = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida)
+                           VALUES ('#9301',?,'pendiente','pagada',113,0,'delivery',date('now','localtime'))""", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Porche Visible',1,108,108)", (o, p))
+        con.execute("INSERT INTO orden_lineas (orden_id,nombre,cantidad,precio,total,extra_en) VALUES (?,'Delivery',1,5,5,date('now'))", (o,))
+        con.commit(); con.close()
+        sesion_de(c, "admin"); h = c.get("/operaciones?cola=todo").text
+        fila = h[h.index("Cristy Linea"):][:3000]
+        assert "Porche Visible" in fila and "1× Delivery" not in fila
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
