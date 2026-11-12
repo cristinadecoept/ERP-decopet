@@ -583,6 +583,15 @@ def _platos(t):
     t = t if isinstance(t, Markup) else escape(t or "")
     return Markup(re.sub(r"(?<![\w-])(?:plato )?(azul|rosado)\b", r'<span class="pl-\1">plato \1</span>', str(t)))
 tpl.env.filters["platos"] = _platos
+# "Qué lleva" del despachador: un producto por línea (que el segundo no pase desapercibido) y el número del pack con su cajita 📦 3/3
+_PACK_N = r" · (\d+(?:[–-]\d+)?/\d+)(?: del pack)?(?= ·|$)"
+def _lleva_items(t):
+    out = []
+    for p in re.split(r" · (?=\d+× )", str(t or "")):
+        p = re.sub(_PACK_N, r'<span class="pack-tag lleva-pk"><span aria-hidden="true">📦</span>\1</span>', str(escape(p)))
+        out.append(f'<div class="ll-it">{_platos(Markup(p))}</div>')
+    return Markup("".join(out))
+tpl.env.filters["lleva_items"] = _lleva_items
 # "Pack 3 Repuestos Mediano⟪Lleva 1 de 3⟫" → el producto y, debajo, resaltado cuánto se lleva hoy
 # "Lleva 1 de 3" sale igual que en los retiros del pack: 📦 1/3 (Cristina, 12 nov)
 tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<span class="lleva-tag">\1</span>', re.sub(
@@ -7388,7 +7397,7 @@ def texto_ruta(filas, hoy, viajes=()):
             if tel_wa(f.get("recibe_tel")): out.append(f"   📞 {tel_wa(f['recibe_tel'])}")
         if f["direccion"]: out.append(f"   {f['direccion']}")
         if f["maps"]: out.append(f"   {f['maps']}")
-        out.append(f"   {f['que_lleva']}")
+        out.append("   " + re.sub(_PACK_N, r" · 📦 \1", f["que_lleva"]))
         for t in f.get("indicaciones") or []: out.append(f"   📌 {t}")
         if f["cobrar"]: out.append(f"   COBRAR ${f['cobrar']:,.2f}" + (f" · por {f['cobrar_forma']}" if f.get("cobrar_forma") else ""))
         for t in f.get("tambien_cobrar") or []: out.append(f"   COBRAR ${t['saldo']:,.2f} · {t['que']}")

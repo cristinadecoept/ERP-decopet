@@ -946,7 +946,7 @@ html.oscuro .lleva-tag{color:#f0c877;background:rgba(224,168,46,.14);border-colo
 .recibe-t{margin-top:6px;font-size:12.5px;background:var(--verde-tinte,#e9f0ec);border-radius:8px;padding:4px 8px;width:max-content;max-width:100%}
 /* Mis entregas en computadora: cada columna con su ancho, sin palabras sueltas una debajo de otra */
 @media (min-width:721px){
- .me-t .me-quien{width:220px;min-width:220px}.me-t .me-dir{min-width:180px;max-width:240px}.me-t .me-lleva{min-width:170px}
+ .me-t .me-quien{width:220px;min-width:220px}.me-t .me-dir{min-width:180px;max-width:240px}.me-t .me-lleva{min-width:170px}.ll-it+.ll-it{margin-top:6px}
  .me-t .recibe-t{width:auto;white-space:normal}
  .me-acc{width:1%}
 }

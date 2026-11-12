@@ -3560,6 +3560,18 @@ def _():
         assert '<details id="resumenes" class="res-desp">' in c.get("/operaciones").text, "plegado: se abre al tocarlo"
 
 
+@prueba("Mis entregas › Qué lleva: un producto por línea y el pack con su cajita (📦 3/3, no '3/3 del pack')")
+def _():
+    f = A.tpl.env.filters["lleva_items"]
+    h = str(f("1× El Porche Versión PRO Mediano · 1× El Porche Versión PRO Grande"))
+    assert h.count('class="ll-it"') == 2 and "Grande</div>" in h, h
+    h = str(f("Repuesto Mediano · 3/3 del pack"))
+    assert "📦</span>3/3" in h and "del pack" not in h, h
+    h = str(f("1× Repuesto Grande · 1/3 · 1× Comedero plato azul"))
+    assert "📦</span>1/3" in h and h.count('class="ll-it"') == 2 and 'pl-azul' in h, h
+    assert "📦 3/3" in A.texto_ruta([{"quien": "Patricia", "telefono": None, "direccion": None, "maps": None, "que_lleva": "Repuesto Mediano · 3/3 del pack", "cobrar": 0}], datetime.date(2026, 11, 12))
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
