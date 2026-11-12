@@ -7242,7 +7242,16 @@ def copia_agencia(o):
     return t + ("\n💵 Cobro a destino" if o.get("modalidad_envio") == "cobro_destino" else "")
 
 
+def resumen_agencia(o):
+    """Una línea por paquete para la vista corta: quién, a qué ciudad, qué lleva y si le falta algún dato."""
+    falta = [n for n, v in (("teléfono", o.get("recibe_tel") or o.get("telefono")), ("correo", o.get("correo")), ("C.I.", o.get("cedula"))) if not v]
+    ciu = (o.get("ciudad") or "").strip() or o.get("cliente_ciudad") or ""
+    return {"quien": o.get("recibe") or o.get("nombre") or "", "ciudad": "" if ciu == "Pendiente" else ciu,
+            "lleva": re.sub(r"<[^>]+>", "", o.get("lleva") or ""), "falta": falta}
+
+
 tpl.env.globals["copia_agencia"] = copia_agencia
+tpl.env.globals["resumen_agencia"] = resumen_agencia
 
 
 def texto_ruta(filas, hoy, viajes=()):

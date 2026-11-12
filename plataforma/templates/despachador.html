@@ -48,7 +48,8 @@
 {% for v in viajes_ruta %}<tr class="viaje-ag">
  <td style="width:130px"><b>{{ v.agencia or 'Agencia' }}</b>{% if v.oficina %}<div class="mini">{{ v.oficina }}</div>{% endif %}
   <button type="button" class="btn sec chico" style="margin-top:6px" onclick="copiarAg(this)">Copiar datos</button>{% for o in v.paquetes %}<span hidden data-copia="{{ copia_agencia(o) }}"></span>{% endfor %}</td>
- <td>{% for o in v.paquetes %}<div class="mini" style="white-space:pre-line;{{ 'margin-top:12px' if not loop.first }}">{{ copia_agencia(o) }}</div>{% endfor %}</td>
+ <td><details class="ag-mas"><summary><div class="ag-prev">{% for o in v.paquetes[:3] %}{% set x = resumen_agencia(o) %}<div style="{{ 'margin-top:8px' if not loop.first }}"><b>{{ x.quien }}</b>{% if x.ciudad %} · {{ x.ciudad }}{% endif %}{% if x.falta %} <span class="ln-alerta">falta {{ x.falta|join(', ') }}</span>{% endif %}<div class="mini">{{ x.lleva }}</div></div>{% endfor %}{% if v.paquetes|length > 3 %}<div class="mini" style="margin-top:8px">y {{ v.paquetes|length - 3 }} más</div>{% endif %}</div><span class="ag-ver mini">Ver más ›</span><span class="ag-menos mini">Ver menos ‹</span></summary>
+  {% for o in v.paquetes %}<div class="mini" style="white-space:pre-line;margin-top:{{ '4px' if loop.first else '12px' }}">{{ copia_agencia(o) }}</div>{% endfor %}</details></td>
  <td class="mini">{{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }}</td>
  <td></td>
 </tr>{% endfor %}
@@ -59,6 +60,7 @@
  <button type="button" class="btn sec chico" onclick="copiarRuta(this)">Copiar</button>
  <details><summary class="mini">Ver el mensaje</summary><pre class="ruta-p" id="ruta-t">{{ ruta_texto }}</pre></details>
 </div>
+<style>.ag-mas>summary{list-style:none;cursor:pointer;color:inherit;font-weight:400;font-size:inherit}.ag-prev b{color:var(--tinta)}.ag-prev .ln-alerta{white-space:nowrap}.ag-mas>summary::-webkit-details-marker{display:none}.ag-ver,.ag-menos{display:inline-block;margin-top:8px;color:var(--verde-osc);font-weight:600}.ag-menos,.ag-mas[open] .ag-prev,.ag-mas[open] .ag-ver{display:none}.ag-mas[open] .ag-menos{display:inline-block}.ag-mas[open]>summary{margin-bottom:4px}</style>
 <script>function copiarAg(b){const t=[...b.closest('.viaje-ag').querySelectorAll('[data-copia]')].map(r=>r.dataset.copia).join('\n\n');navigator.clipboard.writeText(t).then(()=>{const o=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=o,1500)});}
 function copiarRuta(b){navigator.clipboard.writeText(document.getElementById('ruta-t').textContent).then(()=>{b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar',1500)});}</script>
 {% else %}<div class="vacio">Hoy no tiene nada asignado.</div>{% endif %}</div>{% endif %}
