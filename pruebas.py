@@ -3345,6 +3345,33 @@ def _():
         assert "Porche Visible" in fila and "1× Delivery" not in fila
 
 
+@prueba("Operaciones: 'Quitar entrega' en un retiro de pack programado por error lo deja sin programar y sale de la lista; un delivery ya cobrado no se pierde")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today().isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Veronica Packerror','Veronica')").lastrowid
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#8345',?,'entregada','pagada',72,0,'delivery')", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack',1,72,72)", (o, pk))
+        def pack(pagado):
+            return con.execute("""INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,despachador_programado,delivery_programado,delivery_pagado,retiro_programado)
+                                  VALUES (?,?,?,3,2,'activo',?,'delivery','Ingrid',5,?,1)""", (cid, o, pk, hoy_, pagado)).lastrowid
+        k1 = pack(0); con.commit()
+        sesion_de(c, "admin")
+        assert "Veronica Packerror" in c.get("/operaciones?cola=todo").text
+        c.post(f"/packs/{k1}/desprogramar", data={"volver": "/operaciones"})
+        r = con.execute("SELECT * FROM packs WHERE id=?", (k1,)).fetchone()
+        assert r["fecha_programada"] is None and r["despachador_programado"] is None and r["delivery_programado"] is None and r["estado"] == "activo"
+        assert "Veronica Packerror" not in c.get("/operaciones?cola=todo").text
+        con.execute("DELETE FROM packs WHERE id=?", (k1,)); k2 = pack(1); con.commit()
+        c.post(f"/packs/{k2}/desprogramar", data={"volver": "/operaciones"})
+        r = con.execute("SELECT * FROM packs WHERE id=?", (k2,)).fetchone()
+        assert r["fecha_programada"] is None and r["delivery_pagado"] == 1 and r["delivery_programado"] == 5, "lo ya cobrado queda anotado"
+        sesion_de(c, "taller"); c.post(f"/packs/{k2}/desprogramar")
+        con.close()
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

@@ -6119,6 +6119,23 @@ def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador:
     con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
 
 
+@app.post("/packs/{pid}/desprogramar")
+def pack_desprogramar(request: Request, pid: int, volver: str = Form(""), con=Depends(db)):
+    """Se programó una entrega de pack que no iba (Cristina, 12 nov): sale de Operaciones y el repuesto queda sin programar.
+    Si el delivery ya se había cobrado, eso no se borra: queda anotado para la próxima vez que se programe."""
+    if "reprogramar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
+    k = con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()
+    if k:
+        pagado = k["delivery_pagado"] in (1, 2)
+        con.execute("""UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL,
+                       retiro_programado=NULL, direccion_programada=NULL, maps_programado=NULL, agencia_programada=NULL, viaje_id=NULL,
+                       retira_nombre=NULL, retira_cedula=NULL, retira_telefono=NULL, retira_correo=NULL""" +
+                    ("" if pagado else ", delivery_programado=NULL, delivery_pagado=NULL") + " WHERE id=?", (pid,))
+        con.execute("DELETE FROM cargas_taller WHERE pack_id=? AND listo_en IS NULL", (pid,))
+        con.commit()
+    return RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
+
+
 @app.post("/packs/{rid}/cobrar-delivery")
 @app.post("/prepagados/{rid}/cobrar-delivery")
 def retiro_cobrar_delivery(request: Request, rid: int, forma: str = Form(""), monto_usd: str = Form(""), referencia: str = Form(""), volver: str = Form(""),
