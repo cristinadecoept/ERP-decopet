@@ -3430,6 +3430,7 @@ def _():
         con.commit()
         h = c.get("/operaciones?cola=todo").text
         assert f'id="dlg-rc-{o2}"' in h and f'action="/ordenes/{o2}/recibe"' in h, "cualquier delivery tiene el iconito de quién recibe"
+        assert h.count(f'href="/clientes/{cid}" onclick="event.stopPropagation()"') >= 3, "en todas las filas el nombre lleva a la ficha, no solo en los packs"
         assert f'id="dlg-rc-{o3}"' not in h, "un pick-up no"
         c.post(f"/ordenes/{o2}/recibe", data={"recibe_nombre": "Ana Vecina", "recibe_telefono": "04241234567", "volver": "/operaciones"})
         assert tuple(con.execute("SELECT receptor_nombre, receptor_telefono FROM ordenes WHERE id=?", (o2,)).fetchone()) == ("Ana Vecina", "0424-1234567")
