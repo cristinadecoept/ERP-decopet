@@ -3628,6 +3628,12 @@ def _():
     assert "padding:0" in r and "background:none" in r and "box-shadow:none" in r, r
 
 
+@prueba("Seguimientos: 'El perro no se adaptó' se puede marcar en cualquier seguimiento de repuesto, no solo en el primero")
+def _():
+    for tipo in ("primer_repuesto", "repuesto", "*"):
+        assert "no_se_adapto" in A.RESULTADOS_POR_TIPO.get(tipo, A.RESULTADOS_POR_TIPO["*"]), tipo
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

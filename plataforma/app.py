@@ -5657,7 +5657,7 @@ RESULTADOS = {"compro": "Compró", "mensaje": "Mensaje enviado", "fecha": "Lo qu
               "paso_pro": "Se pasó a la Versión PRO", "otro_basico": "Compró otro Básico", "no_le_interesa": "No le interesa por ahora",
               "lo_pensara": "Lo pensará", "no_responde": "No responde", "otro": "Otro"}   # los 3 últimos: solo para leer registros viejos
 # qué opciones se ofrecen según el tipo de seguimiento
-RESULTADOS_POR_TIPO = {"primer_repuesto": ["compro", "mensaje", "fecha", "no_se_adapto", "ya_no_usa"], "cumple": ["felicitado"], "cobro": ["pago", "mensaje"], "basico": ["paso_pro", "otro_basico", "mensaje", "fecha", "no_le_interesa"], "*": ["compro", "mensaje", "fecha", "ya_no_usa"]}
+RESULTADOS_POR_TIPO = {"primer_repuesto": ["compro", "mensaje", "fecha", "no_se_adapto", "ya_no_usa"], "cumple": ["felicitado"], "cobro": ["pago", "mensaje"], "basico": ["paso_pro", "otro_basico", "mensaje", "fecha", "no_le_interesa"], "*": ["compro", "mensaje", "fecha", "no_se_adapto", "ya_no_usa"]}   # el perro no se adaptó: también en los repuestos siguientes (Cristina, 12 nov)
 REINTENTO_DIAS = 3   # cobro: "Mensaje enviado" sin respuesta → vuelve a aparecer a los 3 días
 PAUSAS_SEG = [3, 7, 14, 60]   # los demás: 2º a los 3 días, 3º a la semana, 4º a las 2 semanas; sin respuesta descansa 2 meses y empieza de nuevo
 
