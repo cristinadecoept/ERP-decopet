@@ -1680,7 +1680,7 @@ def _():
         sesion_de(c, "admin")
         c.post("/clientes/nuevo", data={"nombre_pila": "Cedula Sola", "telefono": "04140000008", "cedula": "12345678"})
         con = sqlite3.connect(A.DB)
-        assert con.execute("SELECT cedula FROM clientes WHERE nombre_pila='Cedula Sola'").fetchone()[0] == "V-12345678"
+        assert con.execute("SELECT cedula FROM clientes WHERE nombre='Cedula Sola'").fetchone()[0] == "V-12345678"
         con.close()
 
 @prueba("Estado + ciudad: la ciudad de la lista trae su estado; solo el estado deja la ciudad por preguntar; no se adivina la capital")
@@ -1694,7 +1694,7 @@ def _():
         assert A.lugar(con, "Margarita") == ("Pendiente", "Nueva Esparta")
         assert A.lugar(con, "", "") == (None, None)
         c.post("/clientes/nuevo", data={"nombre_pila": "Ocumare Uno", "telefono": "04140000007", "estado": "Miranda", "ciudad": "Ocumare del Tuy"})
-        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre_pila='Ocumare Uno'").fetchone() == ("Ocumare del Tuy", "Miranda")
+        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre='Ocumare Uno'").fetchone() == ("Ocumare del Tuy", "Miranda")
         assert A.lugar(con, "OCUMARE DEL TUY", "") == ("Ocumare del Tuy", "Miranda")   # escrita distinto, queda igual que la primera
         assert ("Ocumare del Tuy", "Miranda") in A.ciudades_conocidas(con)
         h = c.get("/clientes/nuevo/panel").text
@@ -1702,8 +1702,8 @@ def _():
         # Tina solo escribe en Ciudad lo que dijo el cliente, sin tocar el Estado: se guarda igual y lo que falta queda pendiente
         for n, ciu in (("Isla Uno", "Margarita"), ("Sin Estado", "Pueblo Raro")):
             c.post("/clientes/nuevo", data={"nombre_pila": n, "telefono": "04140000006", "ciudad": ciu})
-        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre_pila='Isla Uno'").fetchone() == ("Pendiente", "Nueva Esparta")
-        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre_pila='Sin Estado'").fetchone() == ("Pueblo Raro", None)
+        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre='Isla Uno'").fetchone() == ("Pendiente", "Nueva Esparta")
+        assert con.execute("SELECT ciudad, estado FROM clientes WHERE nombre='Sin Estado'").fetchone() == ("Pueblo Raro", None)
         assert "Sin Estado" in c.get("/clientes?falta=estado").text and "Isla Uno" in c.get("/clientes?falta=ciudad").text
         con.execute("INSERT INTO tarifas (zona, tarifa, fuera_caracas) VALUES ('Los Palos Grandes', 5, 0), ('El Junquito', 10, 1)"); con.commit()
         assert A.lugar(con, "los palos grandes") == ("Caracas", "Distrito Capital")   # una zona de Caracas de Tarifas es Caracas
@@ -1717,7 +1717,7 @@ def _():
         c.post("/clientes/nuevo", data={"nombre_pila": "Solo Gps", "telefono": "04140000009", "ciudad": "Caracas",
                                         "direccion": "", "maps": "https://maps.app.goo.gl/prueba"})
         con = sqlite3.connect(A.DB)
-        cid, = con.execute("SELECT id FROM clientes WHERE nombre_pila='Solo Gps'").fetchone()
+        cid, = con.execute("SELECT id FROM clientes WHERE nombre='Solo Gps'").fetchone()
         assert con.execute("SELECT direccion, maps, principal FROM direcciones WHERE cliente_id=?", (cid,)).fetchone() == ("", "https://maps.app.goo.gl/prueba", 1)
         assert "Falta la dirección escrita" in c.get(f"/clientes/{cid}").text
         con.close()
@@ -3242,7 +3242,7 @@ def _():
         c.post("/clientes/nuevo", data={"nombre_pila": "Solo Gps", "telefono": "04140000101", "maps": "https://maps.app.goo.gl/abc"})
         c.post("/clientes/nuevo", data={"nombre_pila": "Con Todo", "telefono": "04140000102", "direccion": "Res. Los Pinos", "maps": "https://maps.app.goo.gl/xyz"})
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
-        cid, did = con.execute("SELECT c.id, d.id FROM clientes c JOIN direcciones d ON d.cliente_id=c.id WHERE c.nombre_pila='Solo Gps'").fetchone()
+        cid, did = con.execute("SELECT c.id, d.id FROM clientes c JOIN direcciones d ON d.cliente_id=c.id WHERE c.nombre='Solo Gps'").fetchone()
         con.close()
         h = c.get("/inicio").text
         assert "Solo Gps: tiene el GPS pero falta la dirección escrita" in h and "Con Todo: tiene el GPS" not in h
@@ -3570,6 +3570,53 @@ def _():
         op = c.get("/operaciones?cola=todo&tipo=nacional").text
         fila = op[op.index("#ENV") - 3000:op.index("#ENV") + 3000]
         assert "Valencia" in fila, "la ciudad de la ficha del cliente"
+        con.close()
+
+
+@prueba("Crear orden: se elige la fecha de entrega (ya pagó, pero es para mañana) y sale mañana, no hoy")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        con.execute("UPDATE productos SET precio=100 WHERE id=?", (p,))
+        cid = con.execute("SELECT MIN(id) FROM clientes").fetchone()[0]
+        con.commit(); A.cargar_formas_pago()
+        fo = con.execute("SELECT nombre FROM cuentas WHERE activa=1 AND COALESCE(cobra,1)=1 AND nombre NOT LIKE 'Efectivo%' ORDER BY orden, codigo LIMIT 1 OFFSET 1").fetchone()[0]
+        sesion_de(c, "admin")
+        assert 'name="fecha_prometida"' in c.get("/ordenes/nueva/panel").text
+        hoy = datetime.date.today(); manana = (hoy + datetime.timedelta(days=1)).isoformat()
+        c.post("/ordenes/nueva", data={"cliente_id": str(cid), "canal": "whatsapp", "producto_id": str(p), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+               "tipo_entrega": "pickup", "pago_forma": [fo], "pago_monto": ["100"], "pago_ref": [""], "fecha_pago": hoy.isoformat(), "fecha_prometida": manana})
+        o = con.execute("SELECT * FROM ordenes WHERE cliente_id=? ORDER BY id DESC LIMIT 1", (cid,)).fetchone()
+        assert o["fecha_prometida"] == manana and o["estado"] == "pendiente", dict(o)
+        assert o["numero"] not in c.get("/operaciones?cola=hoy").text and o["numero"] in c.get("/operaciones?cola=manana").text
+        con.close()
+
+
+@prueba("Nombre y apellido: si se escribe todo en Nombre, el ERP lo separa (al crear, al editar y en los que ya estaban)")
+def _():
+    assert A.partir_nombre("Andrea González", None) == ("Andrea", "González")
+    assert A.partir_nombre("María José Pérez", "") == ("María José", "Pérez")
+    assert A.partir_nombre("Andrea González Pérez", None) == ("Andrea", "González Pérez")
+    assert A.partir_nombre("Ana María de la Rosa Díaz", None)[0] == "Ana María"
+    assert A.partir_nombre("Andrea", None) == ("Andrea", None)
+    assert A.partir_nombre("Andrea González", "Pérez") == ("Andrea González", "Pérez"), "si ya trae apellido no se toca"
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        viejo = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono) VALUES ('Luisa Martínez','Luisa Martínez','04140000001')").lastrowid
+        compuesto = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono) VALUES ('María José Pérez','María José Pérez','04140000002')").lastrowid
+        uno = con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono) VALUES ('Luisa','Luisa','04140000003')").lastrowid
+        con.commit()
+        con.executescript(open(os.path.join(A.BASE, "migraciones", "025_separar_nombre_y_apellido.sql"), encoding="utf-8").read())
+        fila = lambda i: tuple(con.execute("SELECT nombre_pila, apellido, nombre FROM clientes WHERE id=?", (i,)).fetchone())
+        assert fila(viejo) == ("Luisa", "Martínez", "Luisa Martínez"), fila(viejo)
+        assert fila(compuesto)[:2] == ("María José", "Pérez"), fila(compuesto)
+        assert fila(uno)[:2] == ("Luisa", None)
+        sesion_de(c, "admin")
+        c.post("/clientes/nuevo", data={"nombre_pila": "andrea gonzález", "apellido": "", "telefono": "04121302994"})
+        assert tuple(con.execute("SELECT nombre_pila, apellido, nombre FROM clientes ORDER BY id DESC LIMIT 1").fetchone()) == ("Andrea", "González", "Andrea González")
+        c.post(f"/clientes/{uno}/editar", data={"nombre_pila": "Luisa Fernández"})
+        assert fila(uno) == ("Luisa", "Fernández", "Luisa Fernández"), fila(uno)
         con.close()
 
 

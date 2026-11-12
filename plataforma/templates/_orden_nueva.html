@@ -65,6 +65,7 @@
 <div><label>Nota para el taller <span class="mini">(opcional)</span></label><input name="nota_taller"></div>
 <div class="no-sub-h" style="margin-top:14px"><span>Status</span><span class="segm chico"><a href="#" id="st-pend" class="act" onclick="setStatus('pendiente');return false">Pendiente</a><a href="#" id="st-ent" onclick="setStatus('entregada');return false">Entregado</a></span></div><input type="hidden" name="status" id="status" value="pendiente">
 <div id="fe-w" hidden><label>Fecha de entrega</label><input type="date" name="fecha_entrega" value="{{ hoy }}" style="max-width:220px"></div>
+<div id="fp-w"><label>Fecha de entrega</label><input type="date" name="fecha_prometida" value="{{ hoy }}" min="{{ hoy }}" style="max-width:220px"></div>
 <span id="fe-nota" hidden></span>
 </section>
 <!-- 5 · PAGO: cuándo pagó, si pide factura y con qué -->
@@ -216,7 +217,7 @@ function setEntrega(k){
  if(!cd&&+document.getElementById('deliv').value){document.getElementById('deliv').value=0;calc();}document.getElementById('ag-w').hidden=!nac;
  document.getElementById('ced-nota').innerText=nac?'(la pide la agencia)':'(factura o envío nacional)';faltanDatos();
  packDeliv();}
-function setStatus(s){document.getElementById('status').value=s;document.getElementById('st-pend').classList.toggle('act',s==='pendiente');document.getElementById('st-ent').classList.toggle('act',s==='entregada');document.getElementById('fe-w').hidden=(s!=='entregada');document.getElementById('fe-nota').hidden=(s==='entregada');}
+function setStatus(s){document.getElementById('status').value=s;document.getElementById('st-pend').classList.toggle('act',s==='pendiente');document.getElementById('st-ent').classList.toggle('act',s==='entregada');document.getElementById('fe-w').hidden=(s!=='entregada');document.getElementById('fp-w').hidden=(s==='entregada');document.getElementById('fe-nota').hidden=(s==='entregada');}
 function dirModo(m){}
 function dirHabitualNueva(){const d=document.getElementById('cl-dir').value.trim(),c=document.getElementById('cl-ciudad').value.trim(),zs=document.getElementById('cl-zona'),z=zs?zs.value:'';document.getElementById('dir-hab-txt').innerHTML=d?('<b>'+d+'</b>'+(z?' · '+z:'')+(c?' · '+c:'')):'Escribe la dirección habitual en los datos del cliente (arriba).';DIR_HAB=d;if(document.getElementById('dir-modo').value==='hab'){precioAuto();zonaHabitual();}}
 function domModo(d){document.getElementById('a-dom').value=d?'1':'';document.getElementById('dom-of').classList.toggle('act',!d);document.getElementById('dom-si').classList.toggle('act',!!d);

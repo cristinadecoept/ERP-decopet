@@ -880,6 +880,19 @@ def capitalizar(nombre, inicio=True):
     return " ".join(w.lower() if ((i or not inicio) and w.lower() in minus) else palabra(w) for i, w in enumerate(nombre.split()))
 
 
+_NOMBRE_COMPUESTO = {"maría", "maria", "josé", "jose", "juan", "ana", "luis", "carlos", "jesús", "jesus", "luz", "rosa", "miguel", "pedro", "manuel", "mary", "ángel", "angel"}
+
+def partir_nombre(nombre_pila, apellido):
+    """Si se escribió todo en Nombre y Apellido quedó vacío (Cristina, 12 nov): el nombre va a Nombre y el apellido a Apellido.
+    'Andrea González' → ('Andrea', 'González'). Los nombres compuestos se respetan: 'María José Pérez' → ('María José', 'Pérez');
+    con cuatro palabras van dos y dos. 'de', 'del', 'la'… se quedan con el apellido."""
+    np_ = (nombre_pila or "").split()
+    if (apellido or "").strip() or len(np_) < 2: return nombre_pila, apellido
+    n = 2 if len(np_) >= 4 or (len(np_) == 3 and np_[0].lower() in _NOMBRE_COMPUESTO) else 1
+    while n > 1 and np_[n - 1].lower() in {"de", "del", "la", "las", "los", "y"}: n -= 1
+    return capitalizar(" ".join(np_[:n])), capitalizar(" ".join(np_[n:]), inicio=False)
+
+
 def nombre_completo(nombre_pila, apellido):
     return capitalizar(" ".join(x.strip() for x in (nombre_pila or "", apellido or "") if x and x.strip()))
 
@@ -2374,6 +2387,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         if not _sirve(f.get("cliente_correo")): return _falta("El correo del cliente es obligatorio.")
         cliente_recien_creado = True
         np_, ap = capitalizar(f["cliente_nombre_pila"]), capitalizar(f.get("cliente_apellido"), inicio=False) or None
+        np_, ap = partir_nombre(np_, ap)
         ciu, edo = lugar(con, f.get("cliente_ciudad") or f.get("ciudad"), f.get("cliente_estado"))
         cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                           (np_, ap, nombre_completo(np_, ap), normalizar_telefono(f.get("cliente_telefono")) or "Pendiente", normalizar_cedula(f.get("cliente_cedula")) or None,
@@ -6270,6 +6284,7 @@ def cliente_nuevo_panel(request: Request, con=Depends(db)):
 async def cliente_crear(request: Request, con=Depends(db)):
     f = await request.form()
     nombre_pila, apellido = capitalizar(f["nombre_pila"]), capitalizar(f.get("apellido"), inicio=False) or None
+    nombre_pila, apellido = partir_nombre(nombre_pila, apellido)
     ciu, edo = lugar(con, f.get("ciudad"), f.get("estado") or f.get("estado_geo"))
     cur = con.execute("INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen,referido_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                       (nombre_pila, apellido, nombre_completo(nombre_pila, apellido), normalizar_telefono(f.get("telefono")), normalizar_cedula(f.get("cedula")) or None,
@@ -6639,6 +6654,9 @@ async def cliente_editar(request: Request, cid: int, con=Depends(db)):
     if "ciudad" in f or "estado" in f: campos["ciudad"], campos["estado"] = lugar(con, f.get("ciudad"), f.get("estado"))
     if "porche_tamano" in f:
         campos["porche_tamano"] = ", ".join(x for x in ("Mediano", "Grande") if x in f.getlist("porche_tamano")) or None
+    if "nombre_pila" in campos and not campos.get("apellido", actual["apellido"]):
+        campos["nombre_pila"], ap = partir_nombre(campos["nombre_pila"], None)
+        if ap: campos["apellido"] = ap
     if "nombre_pila" in campos or "apellido" in campos:
         campos["nombre"] = nombre_completo(campos.get("nombre_pila", actual["nombre_pila"]),
                                            campos.get("apellido", actual["apellido"]))
