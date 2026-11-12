@@ -1914,6 +1914,9 @@ def _():
         sesion_de(c, "taller"); h = c.get("/taller").text
         assert h.count(f"Montar a {yo}") == 1 and "2× Porche Lote" in h, "todo lo suyo junto, con un solo Listo"
         assert "Otro Prueba" not in h
+        con.execute("UPDATE ordenes SET despachador='Otro Prueba' WHERE id=?", (o2,)); con.commit()   # le cambiaron el despachador: sale con el nuevo
+        h = c.get("/taller").text; assert "Montar a Otro Prueba" in h
+        con.execute("UPDATE ordenes SET despachador=? WHERE id=?", (yo, o2)); con.commit()
         con.execute("UPDATE ordenes SET estado='en_ruta' WHERE id=?", (o2,)); con.commit()   # salió en ruta: deja de verse en el taller
         h = c.get("/taller").text; assert "1× Porche Lote" in h and "2× Porche Lote" not in h
         con.execute("UPDATE ordenes SET estado='pendiente' WHERE id=?", (o2,)); con.commit()
@@ -1954,6 +1957,24 @@ def _():
         sesion_de(c, "logistica"); c.post("/mis-entregas/montar", data={"item": f"orden:{o4}"})
         sesion_de(c, "taller"); c.post("/mis-entregas/montar", data={"item": f"orden:{o4}"})
         assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE listo_en IS NULL").fetchone()[0] == 0, "ni logística ni el taller lo piden"
+        con.close()
+
+
+@prueba("Montar un repuesto de pack: al entregarlo se borra, así el próximo retiro del mismo pack se vuelve a pedir montar")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat(); yo = A.DESPACHADORES[0]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Pack Ronda','Pack')").lastrowid
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#PR1',?,'entregada','pagada',72,0,'delivery')", (cid,)).lastrowid
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,tamano,fecha_programada,tipo_programado,despachador_programado,retiro_programado) VALUES (?,?,3,1,'Grande',?,'delivery',?,1)", (cid, oid, hoy, yo)).lastrowid
+        con.commit()
+        assert A.montar_de(con, yo).get(f"pack:{pid}") == "falta"
+        A.montar_uno(None, con, "pack", pid); con.commit()
+        assert A.montar_de(con, yo).get(f"pack:{pid}") == "pendiente"
+        A.entregar_pack(con, pid, None, hoy, "1", "delivery", yo); con.commit()
+        con.execute("UPDATE packs SET fecha_programada=?, tipo_programado='delivery', despachador_programado=?, retiro_programado=1 WHERE id=?", (hoy, yo, pid)); con.commit()
+        assert A.montar_de(con, yo).get(f"pack:{pid}") == "falta", "el siguiente retiro no sale como ya montado"
         con.close()
 
 

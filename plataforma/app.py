@@ -6016,6 +6016,7 @@ def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despach
     for i in range(n_retiros):
         con.execute("INSERT INTO entregas_repuesto (pack_id, fecha, tipo_entrega, despachador, delivery_cobrado, notas, usuario_id) VALUES (?,?,?,?,?,?,?)",
                 (pid, fecha or datetime.date.today().isoformat(), tipo_entrega or k["tipo_programado"] or None, despachador or k["despachador_programado"] or None, float(delivery_cobrado or 0) if i == 0 else 0.0, notas or None, uid))
+    con.execute("DELETE FROM cargas_taller WHERE pack_id=?", (pid,))   # el próximo retiro del mismo pack se vuelve a pedir montar desde cero
     te = tipo_entrega or k["tipo_programado"] or ""; quien = despachador or k["despachador_programado"] or ""
     if te in ("delivery", "delivery_fuera"):   # lo que pagó el cliente de delivery por este retiro, cobrado ahora o antes
         pago_retiro_despachador(con, quien, float(k["delivery_programado"] or 0) or float(delivery_cobrado or 0), fecha or datetime.date.today().isoformat(), uid,
@@ -7733,9 +7734,12 @@ def taller_hoy(request: Request, con=Depends(db)):
 
 def cargas_por_montar(con):
     """Lo que pidieron montar y el taller todavía no marcó listo. Si ya salió en ruta (o se entregó), ya no se ve."""
-    siguen = {x for g in salidas_de_hoy(con) for x in g["items"]}
-    return [k for k in con.execute("SELECT * FROM cargas_taller WHERE listo_en IS NULL ORDER BY id")
-            if next((f"{t}:{k[col]}" for t, col in (("orden", "orden_id"), ("pack", "pack_id"), ("prepagado", "prepagado_id")) if k[col]), None) in siguen]
+    siguen = {x: g["quien_lleva"] for g in salidas_de_hoy(con) for x in g["items"]}   # y quién lo lleva hoy (si se lo cambiaron, sale con el nuevo)
+    out = []
+    for k in con.execute("SELECT * FROM cargas_taller WHERE listo_en IS NULL ORDER BY id"):
+        x = next((f"{t}:{k[col]}" for t, col in (("orden", "orden_id"), ("pack", "pack_id"), ("prepagado", "prepagado_id")) if k[col]), None)
+        if x in siguen: out.append(dict(k) | {"despachador": siguen[x]})
+    return out
 
 
 def juntar_cargas(ks):
