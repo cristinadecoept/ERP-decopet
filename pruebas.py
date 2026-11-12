@@ -3515,6 +3515,36 @@ def _():
         con.close()
 
 
+@prueba("Despachador: el adelanto salda lo que ya hizo (lo más viejo primero), queda en su historial y la lista dice al día y sus últimas 4 zonas")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR IGNORE INTO cuentas (codigo,nombre,moneda,tipo,activa,orden) VALUES ('001','Efectivo USD','USD','operativa',1,1)")
+        did = con.execute("INSERT INTO despachadores (nombre, activo) VALUES ('Juan Adel', 1)").lastrowid
+        cid = con.execute("INSERT INTO clientes (nombre_pila,nombre) VALUES ('Ana','Ana Prueba')").lastrowid
+        hoy = datetime.date.today()
+        for i, z in enumerate(["Z1", "", "Z2", "Z3", "Z4", "Z5"]):
+            con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,delivery,tipo_entrega,despachador,zona,fecha_entrega)
+                           VALUES (?,?,'entregada','pagada',40,5,'delivery','Juan Adel',?,?)""", (f"#AD{i}", cid, z, (hoy - datetime.timedelta(days=i + 1)).isoformat()))
+        con.commit(); A.cargar_formas_pago()
+        sesion_de(c, "admin")
+        c.post(f"/despachadores/{did}/adelanto", data={"monto": "22", "forma": "Efectivo USD", "fecha": hoy.isoformat(), "nota": "gasolina"})
+        pagadas = [r[0] for r in con.execute("SELECT numero FROM ordenes WHERE despachador='Juan Adel' AND despachador_pagado=1 ORDER BY numero")]
+        assert pagadas == ["#AD2", "#AD3", "#AD4", "#AD5"], pagadas   # $20 de las 4 más viejas; con $2 no alcanza otra
+        r = A.resumen_despachador(con, "Juan Adel", hoy)
+        assert r["debe"] == 8 and r["adelanto_libre"] == 0 and r["ultimo_pago"]["monto"] == 22, (r["debe"], r["ultimo_pago"])
+        h = c.get(f"/despachadores/{did}").text
+        assert "Saldado con el adelanto" in h and "gasolina" in h and 'id="dlg-pagos"' in h
+        c.post(f"/despachadores/{did}/adelanto", data={"monto": "10", "forma": "Efectivo USD", "fecha": hoy.isoformat()})
+        r = A.resumen_despachador(con, "Juan Adel", hoy)
+        assert r["debe"] == 0 and r["n_debe"] == 0, r["debe"]
+        l = c.get("/despachadores").text
+        card = l[l.index("Juan Adel"):][:3000]
+        assert "al día" in card and "le debes por" not in card and "Sin zona" not in card
+        assert all(z in card for z in ("Z1", "Z2", "Z3", "Z4")) and "Z5" not in card, "solo las últimas 4 zonas"
+        con.close()
+
+
 @prueba("Producción › Editar: se cambia '¿Cuándo lo pagas?' y el aviso de Inicio se mueve a ese día")
 def _():
     with erp_de_prueba() as c:

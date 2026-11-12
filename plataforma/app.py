@@ -6749,6 +6749,33 @@ def adelanto_despachador(con, nombre):
     return lista, round(max(sum(a["monto_usd"] or 0 for a in lista) - usado, 0), 2)
 
 
+def saldar_con_adelanto(con, nombre):
+    """Un adelanto también es un pago (Cristina, 12 nov): lo que ya hizo y cabe en el adelanto queda pagado,
+    de lo más viejo a lo más nuevo. Lo que no alcanza a cubrir sigue por pagar y el resto del adelanto queda para después."""
+    libre = adelanto_despachador(con, nombre)[1]
+    if libre < 0.01: return
+    cosas = [("o", r["id"], r["f"] or "", r["m"] or 0) for r in con.execute(
+                 """SELECT id, COALESCE(fecha_entrega, substr(creado_en,1,10)) f, COALESCE(delivery,0) m FROM ordenes
+                    WHERE despachador=? AND estado='entregada' AND despachador_pagado=0 AND origen_excel=0""", (nombre,))]
+    cosas += [("v", r["id"], r["f"] or "", r["monto"] or 0) for r in con.execute(
+                 "SELECT id, COALESCE(llevado_en, fecha) f, monto FROM viajes_agencia WHERE despachador=? AND pagado=0 AND llevado_en IS NOT NULL", (nombre,))]
+    cosas += [("d", r["id"], r["fecha"] or "", r["monto"] or 0) for r in con.execute(
+                 "SELECT id, fecha, monto FROM viajes_despachador WHERE despachador=? AND pagado=0 AND por_aprobar=0", (nombre,))]
+    van, suma = [], 0.0
+    for c in sorted(cosas, key=lambda c: (c[2], c[1])):
+        if suma + c[3] > libre + 0.009: break
+        van.append(c); suma += c[3]
+    if not van: return
+    suma = round(suma, 2)
+    pid = con.execute("""INSERT INTO pagos_despachador (despachador, fecha, monto, entregas, nota, adelanto_usado, confirmado_en)
+                         VALUES (?,?,?,?,?,?,datetime('now','localtime'))""",
+                      (nombre, datetime.date.today().isoformat(), suma, len(van), "Saldado con el adelanto", suma)).lastrowid
+    for t, tabla, campo in (("o", "ordenes", "despachador_pagado=1, despachador_pago_id"), ("v", "viajes_agencia", "pagado=1, pago_id"), ("d", "viajes_despachador", "pagado=1, pago_id")):
+        ids = [c[1] for c in van if c[0] == t]
+        if ids: con.execute(f"UPDATE {tabla} SET {campo}=? WHERE id IN ({','.join('?' * len(ids))})", (pid, *ids))
+    con.commit()
+
+
 def resumen_despachador(con, nombre, hoy):
     """Lo que se le debe: cada orden asignada (no cancelada) suma su pago hasta que la marcas pagada (los lunes)."""
     # se le debe lo que ya ENTREGÓ: asignado no es ganado (se puede cambiar el despachador, o pasar a pick-up)
@@ -6756,9 +6783,12 @@ def resumen_despachador(con, nombre, hoy):
                               SUM(CASE WHEN despachador_pagado=0 AND estado='entregada' THEN 1 ELSE 0 END) n_debe,
                               SUM(CASE WHEN estado IN ('pendiente','en_ruta') THEN 1 ELSE 0 END) n_sin_entregar
                        FROM ordenes WHERE despachador=? AND estado!='cancelada' AND origen_excel=0""", (nombre,)).fetchone()
-    ult = con.execute("SELECT fecha, monto FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC, id DESC LIMIT 1", (nombre,)).fetchone()
-    zonas = con.execute("""SELECT COALESCE(NULLIF(zona,''), 'Sin zona') z, COUNT(*) n FROM ordenes
-                           WHERE despachador=? AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 ORDER BY 2 DESC LIMIT 6""", (nombre,)).fetchall()
+    ult = con.execute("""SELECT fecha, ROUND(monto - COALESCE(adelanto_usado,0), 2) monto FROM pagos_despachador
+                         WHERE despachador=? AND monto - COALESCE(adelanto_usado,0) > 0.009 ORDER BY fecha DESC, id DESC LIMIT 1""", (nombre,)).fetchone()
+    # las últimas zonas en que entregó, sin "Sin zona": para ubicarlo de un vistazo
+    zonas = con.execute("""SELECT TRIM(zona) z, MAX(COALESCE(fecha_entrega, substr(creado_en,1,10))) f FROM ordenes
+                           WHERE despachador=? AND estado='entregada' AND origen_excel=0 AND TRIM(COALESCE(zona,''))!=''
+                           GROUP BY TRIM(zona) ORDER BY f DESC LIMIT 4""", (nombre,)).fetchall()
     v = con.execute("SELECT COALESCE(SUM(monto),0) m, COUNT(*) n FROM viajes_agencia WHERE despachador=? AND pagado=0 AND llevado_en IS NOT NULL", (nombre,)).fetchone()
     r = dict(s)
     r["debe"] = (r["debe"] or 0) + v["m"]          # los viajes a la agencia se le pagan igual que las entregas
@@ -6796,6 +6826,7 @@ def mis_entregas(request: Request, con=Depends(db)):
         nombre = (request.query_params.get("quien") or request.cookies.get("ver_desp") or "").strip()
         if nombre not in DESPACHADORES: nombre = DESPACHADORES[0] if DESPACHADORES else ""
     if not nombre: return RedirectResponse("/inicio", status_code=303)
+    saldar_con_adelanto(con, nombre)
     hoy = datetime.date.today()
     r = resumen_despachador(con, nombre, hoy)
     ruta = ruta_despachador(con, nombre, hoy.isoformat())
@@ -6812,7 +6843,7 @@ def mis_entregas(request: Request, con=Depends(db)):
     mes = hoy.strftime("%Y-%m")
     pagos = con.execute("""SELECT id, fecha, monto, entregas, adelanto_usado, reclamo_monto, reclamo_nota, reclamo_en FROM pagos_despachador
                            WHERE despachador=? AND confirmado_en IS NULL ORDER BY fecha DESC, id DESC""", (nombre,)).fetchall()
-    ult_conf = con.execute("SELECT MAX(substr(confirmado_en,1,10)) FROM pagos_despachador WHERE despachador=?", (nombre,)).fetchone()[0]
+    ult_conf = con.execute("SELECT MAX(substr(confirmado_en,1,10)) FROM pagos_despachador WHERE despachador=? AND monto - COALESCE(adelanto_usado,0) > 0.009", (nombre,)).fetchone()[0]
     if ult_conf: r["adelantos"] = [a for a in r["adelantos"] if (a["fecha"] or "") > ult_conf or r["adelanto_libre"] > 0]
     for f in ruta:
         if f.get("kind") != "orden": continue   # los retiros ya traen si van en ruta
@@ -7030,6 +7061,7 @@ def mi_incidencia(request: Request, oid: int, tipo: str = Form("Otro"), descripc
 @app.get("/despachadores", response_class=HTMLResponse)
 def despachadores(request: Request, q: str = "", con=Depends(db)):
     hoy = datetime.date.today()
+    for (n,) in con.execute("SELECT nombre FROM despachadores").fetchall(): saldar_con_adelanto(con, n)
     rows = [dict(d) | resumen_despachador(con, d["nombre"], hoy) for d in con.execute("SELECT * FROM despachadores WHERE nombre LIKE ? ORDER BY activo DESC, nombre", (f"%{q}%",))]
     return render(request, "despachadores.html", seccion="despachadores", despachadores=rows, q=q)
 
@@ -7201,6 +7233,7 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/despachadores", status_code=303)   # lo que se le debe y se le pagó: solo Cristina
     d = con.execute("SELECT * FROM despachadores WHERE id=?", (did,)).fetchone()
     if not d: return RedirectResponse("/despachadores", status_code=303)
+    saldar_con_adelanto(con, d["nombre"])
     hoy = datetime.date.today(); r = resumen_despachador(con, d["nombre"], hoy)
     pendientes = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha, COALESCE(o.delivery, 0) pago, o.zona, o.ciudad, o.estado, c.nombre cliente
                                 FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
@@ -7208,7 +7241,8 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     # solo lo que ya salió: lo de hoy está en 'Lo que le toca hoy', lo de otro día todavía no lo lleva, y un pack que no se llevó nada al comprarse va por su retiro
     en_curso = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha, o.delivery, o.zona, o.ciudad, o.estado, c.nombre cliente
                               FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id WHERE o.despachador=? AND o.estado='en_ruta' AND o.origen_excel=0 AND """ + HAY_QUE_ENTREGAR() + """ ORDER BY fecha""", (d["nombre"],)).fetchall()
-    pagos = con.execute("SELECT * FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC, id DESC LIMIT 30", (d["nombre"],)).fetchall()
+    pagos = [dict(p) | {"tipo": "pago"} for p in con.execute("SELECT * FROM pagos_despachador WHERE despachador=? ORDER BY fecha DESC, id DESC LIMIT 60", (d["nombre"],))]
+    pagos = sorted(pagos + [dict(a) | {"tipo": "adelanto"} for a in r["adelantos"]], key=lambda x: (x["fecha"] or "", x["tipo"] == "adelanto"), reverse=True)
     zonas_todas = con.execute("""SELECT COALESCE(NULLIF(zona,''), 'Sin zona') z, COUNT(*) n, SUM(COALESCE(delivery, 0)) monto FROM ordenes
                                  WHERE despachador=? AND estado='entregada' AND origen_excel=0 AND despachador_pagado=0 GROUP BY 1 ORDER BY 2 DESC""", (d["nombre"],)).fetchall()
     viajes = con.execute("""SELECT v.*, MAX(v.pedidos, (SELECT COUNT(*) FROM ordenes o WHERE o.viaje_id=v.id)) n_ordenes
@@ -7272,7 +7306,7 @@ def despachador_adelanto(request: Request, did: int, monto: str = Form(""), form
                        cuenta_id, notas, usuario_id) VALUES (?,?,?,'USD','Despachadores','Adelanto',?,?,?,?,?)""",
                     ((fecha or "").strip() or datetime.date.today().isoformat(), round(usd, 2), round(usd, 2),
                      f"Adelanto {d['nombre']}", d["nombre"], cuenta["id"], nota.strip() or None, uid_de(request)))
-        con.commit()
+        con.commit(); saldar_con_adelanto(con, d["nombre"])
     return RedirectResponse(f"/despachadores/{did}", status_code=303)
 
 
