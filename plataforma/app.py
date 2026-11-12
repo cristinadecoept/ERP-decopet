@@ -1675,7 +1675,7 @@ def resumen_despacho(o, con_plata=True):
     for l in o["lineas"]:
         ks = l.keys() if hasattr(l, "keys") else []
         if ("id" in ks and l["id"] in prep) or ("extra_en" in ks and l["extra_en"]): continue   # prepagado / cobro agregado: no se lleva hoy
-        L.append("• " + descripcion_linea(l))
+        L.append("• " + re.sub(r"· lleva (\d+) de (\d+)", r"· 📦 \1/\2", descripcion_linea(l)))   # igual que en la pantalla: 📦 1/3
     ent = ENTREGA.get(o["tipo_entrega"], "")
     if o["fecha_prometida"]: ent += f" · {fmt_fecha(o['fecha_prometida'])}" + (f" {o['franja']}" if o["franja"] else "")
     if o["agencia"]: ent += f" · {o['agencia']}" + (f" guía {o['guia']}" if o["guia"] else "")
@@ -1708,6 +1708,28 @@ def resumen_despacho(o, con_plata=True):
         if n["mostrar_logistica"] and n["texto"] != o["notas_entrega"]: L.append(f"📌 {n['texto']}")
     return "\n".join(L)
 
+
+
+def resumen_entrega_suelta(o, con_plata=True):
+    """Lo mismo que resumen_despacho, para un retiro de pack o un repuesto prepagado (salen de la fila de Operaciones)."""
+    L = [f"📦 {o['numero']} — {o['cliente']}" if o["numero"] else f"📦 {o['cliente']}"]
+    if tel_wa(o.get("telefono")): L.append(f"📞 {tel_wa(o['telefono'])}")
+    que = o["productos"] + (f" · 📦 {o['pack_pos']}" if o.get("pack_pos") else "")
+    L.append("• " + que)
+    ent = ENTREGA.get(o["tipo_entrega"], "")
+    if o.get("fecha_prometida"): ent += f" · {fmt_fecha(o['fecha_prometida'])}"
+    if o.get("agencia"): ent += f" · {o['agencia']}"
+    L.append(f"🚚 {ent}")
+    if o["tipo_entrega"] != "pickup" and o.get("direccion"):
+        L.append("📍 " + o["direccion"] + (f" — recibe {o['receptor_nombre']}" + (f" {o['receptor_telefono']}" if o.get("receptor_telefono") else "") if o.get("receptor_nombre") else ""))
+        if o.get("maps"): L.append(f"🗺 {o['maps']}")
+    elif o.get("receptor_nombre"): L.append(f"👤 Recibe {o['receptor_nombre']}" + (f" {o['receptor_telefono']}" if o.get("receptor_telefono") else ""))
+    cobra = o.get("monto_contra_entrega") or (o.get("delivery") if o.get("es_prepagado") and o.get("delivery") and not o.get("delivery_pagado") else 0)
+    if cobra: L.append(f"💵 Falta pagar {fmt_usd(cobra)}" if con_plata else "💵 Falta pagar")
+    else: L.append("✅ Pagado, no cobrar nada")
+    for t in o.get("tambien_cobrar") or []: L.append(f"💵 Cobrar también {fmt_usd(t['saldo'])} · {t['que']}" if con_plata else f"💵 Cobrar también · {t['que']}")
+    if o.get("nota_log"): L.append(f"📌 {o['nota_log']}")
+    return "\n".join(L)
 
 @app.get("/ordenes/nueva/panel", response_class=HTMLResponse)
 def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
@@ -2827,11 +2849,12 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
         grupos["Sin tipo de entrega"] = [o for o in lista if not o["tipo_entrega"]]
         grupos = {k: v for k, v in grupos.items() if v}
     por_desp = {}
-    # el resumen es del día que se está mirando: mañana muestra lo de mañana; hoy, Todo y las demás, lo de hoy (con lo atrasado)
-    dia_res = manana if cola == "manana" else (dia if cola == "dia" and dia else hoy)
-    for o in activas:
-        if o["despachador"] and (o["fecha_op"] == dia_res if dia_res != hoy else o["fecha_op"] <= hoy) and o["estado"] in ("pendiente", "en_ruta") and not o.get("espera_aviso"):
-            por_desp.setdefault(o["despachador"], []).append(resumen_despacho(cargar_orden(con, o["id"]), con_plata="ver_cobros" in PERMISOS[rol]))
+    # el resumen es lo mismo que se está viendo: pedidos, retiros de pack y prepagados de esta pestaña (Todo: todos los días)
+    dia_res = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
+    for o in lista:
+        if o["despachador"] and o["estado"] in ("pendiente", "en_ruta") and not o.get("espera_aviso"):
+            t = resumen_despacho(cargar_orden(con, o["id"]), con_plata="ver_cobros" in PERMISOS[rol]) if o.get("id") else resumen_entrega_suelta(o, con_plata="ver_cobros" in PERMISOS[rol])
+            por_desp.setdefault(o["despachador"], []).append(t)
     # envío nacional: pedidos que todavía nadie ha llevado a la oficina de la agencia
     por_llevar = con.execute("""SELECT o.id, o.numero, o.agencia, o.ciudad, o.estado, c.nombre cliente,
                                        COALESCE(o.fecha_prometida, substr(o.creado_en,1,10)) fecha

@@ -3533,7 +3533,7 @@ def _():
         assert "Resumen para el despachador" not in h and "Resumen de la 1ª entrega" not in h, "ya se entregó: el resumen no hace falta"
 
 
-@prueba("Operaciones: el resumen por despachador es del día que se mira (Mañana muestra lo de mañana) y va plegado")
+@prueba("Operaciones: el resumen por despachador es lo de la pestaña (Mañana lo de mañana, Todo todo), con retiros de pack, sin contar entregas, y plegado")
 def _():
     with erp_de_prueba() as c:
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
@@ -3543,11 +3543,20 @@ def _():
             cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,'0414-1110000')", (nom, nom.split()[0])).lastrowid
             o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida) VALUES (?,?,'pendiente','pagada',60,0,'delivery',?,?)", (num, cid, yo, f)).lastrowid
             con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (o, pr))
+        # un retiro de pack para mañana (como Verónica y Patricia): también va en el resumen
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Veronica Retiro','Veronica','0414-1110001')").lastrowid
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#7803',?,'entregada','pagada',72,0,'delivery')", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack 3 Repuestos Mediano',1,72,72)", (o, pk))
+        con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,despachador_programado,direccion_programada) VALUES (?,?,?,'Mediano',3,1,'activo',?,'delivery',?,'Los Palos Grandes')", (cid, o, pk, man, yo))
         con.commit(); con.close()
         sesion_de(c, "admin")
         res = lambda cola: c.get("/operaciones", params={"cola": cola}).text.split('id="resumenes"')[1].split("</details>")[0]
         assert "#7802" in res("manana") and "#7801" not in res("manana") and A.fmt_dia(man) in res("manana")
-        assert "#7801" in res("hoy") and "#7802" not in res("hoy")
+        assert "Veronica Retiro" in res("manana") and "📦 2/3" in res("manana") and "Los Palos Grandes" in res("manana"), res("manana")
+        assert "#7801" in res("hoy") and "#7802" not in res("hoy") and "Veronica Retiro" not in res("hoy")
+        assert all(x in res("todo") for x in ("#7801", "#7802", "Veronica Retiro")), "Todo: todo lo que hay en Todo"
+        assert "entregas</span>" not in res("manana") and "entrega</span>" not in res("manana"), "sin el conteo de entregas"
         assert '<details id="resumenes" class="res-desp">' in c.get("/operaciones").text, "plegado: se abre al tocarlo"
 
 
