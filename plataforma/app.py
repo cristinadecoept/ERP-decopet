@@ -6627,7 +6627,10 @@ def cliente_ficha(request: Request, cid: int, con=Depends(db)):
     if atrasado and c["telefono"] and c["telefono"] != "Pendiente":
         msg = mensaje_recuperar(con, cid, dias_rep)
         recuperar_wa = wa_api(c["telefono"]) + "&text=" + quote(msg)   # api.whatsapp.com: wa.me daña los emojis
-    return render(request, "cliente.html", seccion="clientes", incid=incid, ciudades_vl=ciudades_conocidas(con), rep_cada=rep_cada, ritmo_rep=ritmo_rep, atrasado=atrasado, recuperar_wa=recuperar_wa,
+    # la cédula hace falta solo si se le manda por agencia: lo dice su último pedido, no su ciudad (La Guaira va por delivery)
+    ult = con.execute("SELECT tipo_entrega FROM ordenes WHERE cliente_id=? AND estado!='cancelada' AND tipo_entrega IS NOT NULL ORDER BY creado_en DESC LIMIT 1", (cid,)).fetchone()
+    pide_cedula = not (c["cedula"] or "").strip() and envio_nacional({"ult_entrega": ult[0] if ult else None, "estado": c["estado"]})
+    return render(request, "cliente.html", seccion="clientes", incid=incid, pide_cedula=pide_cedula, ciudades_vl=ciudades_conocidas(con), rep_cada=rep_cada, ritmo_rep=ritmo_rep, atrasado=atrasado, recuperar_wa=recuperar_wa,
                   credito=credito_de(con, cid),
                   credito_mov=con.execute("""SELECT k.*, o.numero, o.total,
                         (SELECT COALESCE(SUM(p.monto_usd),0) FROM pagos p WHERE p.orden_id=k.orden_id AND p.estado='confirmado' AND p.forma!=?) pagado

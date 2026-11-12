@@ -3276,6 +3276,20 @@ def _():
         assert "Paola Vieja: tiene el GPS pero falta la dirección escrita" in h and "Otra Vieja: tiene el GPS" not in h
 
 
+@prueba("Ficha del cliente: 'sin cédula' sale solo si su pedido es envío nacional, no por la ciudad (La Guaira va por delivery)")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB)
+        a = con.execute("INSERT INTO clientes (nombre,nombre_pila,ciudad,estado) VALUES ('Aurelio Guaira','Aurelio','La Guaira','La Guaira')").lastrowid
+        b = con.execute("INSERT INTO clientes (nombre,nombre_pila,ciudad,estado) VALUES ('Eudys Tigre','Eudys','El Tigre','Anzoátegui')").lastrowid
+        con.execute("INSERT INTO ordenes (numero,cliente_id,estado,tipo_entrega,total) VALUES ('#C1',?,'pendiente','delivery_fuera',100)", (a,))
+        con.execute("INSERT INTO ordenes (numero,cliente_id,estado,tipo_entrega,total) VALUES ('#C2',?,'pendiente','nacional',100)", (b,))
+        con.commit(); con.close()
+        assert "necesaria para envío nacional" not in c.get(f"/clientes/{a}").text
+        assert "necesaria para envío nacional" in c.get(f"/clientes/{b}").text
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
