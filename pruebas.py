@@ -3572,6 +3572,42 @@ def _():
     assert "📦 3/3" in A.texto_ruta([{"quien": "Patricia", "telefono": None, "direccion": None, "maps": None, "que_lleva": "Repuesto Mediano · 3/3 del pack", "cobrar": 0}], datetime.date(2026, 11, 12))
 
 
+@prueba("Pedidos a proveedores › Editar: el monto sigue a la cantidad (13 → 18 sacos) y hay campo de nota que no se borra")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pid = con.execute("INSERT INTO produccion (pieza,cantidad,fecha_pedido,responsable,costo,nota,tipo_pedido) VALUES ('Grama',13,date('now','localtime'),'Yovanny Sánchez',39,'llega en la mañana','proveedor')").lastrowid
+        con.commit(); con.close()
+        sesion_de(c, "admin"); h = c.get("/produccion", params={"tipo": "proveedor", "ver": "todas"}).text
+        f = h.split(f'action="/produccion/{pid}/editar"')[1].split("</form>")[0]
+        assert 'data-pu="3.0"' in f and "m.dataset.pu*this.value" in f, "al cambiar la cantidad, el monto se recalcula con el precio de cada uno"
+        assert 'name="nota" value="llega en la mañana"' in f, "la nota se ve y se puede cambiar al editar"
+
+
+@prueba("Retiro de un pack: se le pone horario y nota desde el detalle (como a cualquier pedido) y salen en Operaciones y en el resumen")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        yo = A.DESPACHADORES[0]; man = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Patricia Blanco','Patricia','0414-5576141')").lastrowid
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#9037',?,'entregada','pagada',72,0,'delivery')", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack 3 Repuestos Mediano',1,72,72)", (o, pk))
+        k = con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,despachador_programado,direccion_programada) VALUES (?,?,?,'Mediano',3,2,'activo',?,'delivery',?,'Lomas de Las Mercedes')", (cid, o, pk, man, yo)).lastrowid
+        con.commit(); con.close()
+        sesion_de(c, "admin")
+        h = c.get(f"/ordenes/{o}/panel").text
+        assert f'action="/packs/{k}/campo"' in h and 'name="franja"' in h and 'name="nota"' in h, "el retiro se puede editar desde el detalle"
+        r = c.post(f"/packs/{k}/campo", data={"franja": "1 – 4 pm", "nota": "Tocar el timbre de abajo", "volver": "/operaciones?cola=manana"}, follow_redirects=False)
+        assert r.headers["location"] == "/operaciones?cola=manana"
+        h = c.get(f"/ordenes/{o}/panel").text
+        assert "1 – 4 pm" in h and "Tocar el timbre de abajo" in h
+        h = c.get("/operaciones", params={"cola": "manana"}).text
+        assert "1 – 4 pm" in h and "Tocar el timbre de abajo" in h
+        res = h.split('id="resumenes"')[1].split("</details>")[0]
+        assert "1 – 4 pm" in res and "Tocar el timbre de abajo" in res, res
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

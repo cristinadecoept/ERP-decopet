@@ -760,7 +760,7 @@ COLUMNAS = (
     ("ordenes", "viaje_id", "INTEGER"),
     ("packs", "deliveries_prepagados", "INTEGER DEFAULT 0"), ("packs", "delivery_pagado", "INTEGER"), ("packs", "tarifa_prepagada", "REAL"), ("packs", "delivery_diferencia", "REAL"), ("packs", "diferencia_pagada", "INTEGER"),
     ("packs", "delivery_programado", "REAL"), ("packs", "despachador_programado", "TEXT"),
-    ("packs", "fecha_programada", "TEXT"), ("packs", "nota_programada", "TEXT"),
+    ("packs", "fecha_programada", "TEXT"), ("packs", "nota_programada", "TEXT"), ("packs", "franja_programada", "TEXT"),
     ("packs", "direccion_programada", "TEXT"), ("packs", "maps_programado", "TEXT"),   # solo esta entrega va a otro sitio; la ficha no cambia
     ("packs", "agencia_programada", "TEXT"),   # envío nacional: la agencia de esta entrega; el destino va en direccion_programada
     ("packs", "retira_nombre", "TEXT"), ("packs", "retira_cedula", "TEXT"), ("packs", "retira_telefono", "TEXT"), ("packs", "retira_correo", "TEXT"),   # quién retira esta vez; vacío = el cliente, NULL = no se ha preguntado
@@ -1726,7 +1726,7 @@ def resumen_entrega_suelta(o, con_plata=True):
     que = o["productos"] + (f" · 📦 {o['pack_pos']}" if o.get("pack_pos") else "")
     L.append("• " + que)
     ent = ENTREGA.get(o["tipo_entrega"], "")
-    if o.get("fecha_prometida"): ent += f" · {fmt_fecha(o['fecha_prometida'])}"
+    if o.get("fecha_prometida"): ent += f" · {fmt_fecha(o['fecha_prometida'])}" + (f" {o['franja']}" if o.get("franja") else "")
     if o.get("agencia"): ent += f" · {o['agencia']}"
     L.append(f"🚚 {ent}")
     if o["tipo_entrega"] != "pickup" and o.get("direccion"):
@@ -1763,7 +1763,7 @@ def orden_panel(request: Request, oid: int, con=Depends(db)):
     # de un pack: lo que dice "Entrega" es la 1ª entrega; el próximo repuesto (otro día, quizás otro despachador) va aparte
     o["primera_de_pack"] = any(l["pack_id"] and (l["pack_hoy"] or 0) > 0 for l in o["lineas"])
     o["proximas"] = [dict(fecha=k["fecha_programada"], despachador=k["despachador_programado"], tipo=k["tipo_programado"] or k["tipo_entrega"],
-                          pos=repuesto_de_pack(k)[1], recibe=k["retira_nombre"])
+                          pos=repuesto_de_pack(k)[1], recibe=k["retira_nombre"], pack_id=k["id"], franja=k.get("franja_programada"), nota=k["nota_programada"])
                      for k in cargar_packs(con) if k["orden_id"] == oid and k["fecha_programada"] and (k["saldo"] or 0) > 0]
     # las que ya se hicieron después de la 1ª (2ª, 3ª…), cada una con su día y quién la llevó
     o["hechas"] = []
@@ -2810,7 +2810,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             if tipo and te != tipo: continue
             ag_k, dest_k = destino_pack(k) if te == "nacional" else (None, None)
             lista.append(dict(id=None, es_pack=True, pack_id=k["id"], orden_id=k["orden_id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
-                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_pack(k, con), pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
+                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_pack(k, con), pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=k.get("franja_programada"),
                               receptor_nombre=k["retira_nombre"], receptor_telefono=k["retira_telefono"], agencia=ag_k, guia=None, distribuidor=None, despachador=k["despachador_programado"],
                               ciudad=dest_k or (d["ciudad"] if d else k["ciudad"]), falta_oficina=te == "nacional" and not k["direccion_programada"], oficina_compra=dest_k, zona=None,
                               direccion=k["direccion_programada"] or (d["direccion"] if d else None), maps=(k["maps_programado"] if k["direccion_programada"] or k["maps_programado"] else (d["maps"] if d else None)), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), delivery_ya_pagado=bool(k["delivery_pagado"]), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup" or ag_k), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
@@ -6117,7 +6117,7 @@ def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despach
     if te in ("delivery", "delivery_fuera"):   # lo que pagó el cliente de delivery por este retiro, cobrado ahora o antes
         pago_retiro_despachador(con, quien, float(k["delivery_programado"] or 0) or float(delivery_cobrado or 0), fecha or datetime.date.today().isoformat(), uid,
                                 orden_id=k["orden_id"], pack_id=pid)
-    con.execute("UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, retiro_programado=NULL, delivery_programado=NULL, delivery_pagado=NULL, direccion_programada=NULL, maps_programado=NULL, agencia_programada=NULL, retira_nombre=NULL, retira_cedula=NULL, retira_telefono=NULL, retira_correo=NULL, viaje_id=NULL, estado=CASE WHEN entregadas_inicio + (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) >= unidades THEN 'completo' ELSE estado END WHERE id=?", (pid,))
+    con.execute("UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, franja_programada=NULL, retiro_programado=NULL, delivery_programado=NULL, delivery_pagado=NULL, direccion_programada=NULL, maps_programado=NULL, agencia_programada=NULL, retira_nombre=NULL, retira_cedula=NULL, retira_telefono=NULL, retira_correo=NULL, viaje_id=NULL, estado=CASE WHEN entregadas_inicio + (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) >= unidades THEN 'completo' ELSE estado END WHERE id=?", (pid,))
     dc = float(delivery_cobrado or 0)
     if k["delivery_pagado"]: dc = 0.0   # ya se cobró al programar (o venía prepagado con el pack)
     if (k["deliveries_prepagados"] or 0) > 0 and (tipo_entrega or k["tipo_programado"]) in ("delivery", "delivery_fuera"):
@@ -6180,7 +6180,7 @@ def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
 
 @app.post("/packs/{pid}/campo")
 def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), agencia: str = Form(None), destino: str = Form(None), fecha: str = Form(""), volver: str = Form(""),
-               recibe: str = Form(""), recibe_nombre: str = Form(""), recibe_telefono: str = Form(""), con=Depends(db)):
+               recibe: str = Form(""), recibe_nombre: str = Form(""), recibe_telefono: str = Form(""), franja: str = Form(None), nota: str = Form(None), con=Depends(db)):
     """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, por cuál agencia, otro día, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
     if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     if fecha.strip(): reprogramar_retiro(con, "pack", pid, fecha.strip(), uid_de(request))
@@ -6190,8 +6190,10 @@ def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador:
     if recibe:   # no recibe el cliente sino otra persona (Cristina, 12 nov); sin nombre = recibe el cliente
         con.execute("UPDATE packs SET retira_nombre=?, retira_telefono=? WHERE id=?",
                     (recibe_nombre.strip() or None, (normalizar_telefono(recibe_telefono) or None) if recibe_nombre.strip() else None, pid))
+    if franja is not None: con.execute("UPDATE packs SET franja_programada=? WHERE id=?", (franja.strip() or None, pid))   # el horario y la nota de ese retiro (Patricia, 12 nov)
+    if nota is not None: con.execute("UPDATE packs SET nota_programada=? WHERE id=?", (nota.strip() or None, pid))
     if en_ruta: con.execute("UPDATE packs SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, pid))
-    con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
+    con.commit(); return RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
 
 
 @app.post("/packs/{pid}/desprogramar")
@@ -6202,7 +6204,7 @@ def pack_desprogramar(request: Request, pid: int, volver: str = Form(""), con=De
     k = con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()
     if k:
         pagado = k["delivery_pagado"] in (1, 2)
-        con.execute("""UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL,
+        con.execute("""UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, franja_programada=NULL,
                        retiro_programado=NULL, direccion_programada=NULL, maps_programado=NULL, agencia_programada=NULL, viaje_id=NULL,
                        retira_nombre=NULL, retira_cedula=NULL, retira_telefono=NULL, retira_correo=NULL""" +
                     ("" if pagado else ", delivery_programado=NULL, delivery_pagado=NULL") + " WHERE id=?", (pid,))
@@ -8119,7 +8121,7 @@ def taller_pack_entregado(request: Request, pid: int, con=Depends(db)):
         for _ in range(min(k["retiro_programado"] or 1, k["saldo"])):
             con.execute("""INSERT INTO entregas_repuesto (pack_id, fecha, tipo_entrega, delivery_cobrado, notas, usuario_id)
                            VALUES (?,?, 'pickup', 0, 'retirado en el taller', ?)""", (pid, hoy, uid))
-        con.execute("""UPDATE packs SET fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL,
+        con.execute("""UPDATE packs SET fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, franja_programada=NULL,
                        retiro_programado=NULL, delivery_programado=NULL, delivery_pagado=NULL,
                        estado=CASE WHEN entregadas_inicio + (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) >= unidades THEN 'completo' ELSE estado END
                        WHERE id=?""", (pid,))

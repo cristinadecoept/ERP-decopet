@@ -120,7 +120,12 @@
 
 {% endif %}
 {% for x in o.proximas %}<div class="bloque"><h3>Próxima entrega · repuesto {{ x.pos|replace('/', ' de ') }}</h3>
-<div class="dato"><b>Tipo</b><span>{{ ENTREGA.get(x.tipo,'—') }}</span><b>Cuándo</b><span>{{ 'hoy' if x.fecha==hoy else x.fecha|dia }}</span>{% if x.despachador %}<b>Despachador</b><span>{{ x.despachador }}</span>{% endif %}{% if x.recibe %}<b>Recibe</b><span>{{ x.recibe }}</span>{% endif %}</div></div>
+<div class="dato"><b>Tipo</b><span>{{ ENTREGA.get(x.tipo,'—') }}</span><b>Cuándo</b><span>{{ 'hoy' if x.fecha==hoy else x.fecha|dia }}{% if x.franja %} · {{ x.franja }}{% endif %}</span>{% if x.despachador %}<b>Despachador</b><span>{{ x.despachador }}</span>{% endif %}{% if x.recibe %}<b>Recibe</b><span>{{ x.recibe }}</span>{% endif %}</div>
+{% if x.nota %}<div class="nota-log">📝 {{ x.nota }}</div>{% endif %}
+{% if 'editar_entrega' in puede %}<details><summary>Editar entrega</summary><form method="post" action="/packs/{{ x.pack_id }}/campo" onsubmit="this.volver.value=location.pathname+location.search"><input type="hidden" name="volver" value="">
+<label>Horario / franja</label><input name="franja" value="{{ x.franja or '' }}" placeholder="11:30 am / 1 – 4 pm">
+<label>Notas de entrega</label><textarea name="nota" rows="2">{{ x.nota or '' }}</textarea>
+<p style="margin:10px 0 0"><button class="btn chico">Guardar</button></p></form></details>{% endif %}</div>
 {% endfor %}{% for x in o.hechas %}<div class="bloque"><h3>{{ x.n }}ª entrega · repuesto {{ x.n }} de {{ x.de }}</h3>
 <div class="dato"><b>Tipo</b><span>{{ ENTREGA.get(x.tipo,'—') if x.tipo else '—' }}</span><b>Cuándo</b><span>entregada {{ x.fecha|dia }}</span>{% if x.despachador %}<b>Despachador</b><span>{{ x.despachador }}</span>{% endif %}</div></div>
 {% endfor %}<div class="bloque"><h3>{{ '1ª entrega del pack' if o.primera_de_pack else 'Entrega' }}</h3>
