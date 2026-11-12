@@ -3372,6 +3372,21 @@ def _():
         con.close()
 
 
+@prueba("Buscar sin acentos: 'veronica gomez' encuentra a 'Verónica Gómez' en Clientes, Órdenes y Mascotas")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,apellido,telefono) VALUES ('Verónica Gómez','Verónica','Gómez','0414-3981273')").lastrowid
+        con.execute("INSERT INTO mascotas (cliente_id,nombre,raza) VALUES (?,'Ñoño','Poodle')", (cid,))
+        con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel) VALUES ('#9555',?,'entregada','pagada',24,0)", (cid,))
+        con.commit(); con.close()
+        sesion_de(c, "admin")
+        for q in ("veronica gomez", "VERONICA", "gómez"):
+            assert "Verónica Gómez" in c.get("/clientes", params={"q": q}).text, q
+        assert "#9555" in c.get("/ordenes", params={"q": "veronica gomez", "estado": "todas"}).text
+        assert "Ñoño" in c.get("/mascotas", params={"q": "nono"}).text
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

@@ -1,5 +1,5 @@
 """Plataforma Decopet — pantallas. Parte 1: Órdenes."""
-import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, hashlib
+import datetime, json, sqlite3, re, os, subprocess, secrets, threading, time, hashlib, unicodedata
 
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -591,8 +591,14 @@ tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else 
 tpl.env.globals.update(entorno=entorno, ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, ESTADOS_VE=ESTADOS_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
 
+def plano(t):
+    """Para buscar: sin acentos ni mayúsculas. 'veronica gomez' encuentra a 'Verónica Gómez' (Cristina, 12 nov)."""
+    return "".join(ch for ch in unicodedata.normalize("NFD", str(t or "")) if unicodedata.category(ch) != "Mn").lower()
+
+
 def db():
     con = sqlite3.connect(DB, check_same_thread=False); con.row_factory = sqlite3.Row; con.execute("PRAGMA foreign_keys=ON")
+    con.create_function("plano", 1, plano, deterministic=True)   # para buscar nombres sin importar los acentos
     try: yield con
     finally: con.close()
 
@@ -1527,7 +1533,7 @@ def cargar_ordenes(con, filtros, rol, sin_limite=False):
     if filtros.get("vista") == "por_cobrar_clientes": sql += " AND o.estado_pago='abonada' AND o.estado!='cancelada'"
     if filtros.get("vista") == "por_cobrar_hoy": sql += " AND " + POR_COBRAR_HOY; args += [hoy, hoy]
     if filtros.get("vista") == "creadas_hoy": sql += " AND substr(o.creado_en,1,10)=? AND o.estado!='cancelada'"; args.append(hoy)
-    if filtros.get("q"): sql += " AND (c.nombre LIKE ? OR o.numero LIKE ? OR c.telefono LIKE ? OR o.guia LIKE ?)"; args += [f"%{filtros['q']}%"] * 4
+    if filtros.get("q"): sql += " AND (plano(c.nombre) LIKE ? OR o.numero LIKE ? OR c.telefono LIKE ? OR o.guia LIKE ?)"; args += [f"%{plano(filtros['q'])}%"] + [f"%{filtros['q']}%"] * 3
     if filtros.get("mes"): sql += " AND substr(o.creado_en,1,7)=?"; args.append(filtros["mes"])   # mes en que se creó la orden (AAAA-MM)
     if (filtros.get("producto") or "").startswith("c:"):   # toda una categoría (todos los porches, todos los comedores…)
         sql += " AND EXISTS (SELECT 1 FROM orden_lineas l JOIN productos pr ON pr.id=l.producto_id WHERE l.orden_id=o.id AND pr.categoria=? AND NOT (pr.categoria='porche' AND pr.nombre LIKE 'Malla%'))"; args.append(filtros["producto"][2:])   # la malla sola no es un porche
@@ -2728,8 +2734,8 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     if desp == "__sin__": lista = [o for o in lista if not o["despachador"] and o["tipo_entrega"] in ("delivery", "delivery_fuera")]
     elif desp: lista = [o for o in lista if o["despachador"] == desp]
     if q.strip():   # búsqueda dentro de lo que hay en operaciones (no manda a Órdenes)
-        qq = q.strip().lower()
-        lista = [o for o in lista if qq in " ".join(str(o.get(k) or "") for k in ("cliente", "numero", "productos", "direccion", "ciudad", "despachador", "agencia", "receptor_nombre")).lower()
+        qq = plano(q.strip())
+        lista = [o for o in lista if qq in plano(" ".join(str(o.get(k) or "") for k in ("cliente", "numero", "productos", "direccion", "ciudad", "despachador", "agencia", "receptor_nombre")))
                  or qq.replace("-", "") in str(o.get("telefono") or "").replace("-", "")]
     # retiros de packs PROGRAMADOS (el cliente pidió su repuesto y se le puso día): entran como una entrega más
     if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
@@ -4344,7 +4350,7 @@ def _historial_rows(con, anio, mes, q):
     con_extras = {r[0] for r in con.execute("SELECT DISTINCT orden_id FROM orden_lineas WHERE extra_en >= ?", (desde_r,))}
     lo = f"{anio}-{int(mes):02d}-01" if anio and mes else (f"{anio}-01-01" if anio else "0000")
     hi = f"{anio}-{int(mes):02d}-31" if anio and mes else (f"{anio}-12-31" if anio else "9999")
-    qq = (q or "").lower()
+    qq = plano(q)
     numeros = {}
     def llegada(fecha):   # va con las órdenes creadas hasta ese día, como venían llegando
         if fecha not in numeros:
@@ -4353,7 +4359,7 @@ def _historial_rows(con, anio, mes, q):
     for f in entradas_ordenes(con, lo, hi, oids=sorted(del_registro | con_extras)):
         if f["oid"] not in del_registro and not (f["tipo"] == "extra" and f["fecha"] >= desde_r): continue
         if mes and not anio and f["fecha"][5:7] != f"{int(mes):02d}": continue
-        if qq and qq not in (f["cliente"] or "").lower() and qq not in (f["producto"] or "").lower() and qq not in (f["numero"] or "").lower(): continue
+        if qq and qq not in plano(f["cliente"]) and qq not in plano(f["producto"]) and qq not in plano(f["numero"]): continue
         f["llegada"] = 1000000 + int((f["numero"] or "#0")[1:] or 0) if f["tipo"] == "pedido" and f["fecha"] == f["dia_orden"] else llegada(f["fecha"])
         out.append(f)
     for d in out:
@@ -4424,8 +4430,8 @@ def miembros(request: Request, q: str = "", ver: str = "todos", nuevos: str = ""
         (SELECT GROUP_CONCAT(m.nombre || CASE WHEN m.fallecida IS NOT NULL THEN ' 🕊️' ELSE '' END, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros
       FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada'
       JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
-      WHERE (c.nombre LIKE ? OR c.telefono LIKE ?)
-      GROUP BY c.id HAVING desde IS NOT NULL ORDER BY COALESCE(ultimo_repuesto, desde) DESC""", (f"%{q}%", f"%{q}%")).fetchall()
+      WHERE (plano(c.nombre) LIKE ? OR c.telefono LIKE ?)
+      GROUP BY c.id HAVING desde IS NOT NULL ORDER BY COALESCE(ultimo_repuesto, desde) DESC""", (f"%{plano(q)}%", f"%{q}%")).fetchall()
     hoy = datetime.date.today()
     lista = []
     for r in rows:
@@ -4438,7 +4444,7 @@ def miembros(request: Request, q: str = "", ver: str = "todos", nuevos: str = ""
     # miembros que vienen de Airtable (Versión Porche = PRO) y todavía no tienen órdenes cargadas
     ids = {d["id"] for d in lista}
     for r in con.execute("""SELECT c.id, c.nombre, c.telefono, c.ciudad, c.porche_tamano, (SELECT GROUP_CONCAT(m.nombre || CASE WHEN m.fallecida IS NOT NULL THEN ' 🕊️' ELSE '' END, ', ') FROM mascotas m WHERE m.cliente_id=c.id) perros
-                            FROM clientes c WHERE c.porche_version='PRO' AND (c.nombre LIKE ? OR c.telefono LIKE ?)""", (f"%{q}%", f"%{q}%")):
+                            FROM clientes c WHERE c.porche_version='PRO' AND (plano(c.nombre) LIKE ? OR c.telefono LIKE ?)""", (f"%{plano(q)}%", f"%{q}%")):
         if r["id"] in ids: continue
         lista.append(dict(id=r["id"], nombre=r["nombre"], telefono=r["telefono"], ciudad=r["ciudad"], perros=r["perros"], desde=None, tamanos=r["porche_tamano"], repuestos=0, ultimo_repuesto=None, dias=None, situacion="sin historial", proximo=None))
     conteos = {k: sum(1 for d in lista if d["situacion"] == v) for k, v in (("toca", "toca repuesto"), ("aldia", "al día"), ("inactivos", "inactivo"), ("sin_historial", "sin historial"))}
@@ -5793,7 +5799,7 @@ def seguimientos(request: Request, ver: str = "pendientes", tipo: str = "", q: s
     n_atr = sum(1 for s in todos if s.get("tarde"))
     pend = [s for s in todos if s.get("tarde") or ver != "atrasados"]   # Atrasados: solo los que siguen en Hoy porque no se contactaron
     if tipo: pend = [s for s in (todos if ver != "hechos" else pend) if s["tipo"] == tipo]   # al filtrar por tipo se ven de una vez los de hoy y los atrasados
-    if q: pend = [s for s in pend if q.lower() in (s["cliente"] or "").lower() or q in (s["telefono"] or "")]
+    if q: pend = [s for s in pend if plano(q) in plano(s["cliente"]) or q in (s["telefono"] or "")]
     # Contactados: solo seguimientos de repuesto, básico y cobro; los cumpleaños se ven en Inicio (Cristina, 7 nov 2026: se mezclaban)
     hechos = con.execute("SELECT s.*, c.nombre cliente, c.telefono, u.nombre usuario FROM seguimientos s JOIN clientes c ON c.id=s.cliente_id LEFT JOIN usuarios u ON u.id=s.usuario_id WHERE s.tipo!='cumple' ORDER BY s.hecho_en DESC LIMIT 200").fetchall()
     return render(request, "seguimientos.html", seccion="seguimientos", pend=pend, hechos=hechos, ver=ver, tipo=tipo, total=len([s for s in todos if s.get("fase", "hoy") == "hoy"]), n_atr=n_atr, RESULTADOS=RESULTADOS, RPT=RESULTADOS_POR_TIPO, q=q, hoy_iso=datetime.date.today().isoformat())
@@ -5854,7 +5860,7 @@ def prepagados(request: Request, ver: str = "sin_programar", q: str = "", con=De
     rows = cargar_prepagados(con, solo_pendientes=(ver != "todos"))
     if ver == "sin_programar": rows = [r for r in rows if not r["fecha_programada"]]
     elif ver == "programados": rows = [r for r in rows if r["fecha_programada"]]
-    if q: rows = [r for r in rows if q.lower() in (r["cliente"] or "").lower() or q in (r["telefono"] or "")]
+    if q: rows = [r for r in rows if plano(q) in plano(r["cliente"]) or q in (r["telefono"] or "")]
     n_sin = sum(1 for r in cargar_prepagados(con) if not r["fecha_programada"]); n_prog = sum(1 for r in cargar_prepagados(con) if r["fecha_programada"])
     clientes = con.execute("SELECT id, nombre FROM clientes ORDER BY nombre").fetchall()
     return render(request, "prepagados.html", seccion="prepagados", rows=rows, ver=ver, n_sin=n_sin, n_prog=n_prog, hoy_iso=datetime.date.today().isoformat(), clientes=clientes, q=q)
@@ -5975,7 +5981,7 @@ def cargar_packs(con):
 def packs(request: Request, ver: str = "activos", q: str = "", con=Depends(db), modo: str = "packs"):
     hoy = datetime.date.today(); lista = []
     for d in cargar_packs(con):
-        if q and q.lower() not in (d["cliente"] or "").lower() and q not in (d["telefono"] or ""): continue
+        if q and plano(q) not in plano(d["cliente"]) and q not in (d["telefono"] or ""): continue
         if ver == "activos" and d["saldo"] <= 0: continue
         if ver == "agotados" and d["saldo"] > 0: continue
         lista.append(d)
@@ -6268,7 +6274,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
         if r["estado"]: estados_cl[r["estado"]] = estados_cl.get(r["estado"], 0) + 1
     estados_cl = sorted(estados_cl.items(), key=lambda x: (-x[1], x[0]))
     if q and ver != "mascotas":
-        ql = q.lower(); rows = [r for r in rows if any(ql in (r[k] or "").lower() for k in ("nombre", "telefono", "correo", "cedula", "perros", "ciudad", "estado"))]
+        ql = plano(q); rows = [r for r in rows if any(ql in plano(r[k]) for k in ("nombre", "telefono", "correo", "cedula", "perros", "ciudad", "estado"))]   # sin importar acentos
     elif ver == "pro": rows = [r for r in rows if r["pro"]]
     elif ver == "basico": rows = [r for r in rows if r["basico"]]
     elif ver == "pendientes": rows = [r for r in rows if ((falta in r["pendientes"]) if falta else r["pendientes"])]
@@ -6286,7 +6292,7 @@ def _clientes(request, q, ver, ciudad, con, raza="", origen="", falta=""):
     if ver == "mascotas":
         hoy = datetime.date.today()
         for m in con.execute("""SELECT m.*, c.nombre cliente, c.telefono, c.ciudad FROM mascotas m JOIN clientes c ON c.id=m.cliente_id
-                                WHERE (? = '' OR m.nombre LIKE ? OR m.raza LIKE ? OR c.nombre LIKE ?) AND (? = '' OR m.raza = ?) ORDER BY m.nombre COLLATE NOCASE""", (q, f"%{q}%", f"%{q}%", f"%{q}%", raza, raza)):
+                                WHERE (? = '' OR plano(m.nombre) LIKE ? OR plano(m.raza) LIKE ? OR plano(c.nombre) LIKE ?) AND (? = '' OR m.raza = ?) ORDER BY m.nombre COLLATE NOCASE""", (q, f"%{plano(q)}%", f"%{plano(q)}%", f"%{plano(q)}%", raza, raza)):
             d = dict(m); cumple, edad, md = cumple_de(m, hoy)
             if m["fallecida"]: cumple = None
             d["cumple"] = cumple.isoformat() if cumple else None; d["faltan"] = (cumple - hoy).days if cumple else None
