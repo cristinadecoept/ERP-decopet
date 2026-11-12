@@ -3608,6 +3608,26 @@ def _():
         assert "1 – 4 pm" in res and "Tocar el timbre de abajo" in res, res
 
 
+@prueba("Detalle de un pedido: el resumen para el despachador va plegado (se abre al tocarlo), no ocupa todo el panel")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Regina Serfaty','Regina','0414-3001102')").lastrowid
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador) VALUES ('#9304',?,'pendiente','pagada',216,0,'delivery','Ingrid')", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'El Porche Versión PRO Mediano',1,108,108)", (o, pr))
+        con.commit(); con.close()
+        sesion_de(c, "admin"); h = c.get(f"/ordenes/{o}/panel").text
+        assert '<details class="res-desp res-orden"><summary>Resumen para el despachador</summary>' in h and f'id="res-{o}"' in h
+
+
+@prueba("Operaciones › Pago: 'Debe $5.00' es texto como 'Pagado' (sin botón con sombra), alineado con la columna")
+def _():
+    css = open(os.path.join(os.path.dirname(A.__file__), "static", "estilo.css"), encoding="utf-8").read()
+    r = css.split(".ops-t .op-pago summary.btn{")[1].split("}")[0]
+    assert "padding:0" in r and "background:none" in r and "box-shadow:none" in r, r
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

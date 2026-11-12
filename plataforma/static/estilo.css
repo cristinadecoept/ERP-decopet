@@ -1172,7 +1172,10 @@ table.fija td>div+div{margin-top:3px}
 .tabla+.tabla,.tabla+.tarjeta,.tarjeta+.tabla,.tarjeta+.tarjeta{margin-top:20px}
 .tarjeta{padding:22px 24px}
 /* Operaciones: el botón "Debe $…" no se sale de la columna Pago ni pisa el Status */
-.ops-t .op-pago summary.btn{white-space:normal;max-width:100%;line-height:1.25;text-align:left;padding:6px 12px}
+.ops-t .op-pago summary.btn{white-space:normal;max-width:100%;line-height:1.25;text-align:left;padding:0;gap:4px;background:none;box-shadow:none;border-radius:0;color:#b45a1c;font-weight:600;font-size:inherit;text-decoration:underline dotted;text-underline-offset:3px}
+.ops-t .op-pago .cobro{margin-top:0}
+/* "Debe $5.00" como texto, igual que "Pagado": alineado con la columna y con lo de abajo (Cristina, 12 nov) */
+html.oscuro .ops-t .op-pago summary.btn{background:none;color:#f0c877}
 .ops-t .op-pago .ln-cobrar{display:inline-block;max-width:100%;white-space:normal}
 .ops-t td[data-t="Status"]{padding-left:20px}
 .ops-t .sel-desp{min-width:0;width:100%;padding-left:12px;padding-right:26px;text-overflow:ellipsis}
@@ -1715,4 +1718,5 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .pack-tag.lleva-pk{display:flex;width:max-content;margin-top:4px}
 .res-desp{margin-top:22px}.res-desp>summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--tinta-2);padding:8px 14px;border-radius:999px;background:var(--sup);border:1px solid var(--linea)}
 .res-desp>summary::-webkit-details-marker{display:none}.res-desp>summary::after{content:"›";transform:rotate(90deg);font-size:15px}.res-desp[open]>summary::after{transform:rotate(-90deg)}
+.res-orden{margin-top:0}.res-orden>.resumen{margin-top:12px}
 .res-desp>.op-res{margin-top:12px;background:var(--sup);border-radius:18px;padding:16px;box-shadow:var(--sombra)}

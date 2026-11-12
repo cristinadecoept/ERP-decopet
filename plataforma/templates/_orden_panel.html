@@ -156,7 +156,7 @@
 <p><button class="btn chico">Guardar entrega</button></p></form>
 <script>function feTipo(){const f=document.getElementById('fe-form'),t=document.getElementById('fe-tipo').value;f.querySelectorAll('[data-para]').forEach(el=>{el.hidden=!el.dataset.para.split(' ').includes(t);});f.querySelectorAll('[data-lbl]').forEach(el=>{el.hidden=!el.dataset.lbl.split(' ').includes(t);});}feTipo();</script></details>{% endif %}</div>
 
-{% if not (o.primera_de_pack and o.estado=='entregada') %}<div class="bloque"><h3>Resumen para el despachador</h3><div class="resumen" id="res-{{ o.id }}">{{ (o.resumen if 'ver_cobros' in puede else o.resumen_sin_plata) }}</div>
-<p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ o.id }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></div>{% endif %}
+{% if not (o.primera_de_pack and o.estado=='entregada') %}<div class="bloque"><details class="res-desp res-orden"><summary>Resumen para el despachador</summary><div class="resumen" id="res-{{ o.id }}">{{ (o.resumen if 'ver_cobros' in puede else o.resumen_sin_plata) }}</div>
+<p><button class="btn sec chico" onclick="navigator.clipboard.writeText(document.getElementById('res-{{ o.id }}').innerText);this.innerText='¡Copiado!'">Copiar para WhatsApp</button></p></details></div>{% endif %}
 
 {% if rol=='admin' %}<div class="bloque"><h3>Historial</h3><ul class="hist" style="padding:0;margin:0">{% for h in o.historial %}<li><b>{{ h.usuario or 'Sistema' }}</b> <span class="m">{{ h.creado_en|fecha(true) }}</span> — {{ h.accion }}: {{ h.detalle or '' }}{% if h.motivo %} <i>({{ h.motivo }})</i>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
