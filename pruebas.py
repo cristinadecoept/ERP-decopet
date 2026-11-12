@@ -3479,6 +3479,10 @@ def _():
         ult = t.split("Últimas entregas")[1].split("Últimos pagos")[0]
         assert "faltan" not in ult and "sin pagar" not in ult and "Tarifa" in ult and ult.count("$5.00") == 3, ult
         assert "$12.00 Te deben" in t
+        # un pago saldado entero con el adelanto no sale como "$0.00" (Cristina, 12 nov)
+        con.execute("INSERT INTO pagos_despachador (despachador,fecha,monto,entregas,adelanto_usado,nota,confirmado_en) VALUES (?,date('now','localtime'),630,118,630,'Saldado con el adelanto',datetime('now','localtime'))", (yo,)); con.commit()
+        pg = c.get("/mis-entregas", params={"quien": yo}).text.split("Últimos pagos")[1]
+        assert "con tu adelanto" in pg and "$0.00" not in pg and "ya te lo habían adelantado" not in pg
         con.close()
 
 
