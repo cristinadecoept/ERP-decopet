@@ -1,10 +1,14 @@
 {% extends "base.html" %}{% block titulo %}{{ d.nombre }} · Despachadores{% endblock %}{% block cuerpo %}
 <p class="mini" style="margin:0 0 10px"><a href="/despachadores">← Despachadores</a></p>
-<div class="fila-titulo"><div><h1>{{ d.nombre }}</h1><div class="sub">{% if d.telefono %}{{ d.telefono }} · <a class="wa-link" href="{{ d.telefono|wa }}" target="_blank" style="font-size:inherit">WhatsApp ↗</a>{% else %}sin teléfono{% endif %}{% if not d.activo %} · <span class="canal">ya no entrega</span>{% endif %}{% if d.notas %} · {{ d.notas }}{% endif %}</div></div></div>
+<div class="fila-titulo"><div><h1>{{ d.nombre }}</h1><div class="sub">{% if d.telefono %}{{ d.telefono }} · <a class="wa-link" href="{{ d.telefono|wa }}" target="_blank" style="font-size:inherit">WhatsApp ↗</a>{% else %}sin teléfono{% endif %}{% if not d.activo %} · <span class="canal">ya no entrega</span>{% endif %}{% if d.notas %} · {{ d.notas }}{% endif %}</div></div>{% if rol=='admin' %}<button type="button" class="btn sec chico" onclick="document.getElementById('dlg-datos').showModal()">Editar</button>{% endif %}</div>
+{% if rol=='admin' %}<dialog class="dlg" id="dlg-datos" style="max-width:min(520px,calc(100vw - 32px));width:100%" onclick="if(event.target===this)this.close()"><div style="display:flex;align-items:center;margin-bottom:6px"><h3 style="margin:0;flex:1">Datos</h3><button type="button" class="btn sec chico" onclick="this.closest('dialog').close()">Cerrar</button></div><form method="post" action="/despachadores/guardar"><input type="hidden" name="id" value="{{ d.id }}">
+<div class="g2"><div><label>Nombre</label><input name="nombre" value="{{ d.nombre }}" required></div><div><label>Teléfono</label><input name="telefono" value="{{ d.telefono or '' }}"></div></div>
+<div class="g2"><div><label>Notas</label><input name="notas" value="{{ d.notas or '' }}"></div><div><label>Activo</label><select name="activo"><option value="1" {{ 'selected' if d.activo }}>Sí · entrega</option><option value="0" {{ 'selected' if not d.activo }}>No · ya no entrega</option></select></div></div>
+<p style="margin:10px 0 0"><button class="btn chico sec">Guardar datos</button></p></form></dialog>{% endif %}
 
 {% if 'ver_dinero' in puede %}<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:16px">
  <div class="tile"><b style="color:{{ '#b45a1c' if r.debe else 'var(--verde-osc)' }}">{{ (r.debe or 0)|usd }}</b><span>Le debes</span><i>{% set det = [] %}{% if r.n_debe %}{% set _ = det.append(r.n_debe ~ ' entrega' ~ ('s' if r.n_debe!=1 else '')) %}{% endif %}{% if r.n_viajes %}{% set _ = det.append(r.n_viajes ~ ' viaje' ~ ('s' if r.n_viajes!=1 else '') ~ ' a la agencia') %}{% endif %}{% if r.n_fallidos %}{% set _ = det.append(r.n_fallidos ~ ' viaje' ~ ('s' if r.n_fallidos!=1 else '') ~ ' sin entregar') %}{% endif %}{% if r.n_diligencias %}{% set _ = det.append(r.n_diligencias ~ ' diligencia' ~ ('s' if r.n_diligencias!=1 else '')) %}{% endif %}{% if det and r.debe %}{{ det|join(' · ') }}{% if r.adelanto_resta %} · menos {{ r.adelanto_resta|usd }} de adelanto{% endif %}{% else %}al día{% endif %}</i></div>
- <div class="tile" id="efectivo"><b style="color:{{ '#b45a1c' if efectivo_total else 'var(--verde-osc)' }}">{{ (efectivo_total or 0)|usd }}</b><span>Caja</span><i>{% if efectivo_total %}efectivo que cobró · {{ efectivo|length }} entrega{{ 's' if efectivo|length != 1 }}{% else %}no tiene efectivo tuyo{% endif %}</i>
+ <div class="tile" id="efectivo"><b style="color:{{ '#b45a1c' if efectivo_total else 'var(--verde-osc)' }}">{{ (efectivo_total or 0)|usd }}</b><span>Caja</span><i>{% if efectivo_total %}efectivo que cobró · {{ efectivo|length }} entrega{{ 's' if efectivo|length != 1 }}{% endif %}</i>
   {% if rol=='admin' and efectivo_total %}<form method="post" action="/despachadores/{{ d.id }}/efectivo" style="margin-top:8px" onsubmit="return confirm('¿{{ d.nombre }} te entregó los ${{ '%.2f'|format(efectivo_total) }} en efectivo?')"><button class="btn sec chico">Me lo entregó</button></form>{% endif %}</div>
  {% if r.adelanto_libre %}<div class="tile"><b style="color:var(--verde-osc)">{{ r.adelanto_libre|usd }}</b><span>Adelanto por descontar</span><i>se le resta de las próximas entregas</i></div>{% endif %}
  {% set reclamos = pagos|selectattr('reclamo_en')|rejectattr('reclamo_resuelto')|list %}<div class="tile" role="button" tabindex="0" style="cursor:pointer" onclick="document.getElementById('dlg-pagos').showModal()" onkeydown="if(event.key==='Enter')this.click()"><b>{% if r.ultimo_pago %}{{ r.ultimo_pago.monto|usd }}{% else %}—{% endif %}</b><span>Último pago</span><i>{% if r.ultimo_pago %}{{ r.ultimo_pago.fecha|dia }}{% if r.ultimo_pago.adelanto %} · adelanto{% endif %}{% else %}todavía ninguno{% endif %}</i>{% if reclamos %}<div class="ln-alerta mini" style="margin-top:6px">⚠ dice que le falta plata</div>{% endif %}{% if pagos %}<div class="mini" style="margin-top:6px;color:var(--verde-osc);font-weight:600">Ver todos ›</div>{% endif %}</div>
@@ -35,42 +39,47 @@
  <button class="btn chico">Aprobar</button> <button form="borrar-dil-{{ t.id }}" class="btn pel chico" onclick="return confirm('¿Quitar esta diligencia?')">Quitar</button></form>{% endfor %}
 <div class="mini">Hasta que la apruebes no se suma a lo que le debes. Puedes ajustar el monto antes.</div></div>{% endif %}
 {% if rol=='admin' %}{% for t in viajes %}<form method="post" action="/viajes/{{ t.id }}/borrar" id="deshacer-v-{{ t.id }}"><input type="hidden" name="volver" value="/despachadores/{{ d.id }}"></form>{% endfor %}{% endif %}
-<div class="desp-grid">
+<div class="desp-grid" style="grid-template-columns:minmax(0,1fr)">
 <div>
-{% if rol=='admin' %}<div class="tarjeta" style="margin-bottom:14px"><h3>Lo que le toca hoy</h3>
-{% if ruta or viajes_ruta %}<table data-cols="Quién:24|Dónde:30|Qué lleva:28|Falta pagar:18" class="lineas"><tr><th>Quién</th><th>Dónde</th><th>Qué lleva</th><th class="num">Falta pagar</th></tr>
-{% for f in ruta %}<tr>
- <td style="width:130px"><b>{{ f.quien }}</b>{% if f.telefono %}<div class="mini mono">{{ f.telefono }}</div>{% endif %}</td>
- <td>{{ f.direccion or '—' }}{% if f.maps %} <a href="{{ f.maps }}" target="_blank" rel="noreferrer" class="mini">mapa</a>{% endif %}</td>
- <td class="mini">{{ f.que_lleva }}</td>
- <td class="num">{% if f.cobrar %}<b class="ln-alerta">{{ f.cobrar|usd }}</b>{% endif %}{% for t in f.tambien_cobrar or [] %}<div><b class="ln-alerta">+ {{ t.saldo|usd }}</b> <span class="mini">{{ t.que }}</span></div>{% endfor %}</td>
-</tr>{% endfor %}
-{% for v in viajes_ruta %}<tr class="viaje-ag">
- <td style="width:130px"><b>{{ v.agencia or 'Agencia' }}</b>{% if v.oficina %}<div class="mini">{{ v.oficina }}</div>{% endif %}
-  <button type="button" class="btn sec chico" style="margin-top:6px" onclick="copiarAg(this)">Copiar datos</button>{% for o in v.paquetes %}<span hidden data-copia="{{ copia_agencia(o) }}"></span>{% endfor %}</td>
- <td><details class="ag-mas"><summary><div class="ag-prev">{% for o in v.paquetes[:3] %}{% set x = resumen_agencia(o) %}<div style="{{ 'margin-top:8px' if not loop.first }}"><b>{{ x.quien }}</b>{% if x.ciudad %} · {{ x.ciudad }}{% endif %}{% if x.falta %} <span class="ln-alerta">falta {{ x.falta|join(', ') }}</span>{% endif %}<div class="mini">{{ x.lleva }}</div></div>{% endfor %}{% if v.paquetes|length > 3 %}<div class="mini" style="margin-top:8px">y {{ v.paquetes|length - 3 }} más</div>{% endif %}</div><span class="ag-ver mini">Ver más ›</span><span class="ag-menos mini">Ver menos ‹</span></summary>
-  {% for o in v.paquetes %}<div class="mini" style="white-space:pre-line;margin-top:{{ '4px' if loop.first else '12px' }}">{{ copia_agencia(o) }}</div>{% endfor %}</details></td>
- <td class="mini">{{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }}</td>
- <td></td>
-</tr>{% endfor %}
-{% if ruta_cobrar %}<tr><td colspan="3" class="num mini">Falta pagar en total</td><td class="num"><b>{{ ruta_cobrar|usd }}</b></td></tr>{% endif %}</table>
+{% if rol=='admin' %}<div class="tarjeta hoy-t" style="margin-bottom:14px">{% set n_par = ruta|length + viajes_ruta|length %}<div class="hoy-hd"><h3>Lo que le toca hoy</h3>{% if n_par %}<span class="hoy-n">{{ n_par }} parada{{ 's' if n_par != 1 }}</span>{% endif %}{% if ruta_cobrar %}<span class="pago por_confirmar" style="white-space:nowrap">cobrar&nbsp;{{ ruta_cobrar|usd }}</span>{% endif %}</div>
+{% if ruta or viajes_ruta %}<div class="paradas">
+{% for f in ruta %}{% set key = ('orden:' ~ f.id) if f.kind == 'orden' else (('pack:' if f.kind == 'pack' else 'prepagado:') ~ f.rid) %}{% set m = montar.get(key) %}{% set enr = f.estado == 'en_ruta' or f.en_ruta %}<div class="parada{{ ' p-ruta' if enr }}">
+ <div class="p-num">{{ loop.index }}</div>
+ <div class="p-cu"><div class="p-top"><b>{{ f.quien }}</b>{% if enr %}<span class="pago por_cobrar">en ruta</span>{% elif m == 'listo' %}<span class="pago pagada">✓ montado</span>{% elif m == 'pendiente' %}<span class="pago por_confirmar">por montar</span>{% endif %}</div>
+  <div class="p-dir">{{ f.direccion or '—' }}{% if f.maps %} <a href="{{ f.maps }}" target="_blank" rel="noreferrer">mapa ↗</a>{% endif %}</div>
+  <div class="p-lleva">{{ f.que_lleva }}</div>
+  {% if f.cobrar %}<div class="p-cobrar">Cobrar {{ f.cobrar|usd }}</div>{% endif %}{% for t in f.tambien_cobrar or [] %}<div class="p-cobrar">+ {{ t.saldo|usd }} <span class="mini">{{ t.que }}</span></div>{% endfor %}
+  {% if f.telefono %}<div class="mini mono" style="margin-top:6px">{{ f.telefono }}</div>{% endif %}</div></div>{% endfor %}
+{% for v in viajes_ruta %}<div class="parada viaje-ag p-ag">
+ <div class="p-num">{{ ruta|length + loop.index }}</div>
+ <div class="p-cu"><div class="p-top"><b>{{ v.agencia or 'Agencia' }}{% if v.oficina %} · {{ v.oficina }}{% endif %}</b><span class="pago sin_pago">{{ v.pedidos }} paquete{{ 's' if v.pedidos != 1 }}</span></div>
+  <details class="ag-mas"><summary><div class="ag-prev">{% for o in v.paquetes[:3] %}{% set x = resumen_agencia(o) %}<div style="{{ 'margin-top:8px' if not loop.first }}"><b>{{ x.quien }}</b>{% if x.ciudad %} · {{ x.ciudad }}{% endif %}{% if x.falta %} <span class="ln-alerta">falta {{ x.falta|join(', ') }}</span>{% endif %}<div class="mini">{{ x.lleva }}</div></div>{% endfor %}{% if v.paquetes|length > 3 %}<div class="mini" style="margin-top:8px">y {{ v.paquetes|length - 3 }} más</div>{% endif %}</div><span class="ag-ver mini">Ver más ›</span><span class="ag-menos mini">Ver menos ‹</span></summary>
+  {% for o in v.paquetes %}<div class="mini" style="white-space:pre-line;margin-top:{{ '4px' if loop.first else '12px' }}">{{ copia_agencia(o) }}</div>{% endfor %}</details>
+  <button type="button" class="btn sec chico" style="margin-top:10px" onclick="copiarAg(this)">Copiar datos</button>{% for o in v.paquetes %}<span hidden data-copia="{{ copia_agencia(o) }}"></span>{% endfor %}</div></div>{% endfor %}
+</div>
 <div class="ruta-b">
  {% if d.telefono %}<a class="btn chico" href="{{ d.telefono|wa }}?text={{ ruta_texto|urlencode }}" target="_blank" rel="noreferrer">Mandárselo por WhatsApp</a>
- {% else %}<span class="mini">Para mandárselo por WhatsApp, agrégale el teléfono abajo en Datos.</span>{% endif %}
+ {% else %}<span class="mini">Para mandárselo por WhatsApp, agrégale el teléfono en Editar.</span>{% endif %}
  <button type="button" class="btn sec chico" onclick="copiarRuta(this)">Copiar</button>
  <details><summary class="mini">Ver el mensaje</summary><pre class="ruta-p" id="ruta-t">{{ ruta_texto }}</pre></details>
 </div>
-<style>.ag-mas>summary{list-style:none;cursor:pointer;color:inherit;font-weight:400;font-size:inherit}.ag-prev b{color:var(--tinta)}.ag-prev .ln-alerta{white-space:nowrap}.ag-mas>summary::-webkit-details-marker{display:none}.ag-ver,.ag-menos{display:inline-block;margin-top:8px;color:var(--verde-osc);font-weight:600}.ag-menos,.ag-mas[open] .ag-prev,.ag-mas[open] .ag-ver{display:none}.ag-mas[open] .ag-menos{display:inline-block}.ag-mas[open]>summary{margin-bottom:4px}</style>
+<style>.hoy-hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.hoy-hd h3{margin:0;flex:1;font-size:17px;color:var(--tinta);letter-spacing:-.01em}.hoy-n{font-size:13px;font-weight:600;color:var(--verde-osc);background:var(--verde-tinte);border-radius:99px;padding:3px 10px}
+.paradas{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.parada{display:flex;gap:12px;background:var(--fondo);border-radius:14px;padding:14px;border-left:4px solid var(--verde-osc);min-width:0}.parada.p-ruta{border-left-color:#4a7fc1}.parada.p-ag{border-left-color:#d08a4a}
+.p-num{flex:none;width:28px;height:28px;border-radius:99px;background:var(--verde-osc);color:var(--sup);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}.p-ruta .p-num{background:#4a7fc1}.p-ag .p-num{background:#d08a4a}
+.p-cu{flex:1;min-width:0}.p-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}.p-top b{font-size:15px}.p-dir{font-size:13.5px;line-height:1.4}.p-dir a{font-size:12px;white-space:nowrap}.p-lleva{font-size:12.5px;color:var(--tinta-2);margin-top:6px}.p-cobrar{font-size:13px;font-weight:700;color:#c94a2f;margin-top:6px}
+.per{display:flex;gap:6px;flex-wrap:wrap}.per a{font-size:12.5px;padding:4px 10px;border-radius:99px;background:var(--fondo);color:var(--tinta-2);text-decoration:none;white-space:nowrap}.per a.act{background:var(--verde-osc);color:var(--sup)}
+.ag-mas>summary{list-style:none;cursor:pointer;color:inherit;font-weight:400;font-size:inherit}.ag-prev b{color:var(--tinta)}.ag-prev .ln-alerta{white-space:nowrap}.ag-mas>summary::-webkit-details-marker{display:none}.ag-ver,.ag-menos{display:inline-block;margin-top:8px;color:var(--verde-osc);font-weight:600}.ag-menos,.ag-mas[open] .ag-prev,.ag-mas[open] .ag-ver{display:none}.ag-mas[open] .ag-menos{display:inline-block}.ag-mas[open]>summary{margin-bottom:4px}</style>
 <script>function copiarAg(b){const t=[...b.closest('.viaje-ag').querySelectorAll('[data-copia]')].map(r=>r.dataset.copia).join('\n\n');navigator.clipboard.writeText(t).then(()=>{const o=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=o,1500)});}
 function copiarRuta(b){navigator.clipboard.writeText(document.getElementById('ruta-t').textContent).then(()=>{b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar',1500)});}</script>
-{% else %}<div class="vacio">Hoy no tiene nada asignado.</div>{% endif %}</div>{% endif %}
+{% else %}<div class="vacio">Hoy no tiene nada asignado.</div>{% endif %}</div>{% endif %}<!--fin-hoy-->
 
-<div class="tarjeta" style="margin-bottom:14px"><h3>Llevando ahora</h3>
+{% if en_curso %}<div class="tarjeta" style="margin-bottom:14px"><h3>Llevando ahora</h3>
 {% if en_curso %}<table data-cols="Orden:12|Cliente:28|Dónde:30|Fecha:14|Cómo va:16" class="lineas"><tr><th>Orden</th><th>Cliente</th><th>Dónde</th><th>Fecha</th><th>Cómo va</th></tr>
 {% for o in en_curso %}<tr class="fila" onclick="location.href='/ordenes?estado=todas&abrir={{ o.id }}'"><td class="mono">{{ o.numero }}</td><td>{{ o.cliente }}</td><td class="mini">{{ o.zona or o.ciudad or '—' }}</td><td class="mono">{{ o.fecha|dia }}</td><td><span class="est {{ o.estado }}">{{ E_LABEL[o.estado] }}</span></td></tr>{% endfor %}</table>
-{% else %}<div class="vacio">No tiene ninguna entrega en la calle ahora mismo.</div>{% endif %}</div>
+{% endif %}</div>{% endif %}<!--fin-llevando-->
 
-<div class="tarjeta"><h3>{{ 'Por pagar' if 'ver_dinero' in puede else 'Entregas asignadas' }}</h3>
+{% if pendientes or viajes or fallidos or request.query_params.get('err')=='caja' %}<div class="tarjeta"><h3>{{ 'Por pagar' if 'ver_dinero' in puede else 'Entregas asignadas' }}</h3>
 {% if request.query_params.get('err')=='caja' %}<p class="ln-alerta" style="margin:0 0 10px">No se guardó el pago: elige de qué caja sale la plata.</p>{% endif %}{% if pendientes or viajes or fallidos %}<form method="post" action="/despachadores/{{ d.id }}/pagar" id="pagar">
 {% if pendientes or fallidos %}<table data-cols=":5|Fecha:12|Orden:10|Cliente:25|Zona:16|Estado:17|Le pagas:15" class="lineas"><tr>{% if rol=='admin' %}<th style="width:28px"><input type="checkbox" checked onchange="todos(this.checked)"></th>{% endif %}<th>Fecha</th><th>Orden</th><th>Cliente</th><th>Zona</th><th>Estado</th>{% if 'ver_dinero' in puede %}<th class="num">Le pagas</th>{% endif %}</tr>
 {% for o in pendientes %}<tr>{% if rol=='admin' %}<td><input type="checkbox" name="orden_id" value="{{ o.id }}" data-m="{{ o.pago or 0 }}" {{ 'checked' if o.estado=='entregada' }} onchange="sumar()"></td>{% endif %}<td class="mono">{{ o.fecha|dia }}</td><td class="mono">{{ o.numero }}</td><td>{{ o.cliente }}</td><td class="mini">{{ o.zona or o.ciudad or '' }}</td><td><span class="est {{ o.estado }}">{{ E_LABEL[o.estado] }}</span></td>{% if 'ver_dinero' in puede %}<td class="num">{{ (o.pago or 0)|usd }}</td>{% endif %}</tr>{% endfor %}
@@ -84,8 +93,8 @@ function copiarRuta(b){navigator.clipboard.writeText(document.getElementById('ru
  <label class="chk no-chk-mini" id="pp-parte"><input type="radio" name="parte" value="1" onchange="modoPago(true)"> <span>Solo una parte</span></label>
  <span class="cf-in" id="pp-monto" hidden><span class="mini">$</span><input name="monto_pago" id="monto-pago" inputmode="decimal" style="width:100px" placeholder="0.00" oninput="sumar()"></span></div></div>
 <div style="flex:1;min-width:150px"><label>Nota <span class="mini">(opcional)</span></label><input name="nota"></div><button class="btn" id="btn-pagar">Pago completo · <span id="suma"></span></button></div>{% endif %}
-</form>{% else %}<div class="vacio">No le debes nada. Cada orden que le asignes aparece aquí con lo que le pagas por esa zona, hasta que marques pagado.</div>{% endif %}</div>
-{% if rol=='admin' %}<div class="tarjeta hd" style="margin-bottom:14px"><h3>Todo lo que ha hecho</h3>
+</form>{% endif %}</div>{% endif %}
+{% if rol=='admin' %}<div class="tarjeta hd" id="hecho" style="margin-bottom:14px"><div class="hoy-hd"><h3>Lo que ha hecho</h3><div class="per">{% for k, pv in PERIODOS.items() %}<a href="?periodo={{ k }}#hecho" class="{{ 'act' if periodo == k }}">{{ pv[0] }}</a>{% endfor %}<a href="?#hecho" class="{{ 'act' if not periodo }}">Todo{% if record.primera %} · desde {{ record.primera|dia }}{% endif %}</a></div></div>
 {% if hist %}{% set grupos = [('', record.n, 'todo', ''), ('entregada', record.entregadas, 'entregada' if record.entregadas == 1 else 'entregadas', ''),
   ('viaje', record.viajes, 'viaje a la agencia' if record.viajes == 1 else 'viajes a la agencia', ''),
   ('diligencia', record.diligencias, 'diligencia' if record.diligencias == 1 else 'diligencias', ''),
@@ -95,7 +104,7 @@ function copiarRuta(b){navigator.clipboard.writeText(document.getElementById('ru
  {% for f, n, txt, cl in grupos %}{% if n or not f %}<button type="button" class="hd-c {{ cl }}" data-f="{{ f }}"><b>{{ n }}</b><span>{{ txt }}</span></button>{% endif %}{% endfor %}
  <button type="button" class="hd-c" data-f="cobro:pagado"><b>{{ record.pagado|usd }}</b><span>le pagaste</span></button>
  {% if r.debe %}<button type="button" class="hd-c alerta" data-f="cobro:por_pagar"><b>{{ r.debe|usd }}</b><span>por pagarle</span></button>{% endif %}
- {% if record.primera %}<div class="hd-desde mini">desde {{ record.primera|dia }}</div>{% endif %}
+ 
 </div>
 <table data-cols="Fecha:12|Qué:36|Zona:16|Estado:18|Le toca:18" class="lineas tarjetas-movil hd-t"><tr><th>Fecha</th><th>Qué</th><th>Zona</th><th>Estado</th><th class="num">Le toca</th></tr>
 {% for h in hist %}<tr data-grupo="{{ h.grupo }}" data-cobro="{{ h.cobro }}">
@@ -128,7 +137,7 @@ function copiarRuta(b){navigator.clipboard.writeText(document.getElementById('ru
   pintar();
 })();
 </script>
-{% else %}<div class="vacio">Todavía no le has asignado ninguna entrega.</div>{% endif %}</div>{% endif %}
+{% else %}<div class="vacio">{{ 'Nada en este período.' if periodo else 'Todavía no le has asignado ninguna entrega.' }}</div>{% endif %}</div>{% endif %}
 
 <div>
 
@@ -145,12 +154,6 @@ function copiarRuta(b){navigator.clipboard.writeText(document.getElementById('ru
 <div class="mini" style="margin-top:6px">En los otros casos el Cash flow ya está bien: al marcar pagado salió el monto completo.</div>
 <label>Nota <span class="mini">(opcional)</span></label><input name="nota" placeholder="por Pago Móvil, ref. 1234…"><p style="margin:8px 0 0"><button class="btn chico">Marcar resuelto</button></p></form></details>{% endif %}{% endif %}</td></tr>{% endif %}{% endfor %}</table>{% else %}<div class="vacio">Todavía no has registrado pagos.</div>{% endif %}</dialog>{% endif %}
 </div>
-</div>
-<div>
-{% if rol=='admin' %}<div class="tarjeta"><h3>Datos</h3><form method="post" action="/despachadores/guardar"><input type="hidden" name="id" value="{{ d.id }}">
-<div class="g2"><div><label>Nombre</label><input name="nombre" value="{{ d.nombre }}" required></div><div><label>Teléfono</label><input name="telefono" value="{{ d.telefono or '' }}"></div></div>
-<div class="g2"><div><label>Notas</label><input name="notas" value="{{ d.notas or '' }}"></div><div><label>Activo</label><select name="activo"><option value="1" {{ 'selected' if d.activo }}>Sí · entrega</option><option value="0" {{ 'selected' if not d.activo }}>No · ya no entrega</option></select></div></div>
-<p style="margin:10px 0 0"><button class="btn chico sec">Guardar datos</button></p></form></div>{% endif %}
 </div>
 </div>
 <script>function todos(v){document.querySelectorAll('#pagar input[name=orden_id], #pagar input[name=viaje_id], #pagar input[name=fallido_id]').forEach(c=>c.checked=v);document.querySelectorAll('#pagar thead input, #pagar th input').forEach(c=>c.checked=v);sumar();}

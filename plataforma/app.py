@@ -7174,7 +7174,7 @@ def ruta_despachador(con, nombre, hoy):
     Va el nombre de pila, la dirección y el teléfono — sin eso no puede entregar. No va cédula,
     ni correo, ni el total de la orden. El monto solo aparece si tiene que cobrarlo en la puerta."""
     filas = []
-    for o in con.execute("""SELECT o.id, o.numero, o.total, o.estado_pago, o.tipo_entrega,
+    for o in con.execute("""SELECT o.id, o.numero, o.total, o.estado_pago, o.tipo_entrega, o.estado,
                             COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.telefono,
                             o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega,
                             NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel
@@ -7281,7 +7281,7 @@ def texto_ruta(filas, hoy, viajes=()):
 
 
 @app.get("/despachadores/{did}", response_class=HTMLResponse)
-def despachador_ficha(request: Request, did: int, con=Depends(db)):
+def despachador_ficha(request: Request, did: int, periodo: str = "", con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/despachadores", status_code=303)   # lo que se le debe y se le pagó: solo Cristina
     d = con.execute("SELECT * FROM despachadores WHERE id=?", (did,)).fetchone()
     if not d: return RedirectResponse("/despachadores", status_code=303)
@@ -7305,6 +7305,8 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
     dil_aprobar = con.execute("SELECT * FROM viajes_despachador WHERE despachador=? AND por_aprobar=1 ORDER BY fecha, id", (d["nombre"],)).fetchall()
     ruta = ruta_despachador(con, d["nombre"], hoy.isoformat())
     viajes_ruta = [v for v in viajes_por_llevar(con, d["nombre"]) if (v["fecha"] or "")[:10] <= hoy.isoformat()]   # el de otro día no es de hoy; el atrasado sí
+    en_ruta_hoy = {f["id"] for f in ruta if f.get("kind") == "orden"}
+    en_curso = [o for o in en_curso if o["id"] not in en_ruta_hoy]   # lo de hoy ya se ve en su parada, con 'en ruta'
     # su récord: todo lo que ha entregado, pagado o no. Sin esto, al marcar pagado se perdía el rastro.
     hist = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
                           COALESCE(o.delivery,0) pago, o.zona, o.ciudad, o.estado, o.despachador_pagado, o.espera_aviso, o.fecha_prometida,
@@ -7331,6 +7333,16 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
         hist.append({"fecha": (v["fecha"] or "")[:10], "quien": f"Llevar a {v['agencia'] or 'la agencia'}" + (f" {v['oficina']}" if v["oficina"] else "") +
                      f" · {v['pedidos']} paquete{'s' if v['pedidos'] != 1 else ''}", "zona": None, "estado": "pendiente", "pago": 0, "despachador_pagado": 0})
     hist = sorted(hist, key=lambda h: h["fecha"] or "", reverse=True)
+    # el período que Cristina quiere mirar (12 nov): esta semana, este mes, el mes pasado o todo
+    lunes = hoy - datetime.timedelta(days=hoy.weekday()); ini_mes = hoy.replace(day=1)
+    fin_pasado = ini_mes - datetime.timedelta(days=1)
+    PERIODOS = {"semana": ("Esta semana", lunes.isoformat(), None), "mes": ("Este mes", ini_mes.isoformat(), None),
+                "mes_pasado": (MESES_N[fin_pasado.month - 1].capitalize(), fin_pasado.replace(day=1).isoformat(), fin_pasado.isoformat())}
+    if periodo not in PERIODOS: periodo = ""
+    primera_siempre = hist[-1]["fecha"] if hist else None
+    if periodo:
+        _, desde_p, hasta_p = PERIODOS[periodo]
+        hist = [h for h in hist if (h["fecha"] or "")[:10] >= desde_p and (not hasta_p or (h["fecha"] or "")[:10] <= hasta_p)]
     # por estado, sin contar nada dos veces (Cristina, 6 oct): entregas (pedidos y retiros de pack), viajes a la agencia,
     # diligencias, lo que tiene asignado y todavía no entrega, y las veces que fue y no le recibieron
     es_viaje = lambda h: h["estado"] == "entregada" and (h.get("quien") or "").startswith("Viaje a")
@@ -7343,13 +7355,13 @@ def despachador_ficha(request: Request, did: int, con=Depends(db)):
                   total=round(sum(h["pago"] or 0 for h in hechos), 2),
                   pagado=round(sum(h["pago"] or 0 for h in hechos if h["despachador_pagado"]), 2),
                   por_pagar=round(sum(h["pago"] or 0 for h in hechos if not h["despachador_pagado"]), 2),
-                  primera=hist[-1]["fecha"] if hist else None)
+                  primera=primera_siempre)
     # cada fila dice a qué grupo pertenece, para que al tocar un número de arriba la lista muestre justo esas
     for h in hist:
         h["grupo"] = "viaje" if es_viaje(h) else ("por_entregar" if h["estado"] in ("pendiente", "en_ruta") else h["estado"])
         h["cobro"] = "al_entregar" if h["grupo"] == "por_entregar" else ("pagado" if h["despachador_pagado"] else "por_pagar")
     efectivo = efectivo_que_tiene(con, d["nombre"])
-    return render(request, "despachador.html", seccion="despachadores", FORMAS_PAGO=FORMAS_PAGO, efectivo=efectivo, efectivo_total=round(sum(p["monto_usd"] or 0 for p in efectivo), 2),
+    return render(request, "despachador.html", seccion="despachadores", periodo=periodo, PERIODOS=PERIODOS, montar=montar_de(con, d["nombre"]), FORMAS_PAGO=FORMAS_PAGO, efectivo=efectivo, efectivo_total=round(sum(p["monto_usd"] or 0 for p in efectivo), 2),
                   CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,
                   tarifas_dil=tarifas_diligencia(con), ruta=ruta, viajes_ruta=viajes_ruta, ruta_texto=texto_ruta(ruta, hoy, viajes_ruta), ruta_cobrar=sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in ruta),
                   hist=hist, record=record)

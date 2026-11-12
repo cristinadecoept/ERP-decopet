@@ -2707,8 +2707,15 @@ def _():
         con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado) VALUES (?,?,?,3,0,'activo')", (cid, o3, pk))
         con.commit(); sesion_de(c, "admin")
         h = c.get(f"/despachadores/{d['id']}").text
-        h = h[h.index("Llevando ahora"):h.index("Por pagar")]
-        assert "#77001" in h and "#77002" not in h and "#77003" not in h, h[:600]
+        hoy_h = h[h.index("Lo que le toca hoy"):h.index("<!--fin-hoy-->")]
+        assert "Llevando ahora" not in h, "lo de hoy en ruta ya se ve en su parada: no se repite abajo"
+        assert ">en ruta</span>" in hoy_h, "la de hoy que ya salió dice 'en ruta' en su parada"
+        assert "#77002" not in h.split("Lo que ha hecho")[0] and "#77003" not in h.split("Lo que ha hecho")[0]
+        con.execute("UPDATE ordenes SET fecha_prometida=? WHERE numero='#77001'", ((hoy_ - datetime.timedelta(days=1)).isoformat(),))
+        con.execute("UPDATE ordenes SET estado='en_ruta', fecha_prometida=? WHERE numero='#77002'", (manana,)); con.commit()
+        h = c.get(f"/despachadores/{d['id']}").text
+        h = h[h.index("Llevando ahora"):h.index("<!--fin-llevando-->")]
+        assert "#77002" in h and "#77003" not in h, "en la calle y no es de hoy: sale en 'Llevando ahora'"
         con.close()
 
 
@@ -2728,7 +2735,7 @@ def _():
         viaje("AgenciaHoy", hoy_s, "#78001"); viaje("AgenciaDespues", despues, "#78002"); viaje("AgenciaLista", hoy_s, "#78003", hoy_s + " 10:00")
         con.commit(); sesion_de(c, "admin")
         h = c.get(f"/despachadores/{d['id']}").text
-        h = h[h.index("Lo que le toca hoy"):h.index("Llevando ahora")]
+        h = h[h.index("Lo que le toca hoy"):h.index("<!--fin-hoy-->")]
         assert "AgenciaHoy" in h and "Mandárselo por WhatsApp" in h, h[:500]
         assert "AgenciaDespues" not in h and "AgenciaLista" not in h
         assert "Llevar a AgenciaHoy" in h and "Paquete Prueba" in h and "Maracay" in h
@@ -3288,6 +3295,38 @@ def _():
         con.commit(); con.close()
         assert "necesaria para envío nacional" not in c.get(f"/clientes/{a}").text
         assert "necesaria para envío nacional" in c.get(f"/clientes/{b}").text
+
+
+@prueba("Ficha del despachador: las paradas de hoy dicen 'por montar' / 'en ruta'; sin nada en la calle ni por pagar esas tarjetas no salen; el período filtra lo que ha hecho")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today(); yo = A.DESPACHADORES[0]
+        did = con.execute("SELECT id FROM despachadores WHERE nombre=?", (yo,)).fetchone()[0]
+        con.execute("UPDATE ordenes SET despachador=NULL WHERE despachador=?", (yo,)); con.execute("DELETE FROM viajes_agencia WHERE despachador=?", (yo,))
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Parada Prueba','Parada')").lastrowid
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 LIMIT 1").fetchone()["id"]
+        def orden(num, estado, fecha):
+            o = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida,fecha_entrega)
+                               VALUES (?,?,?,'pagada',10,0,'delivery',?,?,?)""", (num, cid, estado, yo, fecha, fecha)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'x',1,10,10)", (o, p)); return o
+        o1 = orden("#P1", "pendiente", hoy_.isoformat())
+        con.execute("UPDATE ordenes SET despachador_pagado=1 WHERE despachador=?", (yo,))
+        viejo = orden("#P0", "entregada", (hoy_ - datetime.timedelta(days=70)).isoformat())
+        con.execute("UPDATE ordenes SET despachador_pagado=1 WHERE id=?", (viejo,)); con.commit()
+        sesion_de(c, "admin"); h = c.get(f"/despachadores/{did}").text
+        assert "Llevando ahora" not in h and ">Por pagar</h3>" not in h, "vacías: no salen"
+        assert "no tiene efectivo tuyo" not in h
+        con.execute("INSERT INTO cargas_taller (despachador, cosas, orden_id) VALUES (?,?,?)", (yo, "1× x", o1)); con.commit()
+        h = c.get(f"/despachadores/{did}").text
+        hoy_h = h[h.index("Lo que le toca hoy"):h.index("<!--fin-hoy-->")]
+        assert ">por montar</span>" in hoy_h and "1 parada" in hoy_h
+        assert "#P0" in h and "#P0" not in c.get(f"/despachadores/{did}?periodo=semana").text, "esta semana no trae lo de hace 70 días"
+        assert "#P1" in c.get(f"/despachadores/{did}?periodo=semana").text
+        con.execute("UPDATE ordenes SET estado='en_ruta' WHERE id=?", (o1,)); con.commit()
+        h = c.get(f"/despachadores/{did}").text
+        assert ">en ruta</span>" in h[h.index("Lo que le toca hoy"):h.index("<!--fin-hoy-->")] and "Llevando ahora" not in h
+        con.close()
 
 
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
