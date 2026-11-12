@@ -1704,3 +1704,5 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .pk-recibe{display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--verde-osc);opacity:.45;padding:2px 1px 2px 6px;margin:-2px 0 -2px 3px;border-left:1px solid currentColor;cursor:pointer;line-height:1}
 .pk-recibe:hover{opacity:1}.pk-recibe.si{opacity:1;color:var(--naranja,#d9772b)}
 .op-cli-n{color:inherit;text-decoration:none}.op-cli-n:hover{text-decoration:underline}
+.rc-sola{padding:2px 4px}.rc-sola>.pk-recibe{border-left:0;padding:1px 2px;margin:0}
+.rc-sola:has(.si){background:var(--naranja-tinte)}

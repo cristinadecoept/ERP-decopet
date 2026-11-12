@@ -3419,6 +3419,23 @@ def _():
         sesion_de(c, "admin")
         c.post(f"/packs/{k}/campo", data={"recibe": "1", "recibe_nombre": "", "volver": "/operaciones"})
         assert tuple(con.execute("SELECT retira_nombre, retira_telefono FROM packs WHERE id=?", (k,)).fetchone()) == (None, None)
+        # un pedido normal de delivery también tiene el iconito, por si el cliente cambia de planes
+        o2 = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida) VALUES ('#8803',?,'pendiente','pagada',60,0,'delivery',?,?)", (cid, yo, hoy_)).lastrowid
+        o3 = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,fecha_prometida) VALUES ('#8804',?,'pendiente','pagada',60,0,'pickup',?)", (cid, hoy_)).lastrowid
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        for x in (o2, o3): con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (x, pr))
+        con.commit()
+        h = c.get("/operaciones?cola=todo").text
+        assert f'id="dlg-rc-{o2}"' in h and f'action="/ordenes/{o2}/recibe"' in h, "cualquier delivery tiene el iconito de quién recibe"
+        assert f'id="dlg-rc-{o3}"' not in h, "un pick-up no"
+        c.post(f"/ordenes/{o2}/recibe", data={"recibe_nombre": "Ana Vecina", "recibe_telefono": "04241234567", "volver": "/operaciones"})
+        assert tuple(con.execute("SELECT receptor_nombre, receptor_telefono FROM ordenes WHERE id=?", (o2,)).fetchone()) == ("Ana Vecina", "0424-1234567")
+        assert any(f.get("recibe") == "Ana Vecina" for f in A.ruta_despachador(con, yo, hoy_)), "le sale al despachador"
+        c.post(f"/ordenes/{o2}/recibe", data={"recibe_nombre": "", "volver": "/operaciones"})
+        assert tuple(con.execute("SELECT receptor_nombre, receptor_telefono FROM ordenes WHERE id=?", (o2,)).fetchone()) == (None, None)
+        sesion_de(c, "taller")
+        c.post(f"/ordenes/{o2}/recibe", data={"recibe_nombre": "Intruso"})
+        assert con.execute("SELECT receptor_nombre FROM ordenes WHERE id=?", (o2,)).fetchone()[0] is None, "el taller no lo cambia"
         con.close()
 
 

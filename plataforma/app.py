@@ -2151,6 +2151,21 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     con.commit(); return volver(oid, request)
 
 
+@app.post("/ordenes/{oid}/recibe")
+def orden_recibe(request: Request, oid: int, recibe_nombre: str = Form(""), recibe_telefono: str = Form(""), volver_a: str = Form("/operaciones", alias="volver"), con=Depends(db)):
+    """El cliente avisó que recibe otra persona (o que ya vuelve a recibir él): se anota en la orden y le sale al despachador."""
+    if "coordinar" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    o = con.execute("SELECT receptor_nombre, receptor_telefono FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if not o: return RedirectResponse("/operaciones", status_code=303)
+    nombre = recibe_nombre.strip() or None
+    tel = (normalizar_telefono(recibe_telefono) or None) if nombre else None
+    if ((o["receptor_nombre"] or "").strip() or None, o["receptor_telefono"] or None) != (nombre, tel):
+        con.execute("UPDATE ordenes SET receptor_nombre=?, receptor_telefono=? WHERE id=?", (nombre, tel, oid))
+        registrar(con, oid, uid_de(request), "entrega", f"Recibe {nombre}" + (f" ({tel})" if tel else "") if nombre else "Recibe el cliente")
+    con.commit()
+    return RedirectResponse(volver_a if volver_a.startswith("/") and not volver_a.startswith("//") else "/operaciones", status_code=303)
+
+
 @app.post("/ordenes/{oid}/paga-el")
 def paga_otro_dia(request: Request, oid: int, fecha: str = Form(""), con=Depends(db)):
     """'Paga otro día': el cliente dijo cuándo paga. No sale en 'con saldo pendiente' hasta ese día; la deuda y la entrega no cambian."""
