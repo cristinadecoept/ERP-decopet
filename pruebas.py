@@ -3257,6 +3257,21 @@ def _():
 
 
 
+@prueba("Cliente viejo con '(solo GPS)': sale en Inicio solo si tiene un delivery por entregar")
+def _():
+    with erp_de_prueba() as c:
+        sesion_de(c, "admin")
+        con = sqlite3.connect(A.DB)
+        for i, n in ((901, "Paola Vieja"), (902, "Otra Vieja")):
+            con.execute("INSERT INTO clientes (id,nombre,nombre_pila,creado_en) VALUES (?,?,?,'2025-01-01')", (i, n, n))
+            con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,maps,principal) VALUES (?,'Principal','(solo GPS)','https://maps.app.goo.gl/p',1)", (i,))
+        con.execute("INSERT INTO ordenes (numero,cliente_id,estado,tipo_entrega,total) VALUES ('#9901',901,'pendiente','delivery',24)")
+        con.execute("INSERT INTO ordenes (numero,cliente_id,estado,tipo_entrega,total) VALUES ('#9902',902,'entregada','delivery',24)")
+        con.commit(); con.close()
+        h = c.get("/inicio").text
+        assert "Paola Vieja: tiene el GPS pero falta la dirección escrita" in h and "Otra Vieja: tiene el GPS" not in h
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

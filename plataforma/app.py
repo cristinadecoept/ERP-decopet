@@ -1247,10 +1247,14 @@ def inicio(request: Request, con=Depends(db)):
                           AND NOT EXISTS (SELECT 1 FROM mascotas m WHERE m.cliente_id=c.id)
                           AND EXISTS (SELECT 1 FROM ordenes o WHERE o.cliente_id=c.id AND o.estado!='cancelada')
                         ORDER BY c.creado_en DESC LIMIT 20""", (desde_r,))]
-    # clientes nuevos que se guardaron con solo el GPS: falta la dirección escrita (Cristina, 9 nov)
+    # clientes con solo el GPS: falta la dirección escrita (Cristina, 9 nov). Los nuevos siempre; los viejos
+    # (que quedaron como "(solo GPS)") cuando tienen un delivery por entregar, para irlos completando de a poco (12 nov).
     c["sin_direccion"] = [dict(r) for r in con.execute("""SELECT c.id, c.nombre, d.id did, d.etiqueta, d.maps, d.ciudad FROM clientes c
                         JOIN direcciones d ON d.cliente_id=c.id AND d.principal=1
-                        WHERE substr(c.creado_en,1,10) >= ? AND TRIM(COALESCE(d.direccion,''))='' AND TRIM(COALESCE(d.maps,''))!=''
+                        WHERE TRIM(COALESCE(d.direccion,'')) IN ('','(solo GPS)') AND TRIM(COALESCE(d.maps,''))!=''
+                          AND (substr(c.creado_en,1,10) >= ? OR EXISTS (SELECT 1 FROM ordenes o WHERE o.cliente_id=c.id
+                               AND o.tipo_entrega IN ('delivery','delivery_fuera') AND o.estado IN ('pendiente','en_ruta')
+                               AND TRIM(COALESCE(o.direccion,'')) IN ('','(solo GPS)')))
                         ORDER BY c.creado_en DESC LIMIT 20""", (desde_r,))]
     for x in c["sin_mascota"]:   # el mismo mensaje con que Cristina pide los datos del perro
         x["msj"] = f"¡Hola {x['quien']}! 👋🏻 Para nuestra base de datos, ¿crees que nos puedes pasar porfa el nombre, raza y cumpleaños de tu perro? 🐶💚"
