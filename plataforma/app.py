@@ -6858,6 +6858,18 @@ def saldar_con_adelanto(con, nombre):
     con.commit()
 
 
+def repartir_adelanto(hist, monto):
+    """El adelanto que sobra (no alcanza para pagar una entrega completa) se ve en la fila más vieja sin pagar:
+    'faltan $2' en vez de '$5 sin pagar', para que las filas sumen lo mismo que 'te deben'."""
+    monto = round(monto or 0, 2)
+    pend = [h for h in hist if h.get("estado") in ("entregada", "no_entregado", "diligencia") and not h.get("por_aprobar")
+            and not h.get("despachador_pagado") and (h.get("pago") or 0) > 0]
+    for h in sorted(pend, key=lambda h: ((h.get("fecha") or "")[:10], h.get("id") or 0)):
+        if monto < 0.01: break
+        c = round(min(h["pago"], monto), 2); h["adelanto_cubre"] = c; h["falta"] = round(h["pago"] - c, 2); monto = round(monto - c, 2)
+    return hist
+
+
 def resumen_despachador(con, nombre, hoy):
     """Lo que se le debe: cada orden asignada (no cancelada) suma su pago hasta que la marcas pagada (los lunes)."""
     # se le debe lo que ya ENTREGÓ: asignado no es ganado (se puede cambiar el despachador, o pasar a pick-up)
@@ -6912,7 +6924,7 @@ def mis_entregas(request: Request, con=Depends(db)):
     hoy = datetime.date.today()
     r = resumen_despachador(con, nombre, hoy)
     ruta = ruta_despachador(con, nombre, hoy.isoformat())
-    hist = con.execute("""SELECT o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
+    hist = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
                           COALESCE(o.delivery,0) pago, o.estado, o.despachador_pagado,
                           COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(o.zona),'') zona,
                           COALESCE(NULLIF(TRIM(o.direccion),''), (SELECT d.direccion FROM direcciones d WHERE d.cliente_id=o.cliente_id
@@ -6933,6 +6945,7 @@ def mis_entregas(request: Request, con=Depends(db)):
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
     hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre, vigentes=True), key=lambda h: h["fecha"] or "", reverse=True)
+    repartir_adelanto(hist_todo, r["adelanto_resta"])
     viajes_pend = viajes_por_llevar(con, nombre)
     # "Lo que has entregado" es solo lo que ya hizo: lo pendiente o en ruta está en "Lo que te toca hoy"
     hist_todo = [h for h in hist_todo if h["estado"] not in ("pendiente", "en_ruta")]
@@ -7391,6 +7404,7 @@ def despachador_ficha(request: Request, did: int, periodo: str = "", con=Depends
         hist.append({"fecha": (v["fecha"] or "")[:10], "quien": f"Llevar a {v['agencia'] or 'la agencia'}" + (f" {v['oficina']}" if v["oficina"] else "") +
                      f" · {v['pedidos']} paquete{'s' if v['pedidos'] != 1 else ''}", "zona": None, "estado": "pendiente", "pago": 0, "despachador_pagado": 0})
     hist = sorted(hist, key=lambda h: h["fecha"] or "", reverse=True)
+    repartir_adelanto(hist, r["adelanto_resta"])
     # el período que Cristina quiere mirar (12 nov): esta semana, este mes, el mes pasado o todo
     lunes = hoy - datetime.timedelta(days=hoy.weekday()); ini_mes = hoy.replace(day=1)
     fin_pasado = ini_mes - datetime.timedelta(days=1)

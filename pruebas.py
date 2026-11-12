@@ -3458,6 +3458,28 @@ def _():
         assert A.fmt_dia(man) in resto and "para hoy" not in resto, "nada que diga 'hoy' en lo de mañana: apurado se lee mal (Cristina, 12 nov)"
 
 
+@prueba("Adelanto que no alcanza para una entrega: la fila más vieja dice cuánto cubrió y cuánto falta; las filas suman lo mismo que 'te deben'")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR IGNORE INTO cuentas (codigo,nombre,moneda,tipo,activa,orden) VALUES ('001','Efectivo USD','USD','operativa',1,1)")
+        yo = A.DESPACHADORES[0]; did = con.execute("SELECT id FROM despachadores WHERE nombre=?", (yo,)).fetchone()["id"]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Rosa Adelanto','Rosa','0414-0000001')").lastrowid
+        for n, f in enumerate(("2026-11-07", "2026-11-08", "2026-11-09")):
+            con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,delivery,fecha_entrega,despachador_pagado) VALUES (?,?,'entregada','pagada',60,0,'delivery',?,5,?,0)", (f"#61{n}", cid, yo, f))
+        con.commit(); A.cargar_formas_pago()
+        sesion_de(c, "admin")
+        c.post(f"/despachadores/{did}/adelanto", data={"monto": "3", "forma": "Efectivo USD", "fecha": datetime.date.today().isoformat()})
+        r = A.resumen_despachador(con, yo, datetime.date.today())
+        assert r["debe"] == 12 and r["adelanto_resta"] == 3, (r["debe"], r["adelanto_resta"])
+        for h in (c.get("/mis-entregas", params={"quien": yo}).text, c.get(f"/despachadores/{did}").text):
+            t = re.sub(r"\s+", " ", re.sub("<[^>]+>", " ", h))
+            assert t.count("faltan $2.00") == 1 and 'title="$3.00 ya salieron del adelanto"' in h, "la más vieja: $3 cubiertos, faltan $2"
+        t = re.sub(r"\s+", " ", re.sub("<[^>]+>", " ", c.get("/mis-entregas", params={"quien": yo}).text))
+        assert t.count("sin pagar") - t.count("viaje a la agencia sin pagar") - t.count("entregas sin pagar") >= 2, "las otras dos siguen sin pagar"
+        con.close()
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
