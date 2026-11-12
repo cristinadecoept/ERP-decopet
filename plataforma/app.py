@@ -584,7 +584,9 @@ def _platos(t):
     return Markup(re.sub(r"(?<![\w-])(?:plato )?(azul|rosado)\b", r'<span class="pl-\1">plato \1</span>', str(t)))
 tpl.env.filters["platos"] = _platos
 # "Pack 3 Repuestos Mediano⟪Lleva 1 de 3⟫" → el producto y, debajo, resaltado cuánto se lleva hoy
-tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<span class="lleva-tag">\1</span>', str(escape(t or "")))))
+# "Lleva 1 de 3" sale igual que en los retiros del pack: 📦 1/3 (Cristina, 12 nov)
+tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<span class="lleva-tag">\1</span>', re.sub(
+    r"⟪Lleva (\d+) de (\d+)⟫", r'<span class="pack-tag lleva-pk"><span aria-hidden="true">📦</span>\1/\2</span>', str(escape(t or ""))))))
 # "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
 tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None

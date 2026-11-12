@@ -1712,3 +1712,4 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .manana-caja{margin-top:34px}.manana-caja .tabla{opacity:.8}
 .tarjeta>h3.tit-fuerte{font-size:17px;font-weight:700;color:var(--tinta);letter-spacing:0}
 .g2:has(>.tarjeta),.g3:has(>.tarjeta),.g2:has(>.tabla){row-gap:16px}
+.pack-tag.lleva-pk{display:flex;width:max-content;margin-top:4px}

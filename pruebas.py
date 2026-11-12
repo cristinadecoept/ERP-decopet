@@ -3511,6 +3511,12 @@ def _():
         con.close()
 
 
+@prueba("La primera entrega de un pack se escribe igual que los retiros: 📦 1/3, no 'Lleva 1 de 3'")
+def _():
+    h = str(A.tpl.env.filters["lleva"]("1× Pack 3 Repuestos Grande⟪Lleva 1 de 3⟫"))
+    assert 'class="pack-tag lleva-pk"' in h and "📦</span>1/3" in h and "Lleva 1 de 3" not in h, h
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
