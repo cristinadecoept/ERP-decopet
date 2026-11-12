@@ -1698,3 +1698,4 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .mp-cuerpo{transition:opacity .15s}
 @media(max-width:900px){.dlg.mp-dlg{max-width:100vw;max-height:100vh;height:100%;margin:0;border-radius:0;padding:14px 16px}.mp-cab>div:first-child{flex:1 1 0;min-width:0}.mp-filtros{order:2;width:100%}.mp-filtros select{flex:1;min-width:0}
  .mp-dlg .mp-mapa{height:340px}.mp-dlg .mp-lista{max-height:none}}
+
