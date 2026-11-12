@@ -1872,8 +1872,51 @@ def _():
         c.post(f"/ordenes/{ids[0]}/entrega", data={"tipo_entrega": "pickup", "fecha_prometida": hoy, "nota_taller": "ponerle lazo rojo"})
         c.post(f"/ordenes/{ids[1]}/entrega", data={"tipo_entrega": "delivery", "despachador": "Juan", "fecha_prometida": hoy, "nota_taller": "revisar tornillos"})
         assert con.execute("SELECT nota_taller FROM ordenes WHERE id=?", (ids[0],)).fetchone()[0] == "ponerle lazo rojo"
+        c.post("/taller/montar", data={"tipo": "orden", "id": ids[1]})   # lo del despachador lo ve cuando Cristina le da Montar
         sesion_de(c, "taller"); h = c.get("/taller").text
         assert "ponerle lazo rojo" in h and "revisar tornillos" in h, "el taller no ve la nota"
+        con.close()
+
+
+@prueba("Montar: el taller no ve los deliveries ni envíos hasta que Cristina le da Montar a cada uno; al darle Listo a ella le llega el aviso")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        pid = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('CARRO1','Porche Lote','producto',90)").lastrowid
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Lote Prueba','Lote')").lastrowid
+        def orden(num, desp="Pepito", fecha=hoy):
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida)
+                                 VALUES (?,?,'pendiente','pagada',90,0,'delivery',?,?)""", (num, cid, desp, fecha)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Porche Lote',1,90,90)", (oid, pid)); con.commit()
+            return oid
+        o1, o2 = orden("#L1"), orden("#L2")
+        o3 = orden("#L3", fecha=(datetime.date.today() + datetime.timedelta(days=2)).isoformat())   # de otro día: también se puede mandar
+        sesion_de(c, "taller"); h = c.get("/taller").text
+        assert "Porche Lote" not in h and "Montar a" not in h, "el taller no lo ve solo"
+        c.post("/taller/montar", data={"tipo": "orden", "id": o1})
+        sesion_de(c, "logistica"); c.post("/taller/montar", data={"tipo": "orden", "id": o1})
+        assert con.execute("SELECT COUNT(*) FROM cargas_taller").fetchone()[0] == 0, "solo Cristina le da Montar"
+        sesion_de(c, "admin"); h = c.get("/operaciones").text
+        assert h.count('action="/taller/montar"') >= 2
+        for o in (o1, o3): c.post("/taller/montar", data={"tipo": "orden", "id": o})
+        c.post("/taller/montar", data={"tipo": "orden", "id": o1})   # dos veces el mismo: una sola vez en el taller
+        assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE orden_id=?", (o1,)).fetchone()[0] == 1
+        assert "Montar ✓" in c.get("/operaciones").text
+        sesion_de(c, "taller"); h = c.get("/taller").text
+        assert h.count("Montar a Pepito") == 1 and "2× Porche Lote" in h, "todo lo de Pepito junto, con un solo Listo"
+        con.execute("UPDATE usuarios SET nombre='Isaías Prueba' WHERE rol='taller'"); con.commit()
+        c.post("/taller/montado", data={"despachador": "Pepito"})
+        assert "Porche Lote" not in c.get("/taller").text, "ya montado, sale de su pantalla"
+        n = con.execute("SELECT texto, visto FROM notas_taller WHERE carga_id IS NOT NULL").fetchone()
+        assert n and n["texto"] == "Isaías montó lo de Pepito: 2× Porche Lote" and n["visto"] == 0, dict(n)
+        sesion_de(c, "admin")
+        assert "Isaías montó lo de Pepito" in c.get("/inicio").text, "a Cristina le llega el aviso"
+        assert "✓ montado" in c.get("/operaciones").text
+        c.post("/taller/montar", data={"tipo": "orden", "id": o2})
+        k = con.execute("SELECT id FROM cargas_taller WHERE orden_id=?", (o2,)).fetchone()[0]
+        c.post(f"/taller/carga/{k}/quitar")
+        sesion_de(c, "taller"); assert "Porche Lote" not in c.get("/taller").text, "si lo quita, el taller deja de verlo"
         con.close()
 
 
@@ -3120,14 +3163,16 @@ def _():
             oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,canal,estado,estado_pago,tipo_entrega,agencia,despachador,subtotal,total,origen_excel)
                                  VALUES (?,?,'whatsapp','pendiente','pagada','nacional','Tealca',?,60,60,0)""", (num, cid, desp)).lastrowid
             con.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio) VALUES (?,?,1,60)", (oid, pid))
-        con.commit(); con.close(); sesion_de(c, "taller")
+        con.commit(); sesion_de(c, "admin")
+        for (oid,) in con.execute("SELECT id FROM ordenes WHERE numero LIKE '#T%'"): c.post("/taller/montar", data={"tipo": "orden", "id": oid})
+        con.close(); sesion_de(c, "taller")
         h = c.get("/taller").text
-        ingrid = h.split("<b>Ingrid</b>")[1].split("</tr>")[0]
-        cristina = h.split("<b>Cristina</b>")[1].split("</tr>")[0]
+        ingrid = h.split("Montar a Ingrid")[1].split('class="tarjeta"')[0]
+        cristina = h.split("Montar a Cristina")[1].split('class="tarjeta"')[0]
         assert "1× Bar Prueba" in ingrid and "embalar" not in ingrid and "Tealca" not in ingrid, ingrid
         assert "2× Bar Prueba" in cristina and "va a la agencia · embalar" in cristina and "Tealca Catia" not in cristina, cristina
-        juan = h.split("<b>Juan</b>")[1].split("</tr>")[0]
-        para = h.split("<b>Para Tealca</b>")[1].split("</tr>")[0]
+        juan = h.split("Montar a Juan")[1].split('class="tarjeta"')[0]
+        para = h.split("Embalar para Tealca")[1].split('class="tarjeta"')[0]
         assert "1× Bar Prueba" in juan and "embalar" not in juan, juan
         assert "1× Bar Prueba" in para and "embalar" not in para, para
 

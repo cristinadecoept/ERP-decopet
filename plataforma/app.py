@@ -723,7 +723,7 @@ COLUMNAS = (
     ("danados", "reparando_en", "TEXT"), ("danados", "reparando_por", "INTEGER"), ("danados", "arregla", "TEXT"), ("danados", "visto", "INTEGER NOT NULL DEFAULT 0"),
     ("notas_taller", "produccion_id", "INTEGER"), ("notas_taller", "danado_id", "INTEGER"),
     ("notas_taller", "agotando_id", "INTEGER"), ("notas_taller", "llegada", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "agotando_color", "TEXT"),
-    ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"),
+    ("notas_taller", "resuelto", "INTEGER NOT NULL DEFAULT 0"), ("notas_taller", "resuelto_en", "TEXT"), ("notas_taller", "carga_id", "INTEGER"), ("cargas_taller", "orden_id", "INTEGER"), ("cargas_taller", "pack_id", "INTEGER"), ("cargas_taller", "prepagado_id", "INTEGER"),
     ("ordenes", "despachador_pagado", "INTEGER NOT NULL DEFAULT 0"),
     ("pagos_despachador", "adelanto_usado", "REAL NOT NULL DEFAULT 0"), ("pagos_despachador", "confirmado_en", "TEXT"),
     ("pagos_despachador", "reclamo_monto", "REAL"), ("pagos_despachador", "reclamo_nota", "TEXT"), ("pagos_despachador", "reclamo_en", "TEXT"),
@@ -1312,7 +1312,7 @@ def inicio(request: Request, con=Depends(db)):
                              AND EXISTS (SELECT 1 FROM receta r WHERE r.producto_id=p.id) ORDER BY p.orden""").fetchall()
     armados = [dict(a) | {"corto": a["nombre"].replace("El Porche Versión PRO ", "")} for a in armados]
     n_armados = sum(a["listos"] for a in armados)
-    avisos_taller = con.execute("SELECT * FROM notas_taller WHERE (resuelto=0 OR danado_id IS NOT NULL OR llegada=1) AND visto=0 ORDER BY id DESC LIMIT 5").fetchall() if rol == "admin" else []
+    avisos_taller = con.execute("SELECT * FROM notas_taller WHERE (resuelto=0 OR danado_id IS NOT NULL OR llegada=1 OR carga_id IS NOT NULL) AND visto=0 ORDER BY id DESC LIMIT 5").fetchall() if rol == "admin" else []
     c["avisos_pendientes"] = con.execute("SELECT COUNT(*) FROM notas_taller WHERE resuelto=0").fetchone()[0] if rol == "admin" else 0
     cuentas_act = con.execute("SELECT id, codigo, nombre FROM cuentas WHERE activa=1 ORDER BY orden").fetchall() if rol == "admin" else []
     hoy_lista = sorted([o for o in activas if (o["fecha_prometida"] or h) <= h], key=lambda o: (o["coordinada"], o["tipo_entrega"] or ""))[:6]
@@ -2790,7 +2790,12 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     # Pagarlo no es de aquí: se le paga el viernes con lo demás, desde su ficha de despachador.
     tarifas_ag = {a: tarifa_agencia(con, a) for a in AGENCIAS}
     oficinas_ag = oficinas_agencia(con)
-    return render(request, "operaciones.html", seccion="operaciones", ventas_auto=ventas_automaticas(con), grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, total=len(lista), hoy_iso=hoy, manana_iso=manana,
+    montajes = {}   # 'Montar': lo que Cristina ya le mandó al taller, por orden, pack o repuesto prepagado
+    if rol == "admin":
+        for k in con.execute("SELECT * FROM cargas_taller WHERE listo_en IS NULL OR listo_en >= date('now','localtime','-7 days') ORDER BY id"):
+            for t, col in (("orden", "orden_id"), ("pack", "pack_id"), ("prepagado", "prepagado_id")):
+                if k[col]: montajes[(t, k[col])] = k
+    return render(request, "operaciones.html", montajes=montajes, seccion="operaciones", ventas_auto=ventas_automaticas(con), grupos=grupos, cola=cola, colas=colas, conteos=conteos, por_desp=por_desp, total=len(lista), hoy_iso=hoy, manana_iso=manana,
                   por_llevar=por_llevar, por_agencia=por_agencia, viajes=viajes, tarifas_ag=tarifas_ag, oficinas_ag=oficinas_ag,
                   tipo=tipo, agencia=agencia, conteos_tipo=conteos_tipo, conteos_ag=conteos_ag, dia=dia, desp=desp, despachadores=despachadores, conteos_desp=conteos_desp, vista=vista, fecha_larga=fecha_larga, q=q)
 
@@ -7587,6 +7592,78 @@ def lo_que_lleva(con, oid, cuenta):
     return " · ".join(partes), piezas
 
 
+def salidas_de_hoy(con, orden_id=None, pack_id=None, prepagado_id=None):
+    """Lo que se lleva cada despachador hoy, en bultos. El taller ya no lo ve solo: Cristina le da 'Montar' a cada delivery o envío
+    y ahí le aparece (Cristina, 11 nov: el taller hace porches en lotes, no solo lo que sale en pantalla).
+    Con orden_id, pack_id o prepagado_id: solo eso, sea del día que sea."""
+    hoy = datetime.date.today().isoformat()
+    uno = orden_id or pack_id or prepagado_id
+    if uno: hoy = "9999-12-31"
+    # Lo que se lleva cada despachador hoy: para que en el taller sepan qué entregarle cuando pasa por la casa.
+    # Sin nombres de clientes y sin fechas: es una lista de bultos, todo lo de hoy.
+    salidas = {}
+    def sale(quien_lleva, producto, n, agencia=False, falta=False, sin_embalar=False):
+        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})
+        # lo de la agencia va aparte: eso hay que embalarlo; lo de Tealca Catia no se embala y va con lo demás (Cristina, 10 nov)
+        d = g["agencia"] if agencia and not sin_embalar else g["cosas"]
+        d[producto] = d.get(producto, 0) + n
+
+    for o in con.execute("""SELECT o.id, COALESCE(NULLIF(TRIM(o.despachador),''),   -- un envío nacional lo lleva quien tiene el viaje a la agencia
+                                   (SELECT v.despachador FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL)) despachador,
+                            o.tipo_entrega, o.agencia, NULLIF(TRIM(o.nota_taller),'') nota_taller,
+                            (SELECT v.oficina FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL) oficina_viaje FROM ordenes o
+                            WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
+                              AND o.estado='pendiente' AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0   -- en ruta = ya salió del taller
+                              AND """ + HAY_QUE_ENTREGAR() + """
+                              -- con viaje a la agencia asignado, manda el día del viaje (el pedido puede decir hoy y el viaje ser mañana)
+                              AND COALESCE((SELECT v.fecha FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL),
+                                           o.fecha_prometida, substr(o.creado_en,1,10)) <= ?
+                              AND (? IS NULL OR o.id=?)""", (hoy, orden_id if uno else None, orden_id)):
+        # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
+        a_agencia = o["tipo_entrega"] == "nacional"
+        sin_emb = a_agencia and no_se_embala(o["agencia"], o["oficina_viaje"])
+        # un envío nacional sin despachador no es "sin despachador": va a una agencia (MRW, Tealca…) y falta quién lo lleve hasta allá
+        falta = not (o["despachador"] or "").strip()
+        lleva = (o["despachador"] or "").strip() or ((f"Para {o['agencia']}" if o["agencia"] else "Para la agencia") if a_agencia else "Sin despachador")
+        if o["nota_taller"]:
+            salidas.setdefault(lleva, {"quien_lleva": lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})["notas"].append(o["nota_taller"])
+        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo, l.malla,
+                                TRIM(COALESCE(l.personalizacion,'')) perso
+                                FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? AND l.extra_en IS NULL
+                                  AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id AND r.entregado_en IS NULL)""", (o["id"],)):
+            if l["tipo"] == "opcion":   # una opción no es un bulto; si es la placa con nombre, que se vea el nombre
+                if l["perso"]: sale(lleva, f"Placa con el nombre “{l['perso']}”", int(l["cantidad"] or 1), a_agencia, falta, sin_emb)
+                continue
+            if (l["sku"] or "").startswith("PACK"):   # de un pack no sale "el pack": salen los repuestos que le tocan
+                k = con.execute("SELECT tamano, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
+                                (o["id"], l["sku"])).fetchone()
+                sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip() + (" + malla" if l["malla"] else ""), (k["entregadas_inicio"] if k else 1) or 1, a_agencia, falta, sin_emb)
+            else:
+                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else "") + (" + malla" if l["malla"] else "")
+                     + (f" ✎ personalizado “{l['perso']}”" if l["perso"] else ""), int(l["cantidad"]), a_agencia, falta, sin_emb)
+    for k in cargar_packs(con):
+        te_k = k["tipo_programado"] or k["tipo_entrega"]; nac_k = te_k == "nacional"
+        v_k = con.execute("SELECT despachador, fecha, oficina FROM viajes_agencia WHERE id=? AND llevado_en IS NULL", (k["viaje_id"],)).fetchone() if k["viaje_id"] else None
+        dia_k = v_k["fecha"] if v_k else k["fecha_programada"]   # con viaje a la agencia asignado, manda el día del viaje
+        if uno and k["id"] != pack_id: continue
+        if k["saldo"] > 0 and (dia_k or uno) and (dia_k or hoy) <= hoy and te_k != "pickup" and not k.get("en_ruta"):
+            ag_k = destino_pack(k)[0] if nac_k else None
+            quien_k = (v_k["despachador"] if v_k else k["despachador_programado"] or "").strip()
+            sale(quien_k or ((f"Para {ag_k}" if ag_k else "Para la agencia") if nac_k else "Sin despachador"),
+                 f"Repuesto {k['tamano'] or ''}".strip() + (" + malla" if "+ malla" in repuesto_de_pack(k, con)[0] else ""), min(k["retiro_programado"] or 1, k["saldo"]), nac_k, nac_k and not quien_k,
+                 nac_k and no_se_embala(ag_k, v_k["oficina"] if v_k else None))
+    for r in cargar_prepagados(con):
+        if uno and r["id"] != prepagado_id: continue
+        if (r["fecha_programada"] or uno) and (r["fecha_programada"] or hoy) <= hoy and r["tipo_entrega"] != "pickup" and not r.get("en_ruta"):
+            sale((r["despachador"] or "").strip() or "Sin despachador", f"Repuesto {r['tamano'] or ''}".strip() + (" + malla" if prepagado_con_malla(con, r) else ""), 1)
+
+    for g in salidas.values():
+        for k_ in ("cosas", "agencia"):
+            g[k_] = " · ".join(f"{n}× {nom}" for nom, n in sorted(g[k_].items()))
+    salidas = sorted(salidas.values(), key=lambda g: (g["falta"] or g["quien_lleva"] == "Sin despachador", g["quien_lleva"]))
+    return salidas
+
+
 @app.get("/taller", response_class=HTMLResponse)
 def taller_hoy(request: Request, con=Depends(db)):
     """La pantalla del taller: qué hay que entregar en pick-up y qué debe llegar hoy.
@@ -7621,65 +7698,6 @@ def taller_hoy(request: Request, con=Depends(db)):
     pickups = [p for p in pickups if (p["fecha"] or hoy) <= hoy]   # cada pick-up sale el día que le toca (y si se atrasa, sigue saliendo)
     pickups.sort(key=lambda x: (x["fecha"], x["quien"]))
 
-    # Lo que se lleva cada despachador hoy: para que en el taller sepan qué entregarle cuando pasa por la casa.
-    # Sin nombres de clientes y sin fechas: es una lista de bultos, todo lo de hoy.
-    salidas = {}
-    def sale(quien_lleva, producto, n, agencia=False, falta=False, sin_embalar=False):
-        g = salidas.setdefault(quien_lleva, {"quien_lleva": quien_lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})
-        # lo de la agencia va aparte: eso hay que embalarlo; lo de Tealca Catia no se embala y va con lo demás (Cristina, 10 nov)
-        d = g["agencia"] if agencia and not sin_embalar else g["cosas"]
-        d[producto] = d.get(producto, 0) + n
-
-    for o in con.execute("""SELECT o.id, COALESCE(NULLIF(TRIM(o.despachador),''),   -- un envío nacional lo lleva quien tiene el viaje a la agencia
-                                   (SELECT v.despachador FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL)) despachador,
-                            o.tipo_entrega, o.agencia, NULLIF(TRIM(o.nota_taller),'') nota_taller,
-                            (SELECT v.oficina FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL) oficina_viaje FROM ordenes o
-                            WHERE o.tipo_entrega IN ('delivery','delivery_fuera','nacional')
-                              AND o.estado='pendiente' AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0   -- en ruta = ya salió del taller
-                              AND """ + HAY_QUE_ENTREGAR() + """
-                              -- con viaje a la agencia asignado, manda el día del viaje (el pedido puede decir hoy y el viaje ser mañana)
-                              AND COALESCE((SELECT v.fecha FROM viajes_agencia v WHERE v.id=o.viaje_id AND v.llevado_en IS NULL),
-                                           o.fecha_prometida, substr(o.creado_en,1,10)) <= ?""", (hoy,)):
-        # quien lleva es quien lleva, aunque una parte vaya a la agencia: un solo Juan, no dos
-        a_agencia = o["tipo_entrega"] == "nacional"
-        sin_emb = a_agencia and no_se_embala(o["agencia"], o["oficina_viaje"])
-        # un envío nacional sin despachador no es "sin despachador": va a una agencia (MRW, Tealca…) y falta quién lo lleve hasta allá
-        falta = not (o["despachador"] or "").strip()
-        lleva = (o["despachador"] or "").strip() or ((f"Para {o['agencia']}" if o["agencia"] else "Para la agencia") if a_agencia else "Sin despachador")
-        if o["nota_taller"]:
-            salidas.setdefault(lleva, {"quien_lleva": lleva, "cosas": {}, "agencia": {}, "falta": falta, "notas": []})["notas"].append(o["nota_taller"])
-        for l in con.execute("""SELECT COALESCE(NULLIF(l.nombre,''), p.nombre) nombre, l.cantidad, l.color, p.sku, p.tipo, l.malla,
-                                TRIM(COALESCE(l.personalizacion,'')) perso
-                                FROM orden_lineas l JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=? AND l.extra_en IS NULL
-                                  AND NOT EXISTS (SELECT 1 FROM repuestos_prepagados r WHERE r.linea_id=l.id AND r.entregado_en IS NULL)""", (o["id"],)):
-            if l["tipo"] == "opcion":   # una opción no es un bulto; si es la placa con nombre, que se vea el nombre
-                if l["perso"]: sale(lleva, f"Placa con el nombre “{l['perso']}”", int(l["cantidad"] or 1), a_agencia, falta, sin_emb)
-                continue
-            if (l["sku"] or "").startswith("PACK"):   # de un pack no sale "el pack": salen los repuestos que le tocan
-                k = con.execute("SELECT tamano, entregadas_inicio FROM packs WHERE orden_id=? AND producto_id=(SELECT id FROM productos WHERE sku=?)",
-                                (o["id"], l["sku"])).fetchone()
-                sale(lleva, f"Repuesto {(k['tamano'] if k else '') or ''}".strip() + (" + malla" if l["malla"] else ""), (k["entregadas_inicio"] if k else 1) or 1, a_agencia, falta, sin_emb)
-            else:
-                sale(lleva, l["nombre"] + (f" {l['color']}" if l["color"] else "") + (" + malla" if l["malla"] else "")
-                     + (f" ✎ personalizado “{l['perso']}”" if l["perso"] else ""), int(l["cantidad"]), a_agencia, falta, sin_emb)
-    for k in cargar_packs(con):
-        te_k = k["tipo_programado"] or k["tipo_entrega"]; nac_k = te_k == "nacional"
-        v_k = con.execute("SELECT despachador, fecha, oficina FROM viajes_agencia WHERE id=? AND llevado_en IS NULL", (k["viaje_id"],)).fetchone() if k["viaje_id"] else None
-        dia_k = v_k["fecha"] if v_k else k["fecha_programada"]   # con viaje a la agencia asignado, manda el día del viaje
-        if k["saldo"] > 0 and dia_k and dia_k <= hoy and te_k != "pickup" and not k.get("en_ruta"):
-            ag_k = destino_pack(k)[0] if nac_k else None
-            quien_k = (v_k["despachador"] if v_k else k["despachador_programado"] or "").strip()
-            sale(quien_k or ((f"Para {ag_k}" if ag_k else "Para la agencia") if nac_k else "Sin despachador"),
-                 f"Repuesto {k['tamano'] or ''}".strip() + (" + malla" if "+ malla" in repuesto_de_pack(k, con)[0] else ""), min(k["retiro_programado"] or 1, k["saldo"]), nac_k, nac_k and not quien_k,
-                 nac_k and no_se_embala(ag_k, v_k["oficina"] if v_k else None))
-    for r in cargar_prepagados(con):
-        if r["fecha_programada"] and r["fecha_programada"] <= hoy and r["tipo_entrega"] != "pickup" and not r.get("en_ruta"):
-            sale((r["despachador"] or "").strip() or "Sin despachador", f"Repuesto {r['tamano'] or ''}".strip() + (" + malla" if prepagado_con_malla(con, r) else ""), 1)
-
-    for g in salidas.values():
-        for k_ in ("cosas", "agencia"):
-            g[k_] = " · ".join(f"{n}× {nom}" for nom, n in sorted(g[k_].items()))
-    salidas = sorted(salidas.values(), key=lambda g: (g["falta"] or g["quien_lleva"] == "Sin despachador", g["quien_lleva"]))
     llegadas = con.execute("""SELECT pr.id, pr.cantidad, pr.recibido, pr.fecha_esperada, pr.responsable, pr.pieza, pr.descripcion,
                               COALESCE(NULLIF(pr.pieza,''), p.nombre) producto, p.requiere_color FROM produccion pr LEFT JOIN productos p ON p.id=pr.producto_id
                               WHERE pr.estado NOT IN ('recibido','cancelado','cancelada')
@@ -7700,11 +7718,69 @@ def taller_hoy(request: Request, con=Depends(db)):
             tope = min(materiales, key=lambda m: m["da_para"]) if materiales else None
             armables.append({"id": p_["id"], "nombre": p_["nombre"], "color": col, "listos": stock(p_["id"], col),
                              "alcanza": tope["da_para"] if tope else 0, "materiales": materiales, "tope": tope})
-    notas = con.execute("SELECT * FROM notas_taller ORDER BY id DESC LIMIT 8").fetchall()
+    notas = con.execute("SELECT * FROM notas_taller WHERE carga_id IS NULL ORDER BY id DESC LIMIT 8").fetchall()   # lo montado no es un aviso suyo
     armados_hoy = con.execute("""SELECT m.lote, m.cantidad, m.color, p.nombre, u.nombre quien, substr(m.creado_en,12,5) hora
                                  FROM mov_inventario m JOIN productos p ON p.id=m.producto_id LEFT JOIN usuarios u ON u.id=m.usuario_id
                                  WHERE m.lote IS NOT NULL AND m.tipo='entrada' AND m.fecha=? ORDER BY m.id DESC""", (hoy,)).fetchall()
-    return render(request, "taller.html", seccion="taller", pickups=pickups, salidas=salidas, llegadas=llegadas, armables=armables, armados_hoy=armados_hoy, notas=notas, hoy_iso=hoy, fecha_larga=fecha_larga())
+    cargas = {}   # lo que Cristina mandó a montar, todo junto por despachador
+    for k in con.execute("SELECT * FROM cargas_taller WHERE listo_en IS NULL ORDER BY id"): cargas.setdefault(k["despachador"], []).append(k)
+    cargas = {d: juntar_cargas(ks) for d, ks in cargas.items()}
+    return render(request, "taller.html", seccion="taller", pickups=pickups, cargas=cargas, llegadas=llegadas, armables=armables, armados_hoy=armados_hoy, notas=notas, hoy_iso=hoy, fecha_larga=fecha_larga())
+
+
+def juntar_cargas(ks):
+    """Lo de varios pedidos del mismo despachador, en una sola lista: 2× Bar, no dos veces 1× Bar."""
+    g = {"cosas": {}, "agencia": {}, "notas": []}
+    for k in ks:
+        for campo in ("cosas", "agencia"):
+            for parte in (k[campo] or "").split(" · "):
+                n, _, nom = parte.partition("× ")
+                if nom: g[campo][nom] = g[campo].get(nom, 0) + (int(n) if n.isdigit() else 1)
+        g["notas"] += [x for x in (k["notas"] or "").split("\n") if x]
+    for campo in ("cosas", "agencia"): g[campo] = " · ".join(f"{n}× {nom}" for nom, n in sorted(g[campo].items()))
+    return g
+
+
+def texto_carga(g):
+    return " · ".join(x for x in (g["cosas"], g["agencia"] and g["agencia"] + " (embalar)") if x)
+
+
+@app.post("/taller/montar")
+def taller_montar(request: Request, tipo: str = Form("orden"), id: int = Form(0), volver: str = Form("/operaciones"), con=Depends(db)):
+    """Cristina le da 'Montar' a un delivery o envío: en ese momento le aparece al taller, en lo del despachador que lo lleva."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    col = {"orden": "orden_id", "pack": "pack_id", "prepagado": "prepagado_id"}.get(tipo)
+    if col and id:
+        g = next(iter(salidas_de_hoy(con, **{col: id})), None)
+        if g and (g["cosas"] or g["agencia"]) and g["quien_lleva"] != "Sin despachador":
+            con.execute(f"DELETE FROM cargas_taller WHERE {col}=? AND listo_en IS NULL", (id,))   # si ya estaba, va lo de ahora
+            con.execute(f"INSERT INTO cargas_taller (despachador, cosas, agencia, notas, pedido_por, {col}) VALUES (?,?,?,?,?,?)",
+                        (g["quien_lleva"], g["cosas"] or None, g["agencia"] or None, "\n".join(g["notas"]) or None, uid_de(request), id))
+            con.commit()
+    return RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
+
+
+@app.post("/taller/carga/{cid}/quitar")
+def taller_carga_quitar(request: Request, cid: int, volver: str = Form("/operaciones"), con=Depends(db)):
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    con.execute("DELETE FROM cargas_taller WHERE id=? AND listo_en IS NULL", (cid,)); con.commit()
+    return RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
+
+
+@app.post("/taller/montado")
+def taller_montado(request: Request, despachador: str = Form(""), con=Depends(db)):
+    """El taller ya le montó todo a un despachador: a Cristina le llega el aviso en Inicio."""
+    if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
+    ks = con.execute("SELECT * FROM cargas_taller WHERE despachador=? AND listo_en IS NULL ORDER BY id", (despachador,)).fetchall()
+    if ks:
+        uid = uid_de(request); hoy = datetime.date.today().isoformat()
+        con.execute("UPDATE cargas_taller SET listo_en=datetime('now','localtime'), listo_por=? WHERE despachador=? AND listo_en IS NULL", (uid, despachador))
+        quien = ((con.execute("SELECT nombre FROM usuarios WHERE id=?", (uid,)).fetchone() or [""])[0] or "El taller").split()[0]   # Isaías montó lo de Juan
+        que = f"{quien} embaló lo que va " + despachador[0].lower() + despachador[1:] if despachador.startswith("Para ") else f"{quien} montó lo de {despachador}"
+        con.execute("INSERT INTO notas_taller (fecha, texto, usuario_id, resuelto, resuelto_en, carga_id) VALUES (?,?,?,1,?,?)",
+                    (hoy, que + ": " + texto_carga(juntar_cargas(ks)), uid, hoy, ks[-1]["id"]))
+        con.commit()
+    return RedirectResponse("/taller", status_code=303)
 
 
 @app.post("/taller/{oid}/entregado")

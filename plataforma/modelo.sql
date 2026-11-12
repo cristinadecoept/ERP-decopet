@@ -266,6 +266,13 @@ CREATE TABLE IF NOT EXISTS notas_taller (
   usuario_id INTEGER, visto INTEGER NOT NULL DEFAULT 0,
   creado_en TEXT DEFAULT (datetime('now','localtime')));
 
+-- 'Montar': Cristina le da Montar a un delivery o envío y le aparece al taller; el taller lo marca listo y a ella le llega el aviso.
+CREATE TABLE IF NOT EXISTS cargas_taller (
+  id INTEGER PRIMARY KEY, despachador TEXT NOT NULL, cosas TEXT, agencia TEXT, notas TEXT,
+  orden_id INTEGER, pack_id INTEGER, prepagado_id INTEGER,
+  pedido_en TEXT DEFAULT (datetime('now','localtime')), pedido_por INTEGER,
+  listo_en TEXT, listo_por INTEGER);
+
 -- Días que Isaías o Manawa no vinieron: se le descuenta el día de la quincena.
 CREATE TABLE IF NOT EXISTS faltas (
   id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, fecha TEXT NOT NULL, nota TEXT,
