@@ -3493,6 +3493,25 @@ def _():
         assert "no es quien recibe" in h
 
 
+@prueba("Despachador: un adelanto sale como último pago y queda en el historial con su concepto")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR IGNORE INTO cuentas (codigo,nombre,moneda,tipo,activa,orden) VALUES ('001','Efectivo USD','USD','operativa',1,1)")
+        did = con.execute("INSERT INTO despachadores (nombre, activo) VALUES ('Ingrid Adel', 1)").lastrowid
+        con.execute("INSERT INTO pagos_despachador (despachador, fecha, monto, entregas) VALUES ('Ingrid Adel', '2026-01-05', 30, 3)")
+        con.commit(); A.cargar_formas_pago()
+        sesion_de(c, "admin")
+        hoy = datetime.date.today().isoformat()
+        c.post(f"/despachadores/{did}/adelanto", data={"monto": "20", "forma": "Efectivo USD", "fecha": hoy, "nota": "para la moto"})
+        r = A.resumen_despachador(con, "Ingrid Adel", datetime.date.today())
+        assert r["ultimo_pago"]["monto"] == 20 and r["ultimo_pago"]["adelanto"], r["ultimo_pago"]
+        h = c.get(f"/despachadores/{did}").text
+        assert "para la moto" in h and "· adelanto" in h and ">Concepto<" in h
+        assert "(adelanto)" in c.get("/despachadores").text
+        con.close()
+
+
 @prueba("Producción › Editar: se cambia '¿Cuándo lo pagas?' y el aviso de Inicio se mueve a ese día")
 def _():
     with erp_de_prueba() as c:

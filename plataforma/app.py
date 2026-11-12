@@ -6777,6 +6777,11 @@ def resumen_despachador(con, nombre, hoy):
     r["adelanto_resta"] = round(min(r["adelanto"], r["debe"]), 2)
     r["debe"] = round(r["debe"] - r["adelanto_resta"], 2)
     r["adelanto_libre"] = round(r["adelanto"] - r["adelanto_resta"], 2)
+    # un adelanto también es plata que le diste: si es lo más reciente, es su último pago
+    ult = dict(ult) if ult else None
+    a = r["adelantos"][0] if r["adelantos"] else None
+    if a and (not ult or (a["fecha"] or "") > (ult["fecha"] or "")):
+        ult = {"fecha": a["fecha"], "monto": a["monto_usd"], "adelanto": True}
     return r | {"zonas": zonas, "ultimo_pago": ult}
 
 

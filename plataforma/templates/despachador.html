@@ -7,7 +7,7 @@
  <div class="tile" id="efectivo"><b style="color:{{ '#b45a1c' if efectivo_total else 'var(--verde-osc)' }}">{{ (efectivo_total or 0)|usd }}</b><span>Caja</span><i>{% if efectivo_total %}efectivo que cobró · {{ efectivo|length }} entrega{{ 's' if efectivo|length != 1 }}{% else %}no tiene efectivo tuyo{% endif %}</i>
   {% if rol=='admin' and efectivo_total %}<form method="post" action="/despachadores/{{ d.id }}/efectivo" style="margin-top:8px" onsubmit="return confirm('¿{{ d.nombre }} te entregó los ${{ '%.2f'|format(efectivo_total) }} en efectivo?')"><button class="btn sec chico">Me lo entregó</button></form>{% endif %}</div>
  {% if r.adelanto_libre %}<div class="tile"><b style="color:var(--verde-osc)">{{ r.adelanto_libre|usd }}</b><span>Adelanto por descontar</span><i>se le resta de las próximas entregas</i></div>{% endif %}
- <div class="tile"><b>{% if r.ultimo_pago %}{{ r.ultimo_pago.monto|usd }}{% else %}—{% endif %}</b><span>Último pago</span><i>{% if r.ultimo_pago %}{{ r.ultimo_pago.fecha|dia }}{% else %}todavía ninguno{% endif %}</i></div>
+ <div class="tile"><b>{% if r.ultimo_pago %}{{ r.ultimo_pago.monto|usd }}{% else %}—{% endif %}</b><span>Último pago</span><i>{% if r.ultimo_pago %}{{ r.ultimo_pago.fecha|dia }}{% if r.ultimo_pago.adelanto %} · adelanto{% endif %}{% else %}todavía ninguno{% endif %}</i></div>
 </div>{% endif %}
 {% if rol=='admin' %}<div class="desp-acc"><form method="post" action="/despachadores/{{ d.id }}/viernes" style="display:inline"><input type="hidden" name="cobra" value="{{ '0' if d.cobra_viernes else '1' }}"><label class="chk no-chk-mini{{ ' act' if d.cobra_viernes }}" style="cursor:pointer"><input type="checkbox" {{ 'checked' if d.cobra_viernes }} onchange="this.form.submit()"> <span>Se le paga los viernes</span></label></form>
 <details class="eq-pagar"><summary class="btn sec chico">Darle un adelanto</summary>
@@ -15,7 +15,7 @@
   <span class="cf-in"><span class="mini">$</span><input name="monto" inputmode="decimal" required style="width:100px" placeholder="0.00"></span>
   <select name="forma" required><option value="" selected disabled>¿De qué caja?</option>{% for fp in FORMAS_PAGO %}<option value="{{ fp }}">{{ fp|caja }}</option>{% endfor %}</select>
   <input type="date" name="fecha" value="{{ hoy }}" max="{{ hoy }}">
-  <input name="nota" placeholder="nota (opcional)" style="min-width:180px">
+  <input name="nota" placeholder="concepto (opcional)" style="min-width:180px">
   <button class="btn chico">Registrar adelanto</button></form>
  <div class="mini" style="margin-top:6px">Sale de esa caja ya y queda en gastos. Después se le va descontando de lo que le debas por sus entregas.</div></details>
 <details class="eq-pagar"><summary class="btn sec chico">+ Diligencia</summary>
@@ -126,12 +126,12 @@
 </script>
 {% else %}<div class="vacio">Todavía no le has asignado ninguna entrega.</div>{% endif %}</div>{% endif %}
 
-<div class="g2" style="align-items:start">
+<div>
 <div class="tarjeta"><h3>Zonas de esta semana</h3>{% if zonas %}<table data-cols="Zona:50|Entregas:25|Le pagas:25" class="lineas"><tr><th>Zona</th><th class="num">Entregas</th>{% if 'ver_dinero' in puede %}<th class="num">Le pagas</th>{% endif %}</tr>
 {% for z in zonas %}<tr><td>{{ z.z }}</td><td class="num">{{ z.n }}</td>{% if 'ver_dinero' in puede %}<td class="num">{{ z.monto|usd }}</td>{% endif %}</tr>{% endfor %}</table>
 {% else %}<div class="vacio">Sin entregas pendientes de pago.</div>{% endif %}</div>
-{% if 'ver_dinero' in puede %}<div class="tarjeta"><h3>Pagos que le has hecho</h3>{% if pagos or r.adelantos %}<table data-cols="Fecha:15|Entregas:15|Monto:15|Nota:35|¿Le llegó?:20" class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th>Nota</th><th>¿Le llegó?</th></tr>
-{% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td class="num mini">adelanto</td><td class="num">{{ a.monto_usd|usd }}</td><td class="mini">{{ a.caja or '' }}{% if a.notas %} · {{ a.notas }}{% endif %}</td><td></td></tr>{% endfor %}
+{% if 'ver_dinero' in puede %}<div class="tarjeta"><h3>Pagos que le has hecho</h3>{% if pagos or r.adelantos %}<table data-cols="Fecha:15|Entregas:15|Monto:15|Concepto:35|¿Le llegó?:20" class="lineas"><tr><th>Fecha</th><th class="num">Entregas</th><th class="num">Monto</th><th>Concepto</th><th>¿Le llegó?</th></tr>
+{% for a in r.adelantos %}<tr><td class="mono">{{ a.fecha|dia }}</td><td></td><td class="num">{{ a.monto_usd|usd }}</td><td class="mini">Adelanto{% if a.notas %} · {{ a.notas }}{% endif %}{% if a.caja %} · {{ a.caja }}{% endif %}</td><td></td></tr>{% endfor %}
 {% for p in pagos %}<tr><td class="mono">{{ p.fecha|dia }}</td><td class="num">{{ p.entregas }}</td><td class="num">{{ p.monto|usd }}{% if p.adelanto_usado %}<div class="mini">{{ p.adelanto_usado|usd }} de adelanto · {{ (p.monto - p.adelanto_usado)|usd }} en plata</div>{% endif %}</td><td class="mini">{{ p.nota or '' }}</td><td class="mini">{% if p.confirmado_en %}<span class="ln-pagado">✓ confirmó {{ p.confirmado_en|fecha }}</span>{% else %}sin confirmar{% endif %}
  {% if p.reclamo_en %}<div class="{{ 'ln-alerta' if not p.reclamo_resuelto }}" style="margin-top:4px">Dijo que {% if p.reclamo_monto is not none %}le llegaron {{ p.reclamo_monto|usd }}{% else %}le falta una parte{% endif %}{% if p.reclamo_nota %} · “{{ p.reclamo_nota }}”{% endif %} ({{ p.reclamo_en|fecha }})</div>
   {% if p.reclamo_resuelto %}<div class="mini">✓ resuelto {{ p.reclamo_resuelto }}</div>{% else %}<details class="cobro"><summary class="btn chico">Resuelto</summary><form method="post" action="/despachadores/pago/{{ p.id }}/resuelto" class="cobro-f" style="min-width:280px;text-align:left"><label style="margin-top:0">¿Qué pasó?</label>
