@@ -3633,6 +3633,25 @@ def _():
         con.close()
 
 
+@prueba("Montar: Cristina mirando como despachador (sin haberlo elegido en la lista) también le manda al taller lo que toca, igual que el despachador")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat(); yo = A.DESPACHADORES[0]
+        pid = con.execute("INSERT INTO productos (sku,nombre,tipo,precio) VALUES ('CARRO2','Porche Ver','producto',90)").lastrowid
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Ver Prueba','Ver')").lastrowid
+        oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida)
+                             VALUES ('#VC1',?,'pendiente','pagada',90,0,'delivery',?,?)""", (cid, yo, hoy)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Porche Ver',1,90,90)", (oid, pid)); con.commit()
+        sesion_de(c, "admin"); c.cookies.set("ver_como", "despachador")
+        h = c.get("/mis-entregas").text
+        assert f'name="quien" value="{yo}"><input type="hidden" name="item" value="orden:{oid}">' in h
+        c.post("/mis-entregas/montar", data={"item": f"orden:{oid}", "quien": yo})
+        assert [r[0] for r in con.execute("SELECT orden_id FROM cargas_taller")] == [oid], "el botón no hacía nada"
+        sesion_de(c, "taller"); assert "Porche Ver" in c.get("/taller").text
+        con.close()
+
+
 @prueba("Producción › Editar: se cambia '¿Cuándo lo pagas?' y el aviso de Inicio se mueve a ese día")
 def _():
     with erp_de_prueba() as c:

@@ -7873,10 +7873,12 @@ def montar_de(con, despachador):
 
 
 @app.post("/mis-entregas/montar")
-def mis_entregas_montar(request: Request, item: str = Form(""), quitar: str = Form(""), con=Depends(db)):
+def mis_entregas_montar(request: Request, item: str = Form(""), quitar: str = Form(""), quien: str = Form(""), con=Depends(db)):
     """El despachador, pedido por pedido, le dice al taller qué le monte en esta ronda (o lo quita si se equivocó)."""
     u = quien_es(request); nombre = (u or {}).get("despachador")
-    if not u or u["rol"] == "admin": nombre = (request.cookies.get("ver_desp") or "").strip()   # Cristina viendo como él
+    if not u or u["rol"] == "admin":   # Cristina viendo como él: el mismo despachador que tiene en pantalla (antes, sin haberlo elegido, no pasaba nada)
+        nombre = (quien or request.cookies.get("ver_desp") or "").strip()
+        if nombre not in DESPACHADORES: nombre = DESPACHADORES[0] if DESPACHADORES else ""
     if rol_de(request) not in ("despachador", "admin") or not nombre: return RedirectResponse("/mis-entregas", status_code=303)
     estado = montar_de(con, nombre).get(item)   # solo un pedido suyo de hoy
     t, _, id_ = item.partition(":")
