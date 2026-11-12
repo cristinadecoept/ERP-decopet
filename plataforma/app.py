@@ -7727,7 +7727,8 @@ def taller_hoy(request: Request, con=Depends(db)):
     cargas = {}   # lo que el despachador pidió que le monten, todo junto por despachador
     for k in cargas_por_montar(con): cargas.setdefault(k["despachador"], []).append(k)
     cargas = {d: juntar_cargas(ks) for d, ks in cargas.items()}
-    return render(request, "taller.html", seccion="taller", pickups=pickups, cargas=cargas, llegadas=llegadas, armables=armables, armados_hoy=armados_hoy, notas=notas, hoy_iso=hoy, fecha_larga=fecha_larga())
+    es_cristina = (quien_es(request) or {}).get("rol") == "admin"   # mirando como el taller: solo ella puede quitar un 'Montar'
+    return render(request, "taller.html", seccion="taller", pickups=pickups, cargas=cargas, es_cristina=es_cristina, llegadas=llegadas, armables=armables, armados_hoy=armados_hoy, notas=notas, hoy_iso=hoy, fecha_larga=fecha_larga())
 
 
 def cargas_por_montar(con):
@@ -7797,6 +7798,16 @@ def taller_carga_deshacer(request: Request, cid: int, volver: str = Form("/opera
     con.execute("DELETE FROM cargas_taller WHERE id=?", (cid,))
     con.execute("UPDATE notas_taller SET visto=1 WHERE carga_id=?", (cid,)); con.commit()
     return RedirectResponse(volver_seguro(volver) or "/operaciones", status_code=303)
+
+
+@app.post("/taller/montar-quitar")
+def taller_montar_quitar(request: Request, despachador: str = Form(""), con=Depends(db)):
+    """Cristina, mirando como el taller, quita un 'Montar a X' que no era (una prueba, algo viejo)."""
+    if (quien_es(request) or {}).get("rol") != "admin": return RedirectResponse("/taller", status_code=303)
+    for k in cargas_por_montar(con):
+        if k["despachador"] == despachador: con.execute("DELETE FROM cargas_taller WHERE id=?", (k["id"],))
+    con.commit()
+    return RedirectResponse("/taller", status_code=303)
 
 
 @app.post("/taller/montado")

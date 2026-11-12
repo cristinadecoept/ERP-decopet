@@ -1940,6 +1940,16 @@ def _():
         sesion_de(c, "admin")
         orden("#L4")   # entra otro: el despachador puede volver a pedir, solo ese
         o4 = con.execute("SELECT id FROM ordenes WHERE numero='#L4'").fetchone()[0]
+        sesion_de(c, "despachador"); c.post("/mis-entregas/montar", data={"item": f"orden:{o4}"})
+        sesion_de(c, "taller"); h = c.get("/taller").text
+        assert 'action="/taller/montar-quitar"' not in h, "el taller no ve Quitar"
+        c.post("/taller/montar-quitar", data={"despachador": yo})
+        assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE orden_id=?", (o4,)).fetchone()[0] == 1, "el taller no puede quitarlo"
+        sesion_de(c, "admin"); c.cookies.set("ver_como", "taller")
+        assert 'action="/taller/montar-quitar"' in c.get("/taller").text, "Cristina mirando como el taller sí ve Quitar"
+        c.post("/taller/montar-quitar", data={"despachador": yo})
+        assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE orden_id=?", (o4,)).fetchone()[0] == 0, "Cristina lo quita"
+        c.cookies.delete("ver_como")
         sesion_de(c, "despachador"); assert f'name="item" value="orden:{o4}"><button class="btn chico">Montar' in c.get("/mis-entregas").text
         sesion_de(c, "logistica"); c.post("/mis-entregas/montar", data={"item": f"orden:{o4}"})
         sesion_de(c, "taller"); c.post("/mis-entregas/montar", data={"item": f"orden:{o4}"})

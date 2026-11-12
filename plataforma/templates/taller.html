@@ -14,7 +14,8 @@
 {% else %}<div class="vacio">Nadie tiene que venir a buscar nada ahora mismo.</div>{% endif %}</div>
 
 {% for d, ks in cargas.items() %}<div class="tarjeta" style="order:0"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;flex:1">{{ ('Embalar ' ~ d[0]|lower ~ d[1:]) if d.startswith('Para ') else 'Montar a ' ~ d }}</h3>
- <form method="post" action="/taller/montado" data-msg="¿Ya está {{ 'embalado todo lo que va ' ~ d[0]|lower ~ d[1:] if d.startswith('Para ') else 'montado todo lo de ' ~ d }}? A Cristina le llega el aviso." onsubmit="event.preventDefault();preguntar(this.dataset.msg,{si:'Sí, listo',no:'Todavía no'}).then(ok=>ok&&this.submit())"><input type="hidden" name="despachador" value="{{ d }}"><button class="btn chico">Listo</button></form></div>
+ <form method="post" action="/taller/montado" data-msg="¿Ya está {{ 'embalado todo lo que va ' ~ d[0]|lower ~ d[1:] if d.startswith('Para ') else 'montado todo lo de ' ~ d }}? A Cristina le llega el aviso." onsubmit="event.preventDefault();preguntar(this.dataset.msg,{si:'Sí, listo',no:'Todavía no'}).then(ok=>ok&&this.submit())"><input type="hidden" name="despachador" value="{{ d }}"><button class="btn chico">Listo</button></form>
+ {% if es_cristina %}<form method="post" action="/taller/montar-quitar" onsubmit="event.preventDefault();preguntar('¿Quitarle al taller todo lo de {{ d }}?',{si:'Sí, quitar',no:'Dejarlo'}).then(ok=>ok&&this.submit())"><input type="hidden" name="despachador" value="{{ d }}"><button class="btn sec chico">Quitar</button></form>{% endif %}</div>
 <div style="margin-top:8px">{% if ks.cosas %}<div>{{ ks.cosas|platos }}</div>{% endif %}{% for n in ks.notas %}<div class="nota-taller">📝 {{ n }}</div>{% endfor %}
   {% if ks.agencia %}<div>{{ ks.agencia|platos }} <span class="ag-t">{{ 'embalar' if d.startswith('Para ') else 'va a la agencia · embalar' }}</span></div>{% endif %}</div></div>{% endfor %}
 
