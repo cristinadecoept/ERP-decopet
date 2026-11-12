@@ -2751,7 +2751,7 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
             ag_k, dest_k = destino_pack(k) if te == "nacional" else (None, None)
             lista.append(dict(id=None, es_pack=True, pack_id=k["id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
                               fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_pack(k, con), pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=None,
-                              receptor_nombre=None, agencia=ag_k, guia=None, distribuidor=None, despachador=k["despachador_programado"],
+                              receptor_nombre=k["retira_nombre"], receptor_telefono=k["retira_telefono"], agencia=ag_k, guia=None, distribuidor=None, despachador=k["despachador_programado"],
                               ciudad=dest_k or (d["ciudad"] if d else k["ciudad"]), falta_oficina=te == "nacional" and not k["direccion_programada"], oficina_compra=dest_k, zona=None,
                               direccion=k["direccion_programada"] or (d["direccion"] if d else None), maps=(k["maps_programado"] if k["direccion_programada"] or k["maps_programado"] else (d["maps"] if d else None)), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), delivery_ya_pagado=bool(k["delivery_pagado"]), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup" or ag_k), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
     if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
@@ -6014,8 +6014,10 @@ def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entre
     con.execute("UPDATE packs SET direccion_programada=?, maps_programado=?, agencia_programada=? WHERE id=?",
                 ((destino.strip() or None) if nac else (direccion.strip() or None) if otra else None, (maps.strip() or None) if otra else None, (agencia.strip() or None) if nac else None, pid))
     tercero = retira_nombre.strip()   # si retira el cliente, van sus datos: nada de lo que quedó escrito de otra persona
-    con.execute("UPDATE packs SET retira_nombre=?, retira_cedula=?, retira_telefono=?, retira_correo=? WHERE id=?",
-                (tercero if nac and retira_pregunta else None, *(((x.strip() or None) if nac and tercero else None) for x in (retira_cedula, retira_telefono, retira_correo)), pid))
+    sigue_recibe = otra and k and (k["tipo_programado"] or "") in ("delivery", "delivery_fuera")   # por delivery: quien recibe (anotado en Operaciones) se queda
+    if not sigue_recibe:
+        con.execute("UPDATE packs SET retira_nombre=?, retira_cedula=?, retira_telefono=?, retira_correo=? WHERE id=?",
+                    (tercero if nac and retira_pregunta else None, *(((x.strip() or None) if nac and tercero else None) for x in (retira_cedula, retira_telefono, retira_correo)), pid))
     if not nac: con.execute("UPDATE packs SET viaje_id=NULL WHERE id=?", (pid,))   # ya no va a la agencia
     if pagado == 2:
         ya = k["diferencia_pagada"] and (k["delivery_diferencia"] or 0) > 0   # si ya la había cobrado al programar, no se cobra otra vez
@@ -6114,13 +6116,17 @@ def retiro_no_recibio(con, tipo, rid, uid, fue="", motivo="", fecha=""):
 
 
 @app.post("/packs/{pid}/campo")
-def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), agencia: str = Form(None), destino: str = Form(None), fecha: str = Form(""), volver: str = Form(""), con=Depends(db)):
+def pack_campo(request: Request, pid: int, en_ruta: str = Form(""), despachador: str = Form(None), agencia: str = Form(None), destino: str = Form(None), fecha: str = Form(""), volver: str = Form(""),
+               recibe: str = Form(""), recibe_nombre: str = Form(""), recibe_telefono: str = Form(""), con=Depends(db)):
     """Ajustes rápidos de un retiro de pack desde Operaciones: quién lo lleva, por cuál agencia, otro día, o marcarlo en ruta (o devolverlo si se tocó sin querer)."""
     if "coordinar" not in PERMISOS[rol_de(request)]: return RedirectResponse("/operaciones", status_code=303)
     if fecha.strip(): reprogramar_retiro(con, "pack", pid, fecha.strip(), uid_de(request))
     if despachador is not None: con.execute("UPDATE packs SET despachador_programado=? WHERE id=?", (despachador.strip() or None, pid))
     if agencia is not None: con.execute("UPDATE packs SET agencia_programada=? WHERE id=?", (agencia.strip() or None, pid))
     if destino is not None: con.execute("UPDATE packs SET direccion_programada=? WHERE id=?", (destino.strip() or None, pid))
+    if recibe:   # no recibe el cliente sino otra persona (Cristina, 12 nov); sin nombre = recibe el cliente
+        con.execute("UPDATE packs SET retira_nombre=?, retira_telefono=? WHERE id=?",
+                    (recibe_nombre.strip() or None, (normalizar_telefono(recibe_telefono) or None) if recibe_nombre.strip() else None, pid))
     if en_ruta: con.execute("UPDATE packs SET en_ruta=? WHERE id=?", (1 if en_ruta == "1" else 0, pid))
     con.commit(); return RedirectResponse(volver or "/operaciones", status_code=303)
 
@@ -7234,6 +7240,7 @@ def ruta_despachador(con, nombre, hoy):
             que, pos = repuesto_de_pack(k, con)
             otra = {"direccion": k["direccion_programada"], "maps": k["maps_programado"]} if (k["direccion_programada"] or k["maps_programado"]) else {}   # esta vez va a otro sitio
             filas.append(cli(k["cliente_id"]) | otra | {"id": None, "kind": "pack", "rid": k["id"], "numero": k["orden"], "cid": k["cliente_id"],
+                         "recibe": (k["retira_nombre"] or "").strip() or None, "recibe_tel": (k["retira_telefono"] or "").strip() or None,
                          "que_lleva": f"{que} · {pos} del pack", "en_ruta": bool(k.get("en_ruta")),
                          "cobrar": float(k["delivery_programado"] or 0) if not k["delivery_pagado"] else 0,
                          "indicaciones": indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])})

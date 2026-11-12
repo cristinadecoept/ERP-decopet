@@ -3387,6 +3387,30 @@ def _():
         assert "Ñoño" in c.get("/mascotas", params={"q": "nono"}).text
 
 
+@prueba("Entrega de pack: en Operaciones se anota que recibe otra persona; le sale al despachador con su teléfono y se puede volver a 'recibe el cliente'")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today().isoformat(); yo = A.DESPACHADORES[0]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Paola Avilarecibe','Paola','0414-1111111')").lastrowid
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#8802',?,'entregada','pagada',72,0,'delivery')", (cid,)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Pack',1,72,72)", (o, pk))
+        k = con.execute("""INSERT INTO packs (cliente_id,orden_id,producto_id,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,despachador_programado,delivery_programado,delivery_pagado,retiro_programado)
+                           VALUES (?,?,?,3,1,'activo',?,'delivery',?,5,1,1)""", (cid, o, pk, hoy_, yo)).lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        assert "Recibe otra persona" in c.get("/operaciones?cola=todo").text
+        c.post(f"/packs/{k}/campo", data={"recibe": "1", "recibe_nombre": "Luis Tercero", "recibe_telefono": "04147778899", "volver": "/operaciones"})
+        assert "Recibe <b>Luis Tercero</b> · 0414-7778899" in c.get("/operaciones?cola=todo").text
+        f = next(f for f in A.ruta_despachador(con, yo, hoy_) if f.get("rid") == k)
+        assert f["recibe"] == "Luis Tercero" and f["recibe_tel"] == "0414-7778899"
+        assert "Recibe: Luis Tercero" in A.texto_ruta([f], datetime.date.today())
+        c.post(f"/packs/{k}/campo", data={"recibe": "1", "recibe_nombre": "", "volver": "/operaciones"})
+        assert tuple(con.execute("SELECT retira_nombre, retira_telefono FROM packs WHERE id=?", (k,)).fetchone()) == (None, None)
+        con.close()
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
