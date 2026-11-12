@@ -6947,7 +6947,7 @@ def mis_entregas(request: Request, con=Depends(db)):
     en_caja = round(sum(p["monto_usd"] or 0 for p in efectivo_que_tiene(con, nombre)), 2) if nombre else 0   # efectivo de Decopet que tiene y debe entregar
     return render(request, "mis_entregas.html", seccion="mis_entregas", montar=montar_de(con, nombre), quien=nombre, viendo=viendo, r=r, en_caja=en_caja, ruta=ruta, ruta_manana=ruta_manana, viajes_manana=viajes_manana,
                   ruta_cobrar=sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in ruta),
-                  hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(), viajes_pend=viajes_pend, tarifas_dil=tarifas_diligencia(con),
+                  hist=hist_todo, pagos=pagos, hoy_iso=hoy.isoformat(), manana_iso=manana, viajes_pend=viajes_pend, tarifas_dil=tarifas_diligencia(con),
                   ganado_mes=round(sum(h["pago"] for h in hist if h["estado"] == "entregada" and (h["fecha"] or "")[:7] == mes), 2),
                   ganado_todo=round(sum(h["pago"] for h in hist if h["estado"] == "entregada"), 2),
                   n_entregadas=sum(1 for h in hist_todo if h["estado"] == "entregada" and not (h["quien"] or "").startswith("Viaje a ")))   # un viaje a la agencia no es una entrega

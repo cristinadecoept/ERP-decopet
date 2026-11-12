@@ -1910,7 +1910,7 @@ def _():
         assert {o1, o2} <= mios and otro not in mios and manana not in mios, "solo lo suyo y de hoy"
         assert con.execute("SELECT COUNT(*) FROM cargas_taller WHERE orden_id=?", (o1,)).fetchone()[0] == 1, "dos toques: una sola vez"
         h = c.get("/mis-entregas").text
-        assert '<button class="btn chico">Montar' not in h.split("Lo que te toca hoy")[1].split("mañana")[0] and h.count(">Deshacer</button>") >= 2
+        assert '<button class="btn chico">Montar' not in h.split('class="dia-t hoy"')[1].split("mañana")[0] and h.count(">Deshacer</button>") >= 2
         sesion_de(c, "taller"); h = c.get("/taller").text
         assert h.count(f"Montar a {yo}") == 1 and "2× Porche Lote" in h, "todo lo suyo junto, con un solo Listo"
         assert "Otro Prueba" not in h
@@ -3440,6 +3440,21 @@ def _():
         c.post(f"/ordenes/{o2}/recibe", data={"recibe_nombre": "Intruso"})
         assert con.execute("SELECT receptor_nombre FROM ordenes WHERE id=?", (o2,)).fetchone()[0] is None, "el taller no lo cambia"
         con.close()
+
+
+@prueba("Mis entregas: Hoy y Mañana se distinguen a simple vista; lo de mañana va en su propia caja, sin la palabra 'hoy'")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        yo = A.DESPACHADORES[0]; man = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Francisco Mañanero','Francisco','0414-3325001')").lastrowid
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida,direccion) VALUES ('#7701',?,'pendiente','pagada',60,0,'delivery',?,?,'Lomas del Campo')", (cid, yo, man)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (o, pr)); con.commit(); con.close()
+        sesion_de(c, "despachador"); h = c.get("/mis-entregas").text
+        hoy_h, resto = h.split('class="dia-t hoy"')[1].split('class="manana-caja"')
+        assert "Francisco" not in hoy_h and "Francisco" in resto.split("Lo que has entregado")[0]
+        assert A.fmt_dia(man) in resto and "para hoy" not in resto, "nada que diga 'hoy' en lo de mañana: apurado se lee mal (Cristina, 12 nov)"
 
 
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
