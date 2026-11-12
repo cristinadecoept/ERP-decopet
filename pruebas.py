@@ -2708,7 +2708,7 @@ def _():
         con.close()
 
 
-@prueba("Ficha del despachador: los viajes a la agencia por llevar salen en 'Lo que le toca hoy' y en su mensaje, sin cédula ni correo; el de otro día y el ya llevado no")
+@prueba("Ficha del despachador: los viajes a la agencia por llevar salen en 'Lo que le toca hoy' y en su mensaje con los datos completos para la agencia; el de otro día y el ya llevado no")
 def _():
     with erp_de_prueba() as c:
         con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
@@ -2728,7 +2728,8 @@ def _():
         assert "AgenciaHoy" in h and "Mandárselo por WhatsApp" in h, h[:500]
         assert "AgenciaDespues" not in h and "AgenciaLista" not in h
         assert "Llevar a AgenciaHoy" in h and "Paquete Prueba" in h and "Maracay" in h
-        assert "V-99887766" not in h and "paquete@prueba.test" not in h, "la cédula y el correo no van en el mensaje"
+        # Cristina, 12 nov: copiado para la agencia, con todos los datos y su emoji, para que no se equivoquen
+        assert "🪪 C.I. V-99887766" in h and "📧 paquete@prueba.test" in h and "👤 Paquete Prueba" in h, "la cédula y el correo van, como los pide la agencia"
         con.close()
 
 
@@ -2817,7 +2818,9 @@ def _():
         p = {o["numero"]: o for o in A.viajes_por_llevar(con, d["nombre"])[0]["paquetes"]}
         assert p["#PK8"]["recibe"] == "Tercero Prueba" and p["#PK8"]["cedula"] == "V-222" and p["#PK8"]["direccion"] == "Tealca Mérida Norte", p["#PK8"]
         assert "1× Repuesto Mediano" in p["#PK8"]["lleva"] and "1/3" in p["#PK8"]["lleva"]
-        assert "Tealca Mérida Norte" in A.texto_ruta([], datetime.date.today(), A.viajes_por_llevar(con, d["nombre"]))
+        t = A.texto_ruta([], datetime.date.today(), A.viajes_por_llevar(con, d["nombre"]))
+        assert "📍 Tealca Mérida Norte" in t and "👤 Tercero Prueba" in t and "🪪 C.I. V-222" in t and "\n\n👤 " in t, "el mensaje lleva los datos para la agencia, con espacio entre clientes"
+        assert "🪪 C.I. V-222" in c.get(f"/despachadores/{d['id']}").text and "Copiar datos" in c.get(f"/despachadores/{d['id']}").text
         assert [g["agencia"] or g["cosas"] for g in A.salidas_de_hoy(con, pack_id=pid)] == ["1× Repuesto Mediano"], "solo ese repuesto, nada más del día"
         A.montar_uno(None, con, "pack", pid); con.commit()   # el taller lo ve cuando el despachador le da Montar
         assert [r[0] or r[1] for r in con.execute("SELECT agencia, cosas FROM cargas_taller")] == ["1× Repuesto Mediano"]

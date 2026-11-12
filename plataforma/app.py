@@ -7159,8 +7159,19 @@ def ruta_despachador(con, nombre, hoy):
     return filas
 
 
+def copia_agencia(o):
+    """Los datos de un paquete como se le mandan a la agencia: cada dato en su línea con su emoji."""
+    t = "\n".join(["👤 " + (o.get("recibe") or o.get("nombre") or ""), "📦 " + re.sub(r"<[^>]+>", "", o.get("lleva") or ""),
+                   "📞 Tel. " + (o.get("recibe_tel") or o.get("telefono") or "FALTA"), "📧 " + (o.get("correo") or "FALTA el correo"),
+                   "🪪 C.I. " + (o.get("cedula") or "FALTA"), "📍 " + (o.get("direccion") or o.get("ciudad") or "FALTA la oficina")])
+    return t + ("\n💵 Cobro a destino" if o.get("modalidad_envio") == "cobro_destino" else "")
+
+
+tpl.env.globals["copia_agencia"] = copia_agencia
+
+
 def texto_ruta(filas, hoy, viajes=()):
-    """El mensaje tal cual se le manda por WhatsApp. De los viajes a la agencia va a quién y qué: la cédula y el correo los ve en Mis entregas."""
+    """El mensaje tal cual se le manda por WhatsApp. De los viajes a la agencia van los datos completos, listos para la agencia."""
     out = [f"Decopet · {fecha_larga(hoy)}", ""]
     for i, f in enumerate(filas, 1):
         out.append(f"{i}. {f['quien']}")
@@ -7177,10 +7188,9 @@ def texto_ruta(filas, hoy, viajes=()):
         out.append("")
     for i, v in enumerate(viajes, len(filas) + 1):
         out.append(f"{i}. Llevar a {v['agencia'] or 'la agencia'}" + (f" {v['oficina']}" if v["oficina"] else ""))
-        for o in v["paquetes"]:
-            out.append(f"   {o['recibe'] or o['nombre']} · {o['direccion'] or o['ciudad'] or 'falta la oficina'}")
-            out.append("   " + re.sub(r"<[^>]+>", "", o["lleva"] or ""))
         out.append("")
+        for o in v["paquetes"]:   # con todos los datos, como se le pasan a la agencia, y un espacio entre cliente y cliente
+            out.append(copia_agencia(o)); out.append("")
     cobros = sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in filas)
     if cobros: out.append(f"Total a cobrar: ${cobros:,.2f}")
     return "\n".join(out).strip()
