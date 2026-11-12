@@ -1711,3 +1711,4 @@ html.oscuro .cc-chip.mal{color:#f0a08c}
 .dia-t.manana .dia-p{background:var(--naranja);color:#fff}.dia-t .mini{font-weight:500}
 .manana-caja{margin-top:34px}.manana-caja .tabla{opacity:.8}
 .tarjeta>h3.tit-fuerte{font-size:17px;font-weight:700;color:var(--tinta);letter-spacing:0}
+.g2:has(>.tarjeta),.g3:has(>.tarjeta),.g2:has(>.tabla){row-gap:16px}
