@@ -3400,6 +3400,9 @@ def _():
                            VALUES (?,?,?,3,1,'activo',?,'delivery',?,5,1,1)""", (cid, o, pk, hoy_, yo)).lastrowid
         con.commit()
         sesion_de(c, "admin")
+        h = c.get(f"/ordenes/{o}/panel").text
+        assert "1ª entrega del pack" in h and "Próxima entrega · repuesto 2 de 3" in h and f"<b>Despachador</b><span>{yo}</span>" in h, \
+            "en el detalle se distingue la 1ª entrega del próximo repuesto y quién lo lleva (Cristina, 12 nov)"
         h = c.get("/operaciones?cola=todo").text
         assert 'class="pk-recibe"' in h and f'id="dlg-pk-{k}"' in h, "un iconito en la pastilla del pack abre '¿Quién recibe?'"
         assert f"abrirPanel('/ordenes/{o}/panel')" in h and f'href="/clientes/{cid}" onclick="event.stopPropagation()"' in h, \

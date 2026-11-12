@@ -1727,6 +1727,11 @@ def orden_panel(request: Request, oid: int, con=Depends(db)):
     o = cargar_orden(con, oid)
     if not o: return HTMLResponse("<p>No existe.</p>")
     o["wa_msj"] = mensaje_guia(con, o)
+    # de un pack: lo que dice "Entrega" es la 1ª entrega; el próximo repuesto (otro día, quizás otro despachador) va aparte
+    o["primera_de_pack"] = any(l["pack_id"] and (l["pack_hoy"] or 0) > 0 for l in o["lineas"])
+    o["proximas"] = [dict(fecha=k["fecha_programada"], despachador=k["despachador_programado"], tipo=k["tipo_programado"] or k["tipo_entrega"],
+                          pos=repuesto_de_pack(k)[1], recibe=k["retira_nombre"])
+                     for k in cargar_packs(con) if k["orden_id"] == oid and k["fecha_programada"] and (k["saldo"] or 0) > 0]
     vendibles = con.execute("""SELECT id, nombre, precio, requiere_color FROM productos WHERE activo=1 AND tipo NOT IN ('opcion','insumo') AND COALESCE(sku,'') NOT LIKE 'PACK%'
                                ORDER BY categoria, nombre""").fetchall()
     return render(request, "_orden_panel.html", o=o, vendibles=vendibles)
