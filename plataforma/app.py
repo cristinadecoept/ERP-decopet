@@ -6858,6 +6858,21 @@ def saldar_con_adelanto(con, nombre):
     con.commit()
 
 
+def corte_despachador(con, nombre, adelantos):
+    """Desde cuándo se le muestran entregas y pagos: el último pago o adelanto que lo dejó en cero.
+    Si hoy no se le debe nada, el último pago; si se le debe, el último pago anterior a lo más viejo que falta."""
+    falta = [r[0] for r in con.execute("""SELECT MIN(COALESCE(fecha_entrega, substr(creado_en,1,10))) FROM ordenes
+                                           WHERE despachador=? AND estado='entregada' AND despachador_pagado=0 AND origen_excel=0
+                                           UNION ALL SELECT MIN(substr(COALESCE(llevado_en, fecha),1,10)) FROM viajes_agencia WHERE despachador=? AND pagado=0 AND llevado_en IS NOT NULL
+                                           UNION ALL SELECT MIN(substr(fecha,1,10)) FROM viajes_despachador WHERE despachador=? AND pagado=0 AND por_aprobar=0""",
+                                        (nombre, nombre, nombre)) if r[0]]
+    viejo = min(falta) if falta else None
+    pagos = [r[0][:10] for r in con.execute("SELECT fecha FROM pagos_despachador WHERE despachador=? AND fecha IS NOT NULL", (nombre,))]
+    pagos += [(a["fecha"] or "")[:10] for a in adelantos if a["fecha"]]
+    antes = [f for f in pagos if not viejo or f < viejo]
+    return max(antes) if antes else ""
+
+
 def repartir_adelanto(hist, monto):
     """El adelanto que sobra (no alcanza para pagar una entrega completa) se ve en la fila más vieja sin pagar:
     'faltan $2' en vez de '$5 sin pagar', para que las filas sumen lo mismo que 'te deben'."""
@@ -6924,6 +6939,7 @@ def mis_entregas(request: Request, con=Depends(db)):
     hoy = datetime.date.today()
     r = resumen_despachador(con, nombre, hoy)
     ruta = ruta_despachador(con, nombre, hoy.isoformat())
+    corte = corte_despachador(con, nombre, r["adelantos"])   # cuando quedó en cero, lo viejo ya no se le muestra
     hist = con.execute("""SELECT o.id, o.numero, COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) fecha,
                           COALESCE(o.delivery,0) pago, o.estado, o.despachador_pagado,
                           COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, NULLIF(TRIM(o.zona),'') zona,
@@ -6932,20 +6948,22 @@ def mis_entregas(request: Request, con=Depends(db)):
                           FROM ordenes o LEFT JOIN clientes c ON c.id=o.cliente_id
                           WHERE o.despachador=? AND o.estado!='cancelada' AND o.origen_excel=0
                             AND (o.estado NOT IN ('pendiente','en_ruta') OR """ + HAY_QUE_ENTREGAR() + """)
-                            -- lo que ya le pagaron y él confirmó que le llegó se le quita de la vista (Cristina lo sigue viendo en su ficha)
-                            AND NOT (o.despachador_pagado=1 AND (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=o.despachador_pago_id) IS NOT NULL)
-                          ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre,)).fetchall()
+                            -- desde la última vez que quedó en cero; de antes, solo lo que todavía no le pagaron o no confirmó
+                            AND (COALESCE(o.fecha_entrega, substr(o.creado_en,1,10)) > ? OR o.despachador_pagado=0
+                                 OR (SELECT p.confirmado_en FROM pagos_despachador p WHERE p.id=o.despachador_pago_id) IS NULL)
+                          ORDER BY fecha DESC, o.id DESC LIMIT 60""", (nombre, corte)).fetchall()
     mes = hoy.strftime("%Y-%m")
-    pagos = con.execute("""SELECT id, fecha, monto, entregas, adelanto_usado, reclamo_monto, reclamo_nota, reclamo_en FROM pagos_despachador
-                           WHERE despachador=? AND confirmado_en IS NULL ORDER BY fecha DESC, id DESC""", (nombre,)).fetchall()
-    ult_conf = con.execute("SELECT MAX(substr(confirmado_en,1,10)) FROM pagos_despachador WHERE despachador=? AND monto - COALESCE(adelanto_usado,0) > 0.009", (nombre,)).fetchone()[0]
-    if ult_conf: r["adelantos"] = [a for a in r["adelantos"] if (a["fecha"] or "") > ult_conf or r["adelanto_libre"] > 0]
+    # últimos pagos: desde la última vez que quedó en cero, y los que todavía no confirmó que le llegaron
+    pagos = con.execute("""SELECT id, fecha, monto, entregas, adelanto_usado, reclamo_monto, reclamo_nota, reclamo_en, confirmado_en FROM pagos_despachador
+                           WHERE despachador=? AND (confirmado_en IS NULL OR fecha > ?) ORDER BY fecha DESC, id DESC""", (nombre, corte)).fetchall()
+    r["adelantos"] = [a for a in r["adelantos"] if (a["fecha"] or "")[:10] > corte or r["adelanto_libre"] > 0]
     for f in ruta:
         if f.get("kind") != "orden": continue   # los retiros ya traen si van en ruta
         o_ = con.execute("SELECT estado FROM ordenes WHERE id=?", (f["id"],)).fetchone() if f.get("id") else None
         f["en_ruta"] = bool(o_ and o_["estado"] == "en_ruta")
-    hist_todo = sorted([dict(h) for h in hist] + viajes_hist(con, nombre, vigentes=True), key=lambda h: h["fecha"] or "", reverse=True)
-    repartir_adelanto(hist_todo, r["adelanto_resta"])
+    vig = viajes_hist(con, nombre, vigentes=True)
+    viajes_mes = [v for v in viajes_hist(con, nombre) if (v["fecha"] or "")[:10] > corte and v not in vig]
+    hist_todo = sorted([dict(h) for h in hist] + vig + viajes_mes, key=lambda h: h["fecha"] or "", reverse=True)
     viajes_pend = viajes_por_llevar(con, nombre)
     # "Lo que has entregado" es solo lo que ya hizo: lo pendiente o en ruta está en "Lo que te toca hoy"
     hist_todo = [h for h in hist_todo if h["estado"] not in ("pendiente", "en_ruta")]

@@ -3472,11 +3472,38 @@ def _():
         c.post(f"/despachadores/{did}/adelanto", data={"monto": "3", "forma": "Efectivo USD", "fecha": datetime.date.today().isoformat()})
         r = A.resumen_despachador(con, yo, datetime.date.today())
         assert r["debe"] == 12 and r["adelanto_resta"] == 3, (r["debe"], r["adelanto_resta"])
-        for h in (c.get("/mis-entregas", params={"quien": yo}).text, c.get(f"/despachadores/{did}").text):
-            t = re.sub(r"\s+", " ", re.sub("<[^>]+>", " ", h))
-            assert t.count("faltan $2.00") == 1 and 'title="$3.00 ya salieron del adelanto"' in h, "la más vieja: $3 cubiertos, faltan $2"
-        t = re.sub(r"\s+", " ", re.sub("<[^>]+>", " ", c.get("/mis-entregas", params={"quien": yo}).text))
-        assert t.count("sin pagar") - t.count("viaje a la agencia sin pagar") - t.count("entregas sin pagar") >= 2, "las otras dos siguen sin pagar"
+        h = c.get(f"/despachadores/{did}").text; t = re.sub(r"\s+", " ", re.sub("<[^>]+>", " ", h))
+        assert t.count("faltan $2.00") == 1 and 'title="$3.00 ya salieron del adelanto"' in h, "en la ficha de Cristina: la más vieja, $3 cubiertos, faltan $2"
+        # al despachador no: con adelantos seguidos confunde (Cristina, 12 nov). Ve la tarifa de cada entrega y 'te deben' arriba
+        h = c.get("/mis-entregas", params={"quien": yo}).text; t = re.sub(r"\s+", " ", re.sub("<[^>]+>", " ", h))
+        ult = t.split("Últimas entregas")[1].split("Últimos pagos")[0]
+        assert "faltan" not in ult and "sin pagar" not in ult and "Tarifa" in ult and ult.count("$5.00") == 3, ult
+        assert "$12.00 Te deben" in t
+        con.close()
+
+
+@prueba("Mis entregas: cuando se le paga todo y queda en cero, ya no le salen las entregas ni los pagos de antes; lo que sigue debiendo o no ha confirmado, sí")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        yo = A.DESPACHADORES[0]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Corte Prueba','Corte','0414-0000002')").lastrowid
+        p1 = con.execute("INSERT INTO pagos_despachador (despachador,fecha,monto,entregas,confirmado_en) VALUES (?,'2026-11-03',5,1,'2026-11-03 18:00')", (yo,)).lastrowid
+        con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,delivery,fecha_entrega,despachador_pagado,despachador_pago_id,zona) VALUES ('#5501',?,'entregada','pagada',60,0,'delivery',?,5,'2026-11-02',1,?,'ZonaVieja')", (cid, yo, p1))
+        o2 = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,delivery,fecha_entrega,despachador_pagado,zona) VALUES ('#5502',?,'entregada','pagada',60,0,'delivery',?,7,'2026-11-05',0,'ZonaNueva')", (cid, yo)).lastrowid
+        con.commit()
+        sesion_de(c, "despachador"); h = c.get("/mis-entregas").text
+        assert "Últimas entregas" in h and "Últimos pagos" in h and ">Tarifa<" in h
+        assert "ZonaNueva" in h and "ZonaVieja" not in h, "quedó en cero el 03/11: lo de antes no sale; lo que hizo después, sí"
+        assert "$5.00" not in h.split("Últimos pagos")[1], "el pago que lo dejó en cero tampoco"
+        # se le paga lo nuevo: mientras no confirme que le llegó, lo ve; al confirmar, queda todo limpio
+        p2 = con.execute("INSERT INTO pagos_despachador (despachador,fecha,monto,entregas) VALUES (?,'2026-11-06',7,1)", (yo,)).lastrowid
+        con.execute("UPDATE ordenes SET despachador_pagado=1, despachador_pago_id=? WHERE id=?", (p2, o2)); con.commit()
+        h = c.get("/mis-entregas").text
+        assert "Sí, me llegó" in h and "$7.00" in h.split("Últimos pagos")[1] and "ZonaNueva" in h
+        c.post(f"/mis-entregas/pago/{p2}/confirmar")
+        h = c.get("/mis-entregas").text
+        assert "ZonaNueva" not in h and "No tienes entregas nuevas" in h and "No tienes pagos nuevos" in h
         con.close()
 
 
