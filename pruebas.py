@@ -1454,6 +1454,22 @@ def _():
         assert con.execute("SELECT zona FROM direcciones WHERE cliente_id=71").fetchone()[0] == "Chacao Centro"
         con.close()
 
+@prueba("Orden nueva con la entrega 'Por definir' (el cliente todavía no dice cómo): se guarda sin tipo de entrega, sin delivery, y sale en Operaciones para definirla después")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        p = con.execute("SELECT id FROM productos WHERE tipo='producto' AND requiere_color=0 AND categoria NOT IN ('porche','repuesto','opcion','kit') LIMIT 1").fetchone()["id"]
+        sesion_de(c, "admin")
+        c.post("/ordenes/nueva", data={"cliente_nombre_pila": "Carlos", "cliente_apellido": "Pordefinir", "cliente_telefono": "04141234568", "cliente_correo": "carlos@ejemplo.com",
+               "cliente_direccion": "", "cliente_ciudad": "Caracas", "canal": "cashea", "producto_id": str(p), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+               "tipo_entrega": "por_definir", "dir_modo": "hab", "delivery": "0", "fecha_pago": "2026-11-13"})
+        o = con.execute("SELECT o.* FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE c.nombre_pila='Carlos'").fetchone()
+        assert o and o["tipo_entrega"] is None and not o["delivery"], dict(o) if o else "no se creó"
+        h = c.get("/operaciones?cola=todo").text
+        assert "Sin tipo de entrega" in h and "Carlos" in h
+        con.close()
+
+
 @prueba("Cliente nuevo: la zona se elige con su dirección habitual, queda guardada y la próxima orden ya la trae")
 def _():
     with erp_de_prueba() as c:
@@ -1588,6 +1604,27 @@ def _():
         c.post(f"/ordenes/{oid}/ubicacion", data={"maps": "maps.app.goo.gl/sinhttps"})
         assert con.execute("SELECT maps FROM direcciones WHERE cliente_id=52").fetchone()[0] == "https://maps.app.goo.gl/sinhttps"
         con.close()
+
+@prueba("Efectivo de Cristina despachadora: lo que cobra ella misma no queda 'en la calle'; su Caja dice que lo tiene ella y lleva al Cash flow")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('ventas_auto','0')")
+        con.execute("INSERT OR IGNORE INTO cuentas (codigo,nombre,moneda,tipo,activa,orden) VALUES ('001','Efectivo USD','USD','operativa',1,1)")
+        con.execute("INSERT OR IGNORE INTO despachadores (nombre, activo) VALUES ('Cristina', 1)")
+        did = con.execute("SELECT id FROM despachadores WHERE nombre='Cristina'").fetchone()[0]
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (62,'Sonia Prueba','Sonia')")
+        o1 = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega,despachador) VALUES ('#82',62,'pendiente','contra_entrega',80,0,80,'delivery','Cristina')").lastrowid
+        con.commit(); A.cargar_formas_pago()
+        sesion_de(c, "admin")
+        c.post(f"/ordenes/{o1}/estado", data={"estado": "entregada", "monto_recibido": "80"})
+        assert con.execute("SELECT lo_tiene FROM pagos WHERE orden_id=?", (o1,)).fetchone()[0] is None, "la plata ya la tiene Cristina"
+        assert [e for e in A.efectivo_por_registrar(con) if e["numero"] == "#82"], "queda por pasar al Cash flow"
+        h = c.get(f"/despachadores/{did}").text
+        caja = h.split('id="efectivo"')[1][:400]
+        assert "$80.00" in caja and "lo tienes tú" in caja and 'href="/cashflow"' in caja, caja
+        con.close()
+
 
 @prueba("Efectivo en la calle: lo que cobra un despachador queda a su nombre hasta que te lo entrega")
 def _():

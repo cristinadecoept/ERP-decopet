@@ -2583,7 +2583,7 @@ async def crear_orden(request: Request, con=Depends(db)):
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (f"#{ultimo + 1}", f.get("tipo") or "venta", cid, canal, uid, f.get("ref_externa") or None, "pendiente",
                        "pagada", subtotal, descuento, motivo_desc, iva, delivery, total, tasa,
-                       round(total * 0.06, 2) if canal == "cashea" else 0, f.get("tipo_entrega") or None, f.get("direccion") or None, f.get("zona") or None, f.get("ciudad") or None,
+                       round(total * 0.06, 2) if canal == "cashea" else 0, (f.get("tipo_entrega") if f.get("tipo_entrega") != "por_definir" else None) or None, f.get("direccion") or None, f.get("zona") or None, f.get("ciudad") or None,
                        f.get("receptor_nombre") or None, f.get("receptor_telefono") or None, fecha_auto, f.get("franja") or None, f.get("notas_entrega") or None, f.get("notas") or None, costo,
                        " + ".join(formas_elegidas) or ("BNC" if canal == "cashea" else None), f.get("modalidad_envio") or ("cobro_destino" if f.get("tipo_entrega") == "nacional" else None), f.get("maps") or None))
     oid = cur.lastrowid
@@ -7553,7 +7553,10 @@ def despachador_ficha(request: Request, did: int, periodo: str = "", con=Depends
         h["grupo"] = "viaje" if es_viaje(h) else ("por_entregar" if h["estado"] in ("pendiente", "en_ruta") else h["estado"])
         h["cobro"] = "al_entregar" if h["grupo"] == "por_entregar" else ("pagado" if h["despachador_pagado"] else "por_pagar")
     efectivo = efectivo_que_tiene(con, d["nombre"])
+    # cuando la que entrega es Cristina, el efectivo ya lo tiene ella: falta pasarlo al Cash flow
+    tuyo = [p for p in efectivo_por_registrar(con) if p["despachador"] == d["nombre"]] if not guarda_efectivo(con, d["nombre"]) else []
     return render(request, "despachador.html", seccion="despachadores", periodo=periodo, PERIODOS=PERIODOS, montar=montar_de(con, d["nombre"]), FORMAS_PAGO=FORMAS_PAGO, efectivo=efectivo, efectivo_total=round(sum(p["monto_usd"] or 0 for p in efectivo), 2),
+                  efectivo_tuyo=round(sum(p["monto_usd"] or 0 for p in tuyo), 2),
                   CUENTAS_OP=con.execute("SELECT id, nombre FROM cuentas WHERE activa=1 AND tipo='operativa' ORDER BY orden").fetchall(), d=d, r=r, pendientes=pendientes, en_curso=en_curso, pagos=pagos, zonas=zonas_todas, viajes=viajes, fallidos=fallidos, dil_aprobar=dil_aprobar,
                   tarifas_dil=tarifas_diligencia(con), ruta=ruta, viajes_ruta=viajes_ruta, ruta_texto=texto_ruta(ruta, hoy, viajes_ruta), ruta_cobrar=sum(f["cobrar"] + sum(t["saldo"] for t in f.get("tambien_cobrar") or []) for f in ruta),
                   hist=hist, record=record)

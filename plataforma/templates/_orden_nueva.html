@@ -42,7 +42,7 @@
 <!-- 4 · ENTREGA -->
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">4</span><b>Entrega</b></div>
 <div class="nota-log" id="nada-hoy" hidden style="margin-top:0">Hoy no se entrega nada. La entrega es opcional: si la llenas (delivery, despachador), queda guardada para cuando el cliente active su repuesto.</div>
-<div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="ELIGIO='{{ k }}';setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}</div>
+<div class="no-pills">{% for k,v in ENTREGA.items() if k!='otro' %}<button type="button" class="no-pill" data-v="{{ k }}" onclick="ELIGIO='{{ k }}';setEntrega('{{ k }}')">{{ v }}</button>{% endfor %}<button type="button" class="no-pill" data-v="por_definir" onclick="ELIGIO='';setEntrega('por_definir')">Por definir</button></div>
 <div id="ent-detalle" hidden>
 <div id="pack-dv" hidden style="margin-top:10px"><label>¿Cuántos deliveries del pack paga ahora?</label><div class="mini" style="margin:-2px 0 6px">Los que no pague ahora los paga al recibir cada entrega.</div><select id="pack-dv-sel" onchange="packDelivSet()"></select><div class="mini" id="pack-dv-txt"></div></div>
 <div class="g2" id="desp-w" hidden style="margin-top:10px"><div><label>Despachador</label><select name="despachador" id="desp-sel" onchange="document.getElementById('desp-otro').hidden=this.value!=='__otro__'"><option value="">— por asignar —</option>{% for d in DESPACHADORES %}<option>{{ d }}</option>{% endfor %}<option value="__otro__">Otro…</option></select></div><div id="desp-otro" hidden><label>Nombre</label><input name="despachador_otro" placeholder="nombre"></div></div>
@@ -206,10 +206,13 @@ function zonasDe(fuera){const sel=document.getElementById('zona-sel');if(!sel)re
  const v=sel.value;sel.length=1;ZONAS.filter(o=>(o.dataset.f==='1')===fuera).forEach(o=>sel.add(o.cloneNode(true)));
  if([...sel.options].some(o=>o.value===v&&v))sel.value=v;else if(v){sel.value='';document.getElementById('deliv').value='';calc();}}
 function setEntrega(k){
- if(document.getElementById('te').value===k){   // tocar la que ya está marcada la desmarca
-  document.getElementById('te').value='';document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.remove('act');});
+ if(k==='por_definir'&&document.getElementById('te').value!==k){   // el cliente todavía no dice cómo: se guarda sin entrega y se define después
+  document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor','por_definir'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
   document.getElementById('ent-detalle').hidden=true;document.getElementById('cobro-deliv').hidden=true;document.getElementById('deliv').value=0;packDeliv();calc();return;}
- document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
+ if(document.getElementById('te').value===k){   // tocar la que ya está marcada la desmarca
+  document.getElementById('te').value='';document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor','por_definir'].includes(b.dataset.v))b.classList.remove('act');});
+  document.getElementById('ent-detalle').hidden=true;document.getElementById('cobro-deliv').hidden=true;document.getElementById('deliv').value=0;packDeliv();calc();return;}
+ document.getElementById('te').value=k;document.querySelectorAll('.no-pills .no-pill[data-v]').forEach(b=>{if(['pickup','delivery','delivery_fuera','nacional','distribuidor','por_definir'].includes(b.dataset.v))b.classList.toggle('act',b.dataset.v===k);});
  document.getElementById('ent-detalle').hidden=false;const nac=k==='nacional';document.getElementById('nac-extra').hidden=!nac;if(nac){const md=document.querySelector('[name=modalidad_envio]');if(md&&!md.value)md.value='cobro_destino';}   // casi todos van a cobro en destino; la excepción la cambia una persona
  
  document.getElementById('dir-bloque').hidden=(k==='pickup'||k==='distribuidor'||k==='nacional');document.getElementById('rec-w').hidden=(k==='pickup'||k==='distribuidor');document.getElementById('oficina-w').hidden=!nac;document.getElementById('rec-extra').hidden=!nac;document.getElementById('rec-titulo').innerText=(k==='pickup'||k==='distribuidor')?'¿Quién retira?':'¿Quién recibe?';document.getElementById('nota-desp-w').hidden=(k==='pickup'||k==='distribuidor'||k==='nacional');document.getElementById('nota-desp-txt').innerText=nac?'Notas para la agencia':'Nota para el despachador';document.getElementById('desp-w').hidden=!(k==='delivery'||k==='delivery_fuera');
