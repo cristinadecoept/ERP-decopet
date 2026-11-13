@@ -4184,6 +4184,23 @@ def _():
         con.close()
 
 
+@prueba("Producción › Editar: si cambia la cantidad y el monto queda igual, el monto sigue a la cantidad (13 sacos $39 → 18 sacos $54); si se escribe otro monto, se respeta")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        pid = con.execute("""INSERT INTO produccion (pieza,cantidad,costo,estado,responsable,fecha_pedido,fecha_esperada)
+                             VALUES ('Sacos de prueba',13,39,'en_proceso','Walter',?,?)""", (hoy, hoy)).lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        datos = {"responsable": "Walter", "fecha_pedido": hoy, "fecha_esperada": hoy}
+        c.post(f"/produccion/{pid}/editar", data={**datos, "cantidad": "18", "costo": "39"}, follow_redirects=False)
+        assert con.execute("SELECT cantidad, costo FROM produccion WHERE id=?", (pid,)).fetchone()[:] == (18, 54.0)
+        c.post(f"/produccion/{pid}/editar", data={**datos, "cantidad": "20", "costo": "70"}, follow_redirects=False)
+        assert con.execute("SELECT cantidad, costo FROM produccion WHERE id=?", (pid,)).fetchone()[:] == (20, 70.0), "el monto escrito a mano se respeta"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

@@ -5566,9 +5566,16 @@ def produccion_abonar(request: Request, pid: int, monto: str = Form(...), forma:
 async def produccion_editar(request: Request, pid: int, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/produccion", status_code=303)
     f = await request.form(); g = lambda k: (f.get(k) or "").strip() or None
+    antes = con.execute("SELECT cantidad, costo FROM produccion WHERE id=?", (pid,)).fetchone()
+    cantidad = int(f.get("cantidad") or 1)
+    costo = float(f["costo"].replace(",", ".")) if g("costo") else None
+    # cambió la cantidad pero el monto quedó igual: el monto sigue a la cantidad (13 sacos a $39 → 18 sacos a $54)
+    if antes and antes["cantidad"] and antes["costo"] and costo is not None and cantidad != antes["cantidad"] \
+            and abs(costo - antes["costo"]) < 0.005:
+        costo = round(antes["costo"] / antes["cantidad"] * cantidad, 2)
     con.execute("""UPDATE produccion SET cantidad=?, responsable=?, fecha_pedido=?, fecha_esperada=?, costo=?, nota=?, barnizado=?, descripcion=? WHERE id=?""",
-                (int(f.get("cantidad") or 1), g("responsable"), g("fecha_pedido") or datetime.date.today().isoformat(), g("fecha_esperada"),
-                 float(f["costo"].replace(",", ".")) if g("costo") else None, g("nota"), 1 if f.get("barnizado") == "1" else 0, g("descripcion"), pid))
+                (cantidad, g("responsable"), g("fecha_pedido") or datetime.date.today().isoformat(), g("fecha_esperada"),
+                 costo, g("nota"), 1 if f.get("barnizado") == "1" else 0, g("descripcion"), pid))
     if "fecha_pago" in f:   # el día que se le paga lo que falta (sale en Inicio ese día)
         con.execute("UPDATE produccion SET fecha_pago=? WHERE id=?", (g("fecha_pago"), pid))
     r = con.execute("SELECT costo, (SELECT COALESCE(SUM(monto),0) FROM abonos_produccion WHERE produccion_id=?) ab FROM produccion WHERE id=?", (pid, pid)).fetchone()
