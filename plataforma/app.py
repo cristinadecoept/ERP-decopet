@@ -1228,9 +1228,18 @@ def inicio(request: Request, con=Depends(db)):
     c["dil_aprobar"] = [dict(r) for r in con.execute("""SELECT v.despachador, v.monto, v.motivo, v.fecha, d.id did FROM viajes_despachador v
                               LEFT JOIN despachadores d ON d.nombre=v.despachador WHERE v.por_aprobar=1 ORDER BY v.fecha, v.id""")] if rol == "admin" else []
     # retiros de pack y repuestos prepagados PROGRAMADOS para hoy (o atrasados): los que de verdad se entregan
-    packs = sum(1 for k in cargar_packs(con) if k["saldo"] > 0 and k["fecha_programada"] and k["fecha_programada"] <= h)
-    packs += sum(1 for r in cargar_prepagados(con) if r["fecha_programada"] and r["fecha_programada"] <= h)
+    # como en Operaciones: el tipo y el despachador que se le pusieron a ese retiro
+    retiros = [dict(cliente=k["cliente"], tipo_entrega=k["tipo_programado"] or k["tipo_entrega"], despachador=k["despachador_programado"],
+                    agencia=k["agencia_programada"], fecha=k["fecha_programada"], sin_coord=k["tipo_programado"] in ("delivery", "delivery_fuera") and not k["despachador_programado"])
+               for k in cargar_packs(con) if k["saldo"] > 0 and k["fecha_programada"]]
+    retiros += [dict(cliente=r["cliente"], tipo_entrega=r["tipo_entrega"], despachador=r["despachador"], agencia=r["agencia"], fecha=r["fecha_programada"],
+                     sin_coord=r["tipo_entrega"] in ("delivery", "delivery_fuera") and not r["despachador"])
+                for r in cargar_prepagados(con) if r["fecha_programada"]]
+    for x in retiros: x["coordinada"] = not x["sin_coord"] and bool(x["despachador"] or x["agencia"] or x["tipo_entrega"] == "pickup")
+    retiros_hoy = [x for x in retiros if x["fecha"] <= h]
+    packs = len(retiros_hoy)
     c["packs"] = packs
+    c["sin_coordinar"] += sum(1 for x in retiros if x["sin_coord"])   # igual que la pestaña 'Sin coordinar' de Operaciones
     # miembros que cruzaron el umbral hoy (36 días exactos sin repuesto)
     toca = con.execute("""SELECT COUNT(*) FROM (SELECT c.id, MAX(CASE WHEN p.categoria='repuesto' OR p.sku LIKE 'PRO-%' THEN substr(o.creado_en,1,10) END) ult
         FROM clientes c JOIN ordenes o ON o.cliente_id=c.id AND o.estado!='cancelada' JOIN orden_lineas l ON l.orden_id=o.id JOIN productos p ON p.id=l.producto_id
@@ -1352,7 +1361,7 @@ def inicio(request: Request, con=Depends(db)):
     avisos_taller = con.execute("SELECT * FROM notas_taller WHERE (resuelto=0 OR danado_id IS NOT NULL OR llegada=1 OR carga_id IS NOT NULL) AND visto=0 ORDER BY id DESC LIMIT 5").fetchall() if rol == "admin" else []
     c["avisos_pendientes"] = con.execute("SELECT COUNT(*) FROM notas_taller WHERE resuelto=0").fetchone()[0] if rol == "admin" else 0
     cuentas_act = con.execute("SELECT id, codigo, nombre FROM cuentas WHERE activa=1 ORDER BY orden").fetchall() if rol == "admin" else []
-    hoy_lista = sorted([o for o in activas if (o["fecha_prometida"] or h) <= h], key=lambda o: (o["coordinada"], o["tipo_entrega"] or ""))[:6]
+    hoy_lista = sorted([o for o in activas if (o["fecha_prometida"] or h) <= h] + retiros_hoy, key=lambda o: (o["coordinada"], o["tipo_entrega"] or ""))[:6]   # con los retiros de pack y prepagados
     # lo que está por agotarse. Lo que se arma en el día (porches, repuestos, packs) no cuenta:
     # nunca tiene stock, así que siempre diría "agotado" sin que signifique nada.
     bajos = []
@@ -2783,6 +2792,10 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     conteos["hoy"] += sum(1 for r in pre if r["fecha_programada"] and r["fecha_programada"] <= hoy)
     conteos["manana"] += sum(1 for r in pre if r["fecha_programada"] == manana)
     conteos["todo"] += sum(1 for r in pre if r["fecha_programada"])
+    # los retiros y prepagados programados sin despachador también están por coordinar (igual que en la lista)
+    conteos["sin_coordinar"] += sum(1 for k in pk if k["tipo_programado"] in ("delivery", "delivery_fuera") and not k["despachador_programado"])
+    conteos["sin_coordinar"] += sum(1 for r in pre if r["fecha_programada"] and r["tipo_entrega"] in ("delivery", "delivery_fuera") and not r["despachador"])
+    if dia: conteos["dia"] += sum(1 for k in pk if k["fecha_programada"] == dia) + sum(1 for r in pre if r["fecha_programada"] == dia)
     lista = [o for o in activas if es(o, cola)]
     # retiros de packs PROGRAMADOS (el cliente pidió su repuesto y se le puso día): entran como una entrega más,
     # antes de contar y filtrar: así los filtros de tipo y despachador también los cuentan (Cristina, 12 nov)

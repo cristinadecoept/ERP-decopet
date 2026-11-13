@@ -3741,6 +3741,35 @@ def _():
         assert "Veronica Gomez" not in h and "Indira Bello" not in h
 
 
+@prueba("CONTROL: en Operaciones el número de cada pestaña es lo que se ve en la lista (pedidos, retiros de pack y prepagados); en Inicio salen los retiros")
+def _():
+    # Si alguien agrega una pestaña, un filtro o un tipo de entrega y se olvida de los retiros de pack o los prepagados, esto falla.
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy_ = datetime.date.today().isoformat(); man = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        yo = A.DESPACHADORES[0]
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        def cliente(n):
+            return con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES (?,?,'0414-1110000')", (n, n.split()[0])).lastrowid
+        for i, (nom, f, d) in enumerate((("Retiro Hoy", hoy_, yo), ("Retiro Manana", man, yo), ("Retiro SinDesp", man, None))):
+            cid = cliente(nom)
+            o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES (?,?,'entregada','pagada',72,0,'delivery')", (f"#770{i}", cid)).lastrowid
+            con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,despachador_programado) VALUES (?,?,?,'Mediano',3,1,'activo',?,'delivery',?)", (cid, o, pk, f, d))
+        con.execute("INSERT INTO repuestos_prepagados (cliente_id,tamano,fecha_programada,tipo_entrega,despachador,delivery,delivery_pagado) VALUES (?,'Mediano',?,'delivery',NULL,5,0)", (cliente("Prepagado SinDesp"), hoy_))
+        con.commit(); con.close()
+        sesion_de(c, "admin")
+        h0 = c.get("/operaciones").text
+        tab = {"hoy": r"Hoy <span>(\d+)</span>", "manana": r"Mañana <span>(\d+)</span>", "todo": r"Todo <span>(\d+)</span>", "sin_coordinar": r"Sin coordinar (\d+)</a>"}
+        for cola, rx in tab.items():
+            n_tab = int(re.search(rx, h0).group(1))
+            h = c.get("/operaciones", params={"cola": cola}).text
+            filas = h.split('id="resumenes"')[0].count('data-t="Entrega"')
+            assert n_tab == filas, f"{cola}: la pestaña dice {n_tab} y la lista muestra {filas}"
+        assert "Retiro SinDesp" in c.get("/operaciones", params={"cola": "sin_coordinar"}).text and "Prepagado SinDesp" in c.get("/operaciones", params={"cola": "sin_coordinar"}).text
+        hi = c.get("/").text
+        assert "Retiro Hoy" in hi and "Prepagado SinDesp" in hi, "Inicio: los retiros de hoy salen en la lista de Entregas de hoy"
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
