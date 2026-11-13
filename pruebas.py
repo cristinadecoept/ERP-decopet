@@ -3693,6 +3693,27 @@ def _():
         assert re.search(r'<span class="pack-tag hora-tag"><svg[^>]*>.*?</svg>5pm</span>', h), "la hora va en su pastilla con el reloj"
 
 
+@prueba("Mis entregas: el despachador ve la hora de la franja con su reloj (hoy y mañana, pedidos y retiros de pack), y va en la ruta para WhatsApp")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        yo = A.DESPACHADORES[0]; hoy_ = datetime.date.today().isoformat(); man = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Andrea González','Andrea','0414-1110000')").lastrowid
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida,franja,direccion) VALUES ('#9303',?,'pendiente','pagada',60,0,'delivery',?,?,'5pm','Los Palos Grandes')", (cid, yo, hoy_)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (o, pr))
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        cp = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Patricia Blanco','Patricia','0414-5576141')").lastrowid
+        op = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#9037',?,'entregada','pagada',72,0,'delivery')", (cp,)).lastrowid
+        con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,despachador_programado,franja_programada) VALUES (?,?,?,'Mediano',3,2,'activo',?,'delivery',?,'1 – 4 pm')", (cp, op, pk, man, yo))
+        con.commit()
+        assert "Andrea · 🕐 5pm" in A.texto_ruta(A.ruta_despachador(con, yo, hoy_), datetime.date.today())
+        con.close()
+        sesion_de(c, "despachador"); h = c.get("/mis-entregas").text
+        assert re.search(r'<b>Andrea</b><span class="pack-tag hora-tag"><svg[^>]*>.*?</svg>5pm</span>', h), "hoy"
+        assert re.search(r'<b>Patricia</b><span class="pack-tag hora-tag"><svg[^>]*>.*?</svg>1 – 4 pm</span>', h), "mañana, retiro de pack"
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")

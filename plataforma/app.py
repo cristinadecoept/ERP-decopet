@@ -7323,7 +7323,7 @@ def ruta_despachador(con, nombre, hoy):
     for o in con.execute("""SELECT o.id, o.numero, o.total, o.estado_pago, o.tipo_entrega, o.estado,
                             COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.telefono,
                             o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega,
-                            NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel
+                            NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel, NULLIF(TRIM(o.franja),'') franja
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
                             WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0 AND """ + HAY_QUE_ENTREGAR() + """
                               AND o.tipo_entrega NOT IN ('pickup','distribuidor')
@@ -7357,7 +7357,7 @@ def ruta_despachador(con, nombre, hoy):
             otra = {"direccion": k["direccion_programada"], "maps": k["maps_programado"]} if (k["direccion_programada"] or k["maps_programado"]) else {}   # esta vez va a otro sitio
             filas.append(cli(k["cliente_id"]) | otra | {"id": None, "kind": "pack", "rid": k["id"], "numero": k["orden"], "cid": k["cliente_id"],
                          "recibe": (k["retira_nombre"] or "").strip() or None, "recibe_tel": (k["retira_telefono"] or "").strip() or None,
-                         "que_lleva": f"{que} · {pos} del pack", "en_ruta": bool(k.get("en_ruta")),
+                         "que_lleva": f"{que} · {pos} del pack", "en_ruta": bool(k.get("en_ruta")), "franja": (k.get("franja_programada") or "").strip() or None,
                          "cobrar": float(k["delivery_programado"] or 0) if not k["delivery_pagado"] else 0,
                          "indicaciones": indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])})
     for r in cargar_prepagados(con):
@@ -7405,7 +7405,7 @@ def texto_ruta(filas, hoy, viajes=()):
     """El mensaje tal cual se le manda por WhatsApp. De los viajes a la agencia van los datos completos, listos para la agencia."""
     out = [f"Decopet · {fecha_larga(hoy)}", ""]
     for i, f in enumerate(filas, 1):
-        out.append(f"{i}. {f['quien']}")
+        out.append(f"{i}. {f['quien']}" + (f" · 🕐 {f['franja']}" if f.get("franja") else ""))
         if tel_wa(f["telefono"]): out.append(f"   📞 {tel_wa(f['telefono'])}")   # solo en su línea y con +58: en WhatsApp se toca para llamar o escribir
         if f.get("recibe"):
             out.append(f"   Recibe: {f['recibe']}")
