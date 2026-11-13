@@ -4201,6 +4201,31 @@ def _():
         con.close()
 
 
+@prueba("Producción › Pagar todo: con varios pedidos con saldo de un proveedor sale 'Pagar todo'; un pago parcial salda primero lo más viejo y cada pedido queda con su gasto")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        ids = [con.execute("""INSERT INTO produccion (pieza,cantidad,costo,estado,responsable,fecha_pedido)
+                              VALUES ('Saco Todo',?,?,'en_proceso','Proveedor Todo',?)""", (n, n * 3, f)).lastrowid
+               for n, f in ((10, "2026-11-01"), (15, "2026-11-02"), (18, "2026-11-08"))]
+        con.commit()
+        sesion_de(c, "admin")
+        h = c.get("/produccion?debe=Proveedor%20Todo").text
+        assert "Pagar todo · " in h and 'action="/produccion/pagar-todo"' in h
+        r = c.post("/produccion/pagar-todo", data={"quien": "Proveedor Todo", "tipo": "produccion", "monto": "50",
+                                                   "forma": "Efectivo USD", "fecha": "2026-11-13"}, follow_redirects=False)
+        assert "debe=Proveedor%20Todo" in r.headers["location"], "queda saldo: vuelve a sus pedidos"
+        pag = lambda i: con.execute("SELECT COALESCE(SUM(monto),0) FROM abonos_produccion WHERE produccion_id=?", (i,)).fetchone()[0]
+        assert [pag(i) for i in ids] == [30, 20, 0], "primero lo más viejo"
+        r = c.post("/produccion/pagar-todo", data={"quien": "Proveedor Todo", "tipo": "produccion", "monto": "79",
+                                                   "forma": "Efectivo USD", "fecha": "2026-11-13"}, follow_redirects=False)
+        assert [pag(i) for i in ids] == [30, 45, 54]
+        assert all(con.execute("SELECT pagado FROM produccion WHERE id=?", (i,)).fetchone()[0] == 1 for i in ids)
+        assert con.execute("SELECT COUNT(*) FROM gastos WHERE proveedor='Proveedor Todo'").fetchone()[0] == 4
+        assert "debe=" not in r.headers["location"], "ya no le debes: vuelve a la lista"
+        con.close()
+
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")

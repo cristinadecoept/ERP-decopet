@@ -5562,6 +5562,31 @@ def produccion_abonar(request: Request, pid: int, monto: str = Form(...), forma:
     return volver_produccion(con, pid, "&ver=todas")
 
 
+@app.post("/produccion/pagar-todo")
+def produccion_pagar_todo(request: Request, quien: str = Form(...), tipo: str = Form("produccion"), monto: str = Form(...),
+                          forma: str = Form(""), fecha: str = Form(""), nota: str = Form(""), con=Depends(db)):
+    """Le pagas a un proveedor varios pedidos de una vez. La plata salda primero lo más viejo;
+    cada pedido queda con su propio pago (y su gasto), igual que si se pagaran uno por uno."""
+    if not solo_admin(request): return RedirectResponse("/produccion", status_code=303)
+    tipo = "proveedor" if tipo == "proveedor" else "produccion"
+    m = cifra(monto)
+    saldo_sql = "pr.costo - COALESCE((SELECT SUM(a.monto) FROM abonos_produccion a WHERE a.produccion_id=pr.id),0)"
+    pendientes = con.execute(f"""SELECT pr.id, {saldo_sql} saldo FROM produccion pr
+                                WHERE pr.responsable=? AND COALESCE(pr.tipo_pedido,'produccion')=? AND pr.estado!='cancelado'
+                                AND pr.costo IS NOT NULL AND {saldo_sql} > 0.009
+                                ORDER BY pr.fecha_pedido, pr.id""", (quien, tipo)).fetchall()
+    dia = fecha or datetime.date.today().isoformat()
+    for p in pendientes:
+        if m <= 0.009: break
+        parte = round(min(m, p["saldo"]), 2)
+        pagar_produccion(con, p["id"], parte, forma, dia, nota, uid_de(request))
+        m -= parte
+    con.commit()
+    queda = con.execute(f"""SELECT 1 FROM produccion pr WHERE pr.responsable=? AND COALESCE(pr.tipo_pedido,'produccion')=?
+                           AND pr.estado!='cancelado' AND pr.costo IS NOT NULL AND {saldo_sql} > 0.009""", (quien, tipo)).fetchone()
+    return RedirectResponse(f"/produccion?tipo={tipo}" + (f"&debe={quote(quien)}" if queda else ""), status_code=303)
+
+
 @app.post("/produccion/{pid}/editar")
 async def produccion_editar(request: Request, pid: int, con=Depends(db)):
     if not solo_admin(request): return RedirectResponse("/produccion", status_code=303)
