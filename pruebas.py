@@ -3680,6 +3680,19 @@ def _():
         assert "Últimas zonas" not in h and "Contael Las Mercedes" not in h
 
 
+@prueba("Operaciones: una hora en la franja sale con su reloj (pastilla), para que no pase desapercibida")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Andrea González','Andrea','0414-1110000')").lastrowid
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida,franja) VALUES ('#9303',?,'pendiente','pagada',60,0,'delivery',?,date('now','localtime'),'5pm')", (cid, A.DESPACHADORES[0])).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (o, pr))
+        con.commit(); con.close()
+        sesion_de(c, "admin"); h = c.get("/operaciones").text
+        assert re.search(r'<span class="pack-tag hora-tag"><svg[^>]*>.*?</svg>5pm</span>', h), "la hora va en su pastilla con el reloj"
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
