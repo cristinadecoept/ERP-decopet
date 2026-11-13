@@ -2784,6 +2784,36 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
     conteos["manana"] += sum(1 for r in pre if r["fecha_programada"] == manana)
     conteos["todo"] += sum(1 for r in pre if r["fecha_programada"])
     lista = [o for o in activas if es(o, cola)]
+    # retiros de packs PROGRAMADOS (el cliente pidió su repuesto y se le puso día): entran como una entrega más,
+    # antes de contar y filtrar: así los filtros de tipo y despachador también los cuentan (Cristina, 12 nov)
+    if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar"):
+        dia_ref = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
+        for k in cargar_packs(con):
+            if k["saldo"] <= 0 or not k["fecha_programada"]: continue
+            if cola == "hoy" and k["fecha_programada"] > hoy: continue
+            if cola in ("manana", "dia") and k["fecha_programada"] != dia_ref: continue
+            if cola == "sin_coordinar" and (k["tipo_programado"] not in ("delivery", "delivery_fuera") or k["despachador_programado"]): continue
+            d = con.execute("SELECT * FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id LIMIT 1", (k["cliente_id"],)).fetchone()
+            te = k["tipo_programado"] or k["tipo_entrega"]
+            ag_k, dest_k = destino_pack(k) if te == "nacional" else (None, None)
+            lista.append(dict(id=None, es_pack=True, pack_id=k["id"], orden_id=k["orden_id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
+                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_pack(k, con), pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=k.get("franja_programada"),
+                              receptor_nombre=k["retira_nombre"], receptor_telefono=k["retira_telefono"], agencia=ag_k, guia=None, distribuidor=None, despachador=k["despachador_programado"],
+                              ciudad=dest_k or (d["ciudad"] if d else k["ciudad"]), falta_oficina=te == "nacional" and not k["direccion_programada"], oficina_compra=dest_k, zona=None,
+                              direccion=k["direccion_programada"] or (d["direccion"] if d else None), maps=(k["maps_programado"] if k["direccion_programada"] or k["maps_programado"] else (d["maps"] if d else None)), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), delivery_ya_pagado=bool(k["delivery_pagado"]), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup" or ag_k), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
+    if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar"):
+        dia_ref = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
+        for r in cargar_prepagados(con):
+            if not r["fecha_programada"]: continue
+            if cola == "hoy" and r["fecha_programada"] > hoy: continue
+            if cola in ("manana", "dia") and r["fecha_programada"] != dia_ref: continue
+            if cola == "sin_coordinar" and (r["tipo_entrega"] not in ("delivery", "delivery_fuera") or r["despachador"]): continue
+            lista.append(dict(id=None, es_prepagado=True, rid=r["id"], cliente=r["cliente"], cliente_id=r["cliente_id"], numero=r["orden"] or "", alertas=[], incidencias=0,
+                              fecha_op=r["fecha_programada"], fecha_prometida=r["fecha_programada"], productos=f"1× Repuesto {r['tamano'] or ''} · prepagado", nota_log=" · ".join(indicaciones_cliente(con, r["cliente_id"], r["notas"])) or None, tipo_entrega=r["tipo_entrega"], franja=None,
+                              receptor_nombre=None, agencia=r["agencia"], guia=None, distribuidor=None, despachador=r["despachador"], ciudad=r["ciudad"], zona=None, direccion=r["direccion"], maps=r["maps"],
+                              estado_pago="pagada", estado=("en_ruta" if r["en_ruta"] else "pendiente"),
+                              coordinada=bool(r["despachador"] or r["agencia"] or r["tipo_entrega"] == "pickup"), total=0, pagado=0, monto_contra_entrega=None, telefono=r["telefono"],
+                              delivery=r["delivery"], delivery_pagado=r["delivery_pagado"]))   # para preguntar si cobró el delivery al entregar
     conteos_tipo = {k: sum(1 for o in lista if o["tipo_entrega"] == k) for k in ENTREGA}
     conteos_ag = {a: sum(1 for o in lista if o["tipo_entrega"] == "nacional" and o["agencia"] == a) for a in AGENCIAS[:-1]}
     despachadores = sorted({o["despachador"] for o in lista if o["despachador"]} | set(DESPACHADORES))
@@ -2797,37 +2827,6 @@ def operaciones(request: Request, cola: str = "hoy", tipo: str = "", agencia: st
         qq = plano(q.strip())
         lista = [o for o in lista if qq in plano(" ".join(str(o.get(k) or "") for k in ("cliente", "numero", "productos", "direccion", "ciudad", "despachador", "agencia", "receptor_nombre")))
                  or qq.replace("-", "") in str(o.get("telefono") or "").replace("-", "")]
-    # retiros de packs PROGRAMADOS (el cliente pidió su repuesto y se le puso día): entran como una entrega más
-    if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
-        dia_ref = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
-        for k in cargar_packs(con):
-            if k["saldo"] <= 0 or not k["fecha_programada"]: continue
-            if cola == "hoy" and k["fecha_programada"] > hoy: continue
-            if cola in ("manana", "dia") and k["fecha_programada"] != dia_ref: continue
-            if cola == "sin_coordinar" and (k["tipo_programado"] not in ("delivery", "delivery_fuera") or k["despachador_programado"]): continue
-            d = con.execute("SELECT * FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id LIMIT 1", (k["cliente_id"],)).fetchone()
-            te = k["tipo_programado"] or k["tipo_entrega"]
-            if tipo and te != tipo: continue
-            ag_k, dest_k = destino_pack(k) if te == "nacional" else (None, None)
-            lista.append(dict(id=None, es_pack=True, pack_id=k["id"], orden_id=k["orden_id"], saldo=k["saldo"], cuantos_prog=k["retiro_programado"] or 1, cliente=k["cliente"], cliente_id=k["cliente_id"], numero=k["orden"] or "pack", alertas=[], incidencias=0,
-                              fecha_op=k["fecha_programada"], fecha_prometida=k["fecha_programada"], productos=lleva_pack(k, con), pack_pos=repuesto_de_pack(k)[1], nota_log=" · ".join(indicaciones_cliente(con, k["cliente_id"], k["nota_programada"])) or None, tipo_entrega=te, franja=k.get("franja_programada"),
-                              receptor_nombre=k["retira_nombre"], receptor_telefono=k["retira_telefono"], agencia=ag_k, guia=None, distribuidor=None, despachador=k["despachador_programado"],
-                              ciudad=dest_k or (d["ciudad"] if d else k["ciudad"]), falta_oficina=te == "nacional" and not k["direccion_programada"], oficina_compra=dest_k, zona=None,
-                              direccion=k["direccion_programada"] or (d["direccion"] if d else None), maps=(k["maps_programado"] if k["direccion_programada"] or k["maps_programado"] else (d["maps"] if d else None)), estado_pago=("pagada" if (not k["delivery_programado"] or k["delivery_pagado"]) else "contra_entrega"), delivery_ya_pagado=bool(k["delivery_pagado"]), estado=("en_ruta" if k["en_ruta"] else "pendiente"), coordinada=bool(k["despachador_programado"] or te == "pickup" or ag_k), total=k["delivery_programado"] or 0, pagado=0, monto_contra_entrega=(k["delivery_programado"] if (k["delivery_programado"] and not k["delivery_pagado"]) else None), telefono=k["telefono"]))
-    if cola in ("hoy", "manana", "dia", "todo", "sin_coordinar") and not desp:
-        dia_ref = {"hoy": hoy, "manana": manana, "dia": dia}.get(cola)
-        for r in cargar_prepagados(con):
-            if not r["fecha_programada"]: continue
-            if cola == "hoy" and r["fecha_programada"] > hoy: continue
-            if cola in ("manana", "dia") and r["fecha_programada"] != dia_ref: continue
-            if cola == "sin_coordinar" and (r["tipo_entrega"] not in ("delivery", "delivery_fuera") or r["despachador"]): continue
-            if tipo and r["tipo_entrega"] != tipo: continue
-            lista.append(dict(id=None, es_prepagado=True, rid=r["id"], cliente=r["cliente"], cliente_id=r["cliente_id"], numero=r["orden"] or "", alertas=[], incidencias=0,
-                              fecha_op=r["fecha_programada"], fecha_prometida=r["fecha_programada"], productos=f"1× Repuesto {r['tamano'] or ''} · prepagado", nota_log=" · ".join(indicaciones_cliente(con, r["cliente_id"], r["notas"])) or None, tipo_entrega=r["tipo_entrega"], franja=None,
-                              receptor_nombre=None, agencia=r["agencia"], guia=None, distribuidor=None, despachador=r["despachador"], ciudad=r["ciudad"], zona=None, direccion=r["direccion"], maps=r["maps"],
-                              estado_pago="pagada", estado=("en_ruta" if r["en_ruta"] else "pendiente"),
-                              coordinada=bool(r["despachador"] or r["agencia"] or r["tipo_entrega"] == "pickup"), total=0, pagado=0, monto_contra_entrega=None, telefono=r["telefono"],
-                              delivery=r["delivery"], delivery_pagado=r["delivery_pagado"]))   # para preguntar si cobró el delivery al entregar
     lista.sort(key=lambda o: (o["fecha_op"], o["franja"] or "", o["id"] or 0))
     for o in lista:   # un pack o un prepagado que se lleva: si el cliente debe otro pedido que hoy no sale (un pack para después), se cobra ahí
         if o.get("es_pack") or o.get("es_prepagado"): o["tambien_cobrar"] = deudas_sin_entrega(con, o["cliente_id"])

@@ -3714,6 +3714,33 @@ def _():
         assert re.search(r'<b>Patricia</b><span class="pack-tag hora-tag"><svg[^>]*>.*?</svg>1 – 4 pm</span>', h), "mañana, retiro de pack"
 
 
+@prueba("Operaciones: los filtros de tipo y despachador cuentan y muestran también los retiros de pack (Ingrid no sale en 0)")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        man = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        otro, yo = A.DESPACHADORES[0], A.DESPACHADORES[1]
+        con.execute("UPDATE ordenes SET fecha_prometida=NULL WHERE fecha_prometida=?", (man,))
+        con.execute("UPDATE packs SET fecha_programada=NULL")
+        pr = con.execute("SELECT id FROM productos WHERE tipo='producto' LIMIT 1").fetchone()["id"]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Indira Bello','Indira','0414-1110000')").lastrowid
+        o = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,despachador,fecha_prometida) VALUES ('#9307',?,'pendiente','pagada',60,0,'delivery',?,?)", (cid, otro, man)).lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,total) VALUES (?,?,'Comedero',1,60,60)", (o, pr))
+        pk = con.execute("SELECT id FROM productos WHERE sku LIKE 'PACK%' LIMIT 1").fetchone()["id"]
+        cp = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono) VALUES ('Veronica Gomez','Veronica','0414-3981273')").lastrowid
+        op = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega) VALUES ('#8608',?,'entregada','pagada',72,0,'delivery')", (cp,)).lastrowid
+        con.execute("INSERT INTO packs (cliente_id,orden_id,producto_id,tamano,unidades,entregadas_inicio,estado,fecha_programada,tipo_programado,despachador_programado) VALUES (?,?,?,'Mediano',3,2,'activo',?,'delivery',?)", (cp, op, pk, man, yo))
+        con.commit(); con.close()
+        sesion_de(c, "admin")
+        h = c.get("/operaciones", params={"cola": "manana"}).text
+        assert f">{yo} (1)<" in h and f">{otro} (1)<" in h, "cada despachador con su cuenta, retiros incluidos"
+        assert "Delivery Caracas (2)" in h, "el tipo cuenta también el retiro"
+        h = c.get("/operaciones", params={"cola": "manana", "desp": yo}).text
+        assert "Veronica Gomez" in h and "Indira Bello" not in h, "al filtrar por despachador sale su retiro"
+        h = c.get("/operaciones", params={"cola": "manana", "tipo": "nacional"}).text
+        assert "Veronica Gomez" not in h and "Indira Bello" not in h
+
+
 @prueba("Hoy en el taller: lo de Tealca (Catia) no dice 'embalar', aunque no tenga viaje; otra oficina de Tealca u otra agencia, sí")
 def _():
     assert A.no_se_embala("Tealca", "Catia") and A.no_se_embala("tealca", None) and A.no_se_embala("Tealca", "")
