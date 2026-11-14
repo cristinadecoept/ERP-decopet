@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS incidencias (
   clase TEXT DEFAULT 'incidencia', tipo TEXT, descripcion TEXT, responsable TEXT, estado TEXT DEFAULT 'abierta',
   resolucion TEXT, autor_id INTEGER REFERENCES usuarios(id), creado_en TEXT DEFAULT (datetime('now','localtime')), cerrado_en TEXT);
 
+-- Cambios de producto: el cliente devuelve algo de su orden y se lleva otra cosa (con su motivo)
+CREATE TABLE IF NOT EXISTS cambios (
+  id INTEGER PRIMARY KEY, orden_id INTEGER NOT NULL REFERENCES ordenes(id) ON DELETE CASCADE, fecha TEXT,
+  devuelto_id INTEGER REFERENCES productos(id), devuelto TEXT, cant_devuelta REAL, estado_devuelto TEXT,   -- inventario / dañado
+  llevado_id INTEGER REFERENCES productos(id), llevado TEXT, cant_llevada REAL, motivo TEXT,
+  descuento REAL DEFAULT 0, cobrado REAL DEFAULT 0, forma TEXT,
+  autor_id INTEGER REFERENCES usuarios(id), creado_en TEXT DEFAULT (datetime('now','localtime')));
+
 CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT);
 
 -- Packs de repuestos: la compra es una venta; el pack guarda el saldo que Decopet le debe al cliente

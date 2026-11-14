@@ -1555,6 +1555,44 @@ def _():
         assert "falta el link GPS" not in c.get("/clientes/52").text, "la ficha no pide el GPS de su casa"
         con.close()
 
+@prueba("Cambio de producto: devuelve la rampa mini, se lleva otra, con descuento y motivo; la diferencia entra ese día")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO productos (id,sku,nombre,categoria,tipo,precio,costo,activo) VALUES (901,'RMP-MINI','Rampa Mini Prueba','accesorio','producto',80,30,1)")
+        con.execute("INSERT INTO productos (id,sku,nombre,categoria,tipo,precio,costo,activo) VALUES (902,'RMP-GDE','Rampa Grande Prueba','accesorio','producto',100,40,1)")
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (61,'Sonia Prueba','Sonia','04141234567')")
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,delivery,total,tipo_entrega,canal,creado_en) VALUES ('#CB1',61,'entregada','pagada',80,5,85,'delivery','whatsapp',datetime('now','localtime','-1 day'))").lastrowid
+        con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,901,'Rampa Mini Prueba',1,80,30,80)", (oid,))
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,fecha,estado) VALUES (?,'Efectivo USD',85,date('now','-1 day'),'confirmado')", (oid,))
+        con.execute("INSERT INTO mov_inventario (producto_id,fecha,tipo,cantidad,orden_id) VALUES (901,date('now','-1 day'),'salida',-1,?)", (oid,))
+        lid = con.execute("SELECT id FROM orden_lineas WHERE orden_id=?", (oid,)).fetchone()[0]
+        con.commit()
+        sesion_de(c, "admin")
+        assert "Cambio de producto" in c.get(f"/ordenes/{oid}/panel").text
+        c.post(f"/ordenes/{oid}/cambio", data={"linea": str(lid), "cant_devuelve": "1", "estado_devuelto": "inventario", "producto": "902", "cant_lleva": "1",
+                                               "motivo": "Excepción", "descuento": "5", "monto": "15", "forma": "Efectivo USD"})
+        o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+        assert (o["total"], o["descuento"], o["estado_pago"]) == (100, 5, "pagada"), dict(o)
+        assert [r["nombre"] for r in con.execute("SELECT nombre FROM orden_lineas WHERE orden_id=?", (oid,))] == ["Rampa Grande Prueba"]
+        pg = con.execute("SELECT monto_usd, fecha FROM pagos WHERE orden_id=? ORDER BY id DESC", (oid,)).fetchone()
+        assert pg["monto_usd"] == 15 and pg["fecha"] == datetime.date.today().isoformat(), "la diferencia entra el día del cambio"
+        stock = lambda pid: con.execute("SELECT COALESCE(SUM(cantidad),0) FROM mov_inventario WHERE producto_id=?", (pid,)).fetchone()[0]
+        assert stock(901) == 0 and stock(902) == -1, "la mini vuelve al inventario y sale la grande"
+        x = con.execute("SELECT * FROM cambios WHERE orden_id=?", (oid,)).fetchone()
+        assert (x["motivo"], x["devuelto"], x["llevado"], x["estado_devuelto"]) == ("Excepción", "Rampa Mini Prueba", "Rampa Grande Prueba", "inventario")
+        assert "Cambio (Excepción): devolvió 1× Rampa Mini Prueba" in con.execute("SELECT detalle FROM historial WHERE orden_id=? AND accion='cambio'", (oid,)).fetchone()[0]
+        h = c.get(f"/ordenes/{oid}/panel").text
+        assert ">cambio<" in h and "Excepción" in h and "Rampa Grande Prueba" in h, "la orden muestra que fue un cambio y su motivo"
+        # devuelve dañada: no vuelve a lo disponible, queda como caso de dañado
+        lid2 = con.execute("SELECT id FROM orden_lineas WHERE orden_id=?", (oid,)).fetchone()[0]
+        c.post(f"/ordenes/{oid}/cambio", data={"linea": str(lid2), "estado_devuelto": "danado", "producto": "901", "motivo": "Otro", "motivo_otro": "se rayó"})
+        assert stock(902) == -1 and stock(901) == -1, "la grande dañada no vuelve a lo disponible"
+        assert con.execute("SELECT cantidad FROM danados WHERE producto_id=902").fetchone()[0] == 1
+        assert con.execute("SELECT motivo FROM cambios WHERE orden_id=? ORDER BY id DESC", (oid,)).fetchone()[0] == "se rayó"
+        assert con.execute("SELECT COALESCE(SUM(monto),0) FROM credito_cliente WHERE cliente_id=61").fetchone()[0] == 20, "la mini cuesta 20 menos: le quedan a favor"
+        con.close()
+
 @prueba("Pack ya creado: prepagar los deliveries de las próximas entregas entra a su orden y esas entregas no se cobran")
 def _():
     with erp_de_prueba() as c:

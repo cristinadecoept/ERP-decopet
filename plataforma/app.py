@@ -315,6 +315,7 @@ def proveedor_visible(rol, nombre):
 ORIGENES = ["Instagram", "Publicidad (anuncio)", "Recomendación de otro cliente", "Página web / Google", "Cashea", "Nos vio en la calle",
             "Feria o evento", "Duwu", "Vidapets", "Ya era cliente", "Otro"]   # cómo nos conoció, distinto del canal por donde pidió
 
+MOTIVOS_CAMBIO = ["Excepción", "Tamaño equivocado", "No le gustó", "Defecto del producto", "Otro"]   # por qué se cambió un producto
 CONCEPTOS_EXTRA = ["Delivery", "Personalización", "Propina", "Repuesto adicional", "Ajuste", "Otro"]   # cosas que un cliente le agrega a una orden ya hecha
 
 PERMISOS = {
@@ -600,7 +601,7 @@ tpl.env.filters["lleva"] = lambda t: _platos(Markup(re.sub(r"⟪(.*?)⟫", r'<sp
 # "el 14/09", pero "hoy" / "ayer" / "mañana" sin el "el" delante (no "desde el hoy")
 tpl.env.filters["el_fecha"] = lambda v, hora=False: (lambda t: t if t in ("hoy", "ayer", "mañana", "—") or t.split(" ")[0] in ("hoy", "ayer", "mañana") else "el " + t)(fmt_fecha(v, hora))
 tpl.env.filters["fromiso"] = lambda v: datetime.date.fromisoformat(v) if v else None
-tpl.env.globals.update(entorno=entorno, ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, CIUDADES_VE=CIUDADES_VE, ESTADOS_VE=ESTADOS_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
+tpl.env.globals.update(entorno=entorno, ORIGENES=ORIGENES, proveedor_visible=proveedor_visible, CONCEPTOS_EXTRA=CONCEPTOS_EXTRA, MOTIVOS_CAMBIO=MOTIVOS_CAMBIO, CIUDADES_VE=CIUDADES_VE, ESTADOS_VE=ESTADOS_VE, RAZAS=RAZAS, MODALIDAD=MODALIDAD, P_SUB=P_SUB, DISTRIBUIDORES=DISTRIBUIDORES, ESTADOS=ESTADOS, E_LABEL=E_LABEL, P_LABEL=P_LABEL, ENTREGA=ENTREGA, CANAL=CANAL, FORMAS_PAGO=FORMAS_PAGO, FORMAS_COBRO=FORMAS_COBRO, DESPACHADORES=DESPACHADORES, AGENCIAS=AGENCIAS, SIGUIENTE=SIGUIENTE)
 
 
 def plano(t):
@@ -1624,6 +1625,7 @@ def cargar_orden(con, oid):
     o["pagado"] = sum(p["monto_usd"] for p in o["pagos"] if p["estado"] == "confirmado")
     o["historial"] = con.execute("SELECT h.*, u.nombre usuario FROM historial h LEFT JOIN usuarios u ON u.id=h.usuario_id WHERE orden_id=? ORDER BY h.id DESC", (oid,)).fetchall()
     o["incidencias"] = con.execute("SELECT i.*, u.nombre autor FROM incidencias i LEFT JOIN usuarios u ON u.id=i.autor_id WHERE orden_id=? ORDER BY i.id DESC", (oid,)).fetchall()
+    o["cambios"] = con.execute("SELECT * FROM cambios WHERE orden_id=? ORDER BY id", (oid,)).fetchall()
     o["notas_cliente"] = con.execute("SELECT * FROM notas_cliente WHERE cliente_id=? AND (mostrar_en_orden=1 OR mostrar_logistica=1)", (o["cliente_id"],)).fetchall()
     o["direcciones"] = con.execute("SELECT * FROM direcciones WHERE cliente_id=?", (o["cliente_id"],)).fetchall()
     principal = next((d for d in o["direcciones"] if d["principal"]), o["direcciones"][0] if o["direcciones"] else None)
@@ -1983,20 +1985,31 @@ async def editar_orden(request: Request, oid: int, con=Depends(db)):
         con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total,color) VALUES (?,?,?,?,?,?,?,?)",
                     (oid, p["id"], p["nombre"], c, p["precio"], p["costo"], round(precio_linea(p, c), 2), col))
         cambios.append(f"agregó {c:g}× {p['nombre']}" + (f" (plato {col})" if col else ""))
+    descuento = cifra(f.get("descuento")) if (f.get("descuento") or "").strip() else (o["descuento"] or 0)
+    r = rehacer_totales(con, o, oid, uid, descuento, cifra(f.get("delivery")) if (f.get("delivery") or "").strip() else None)
+    if not r: con.rollback(); return volver(oid, request)   # una orden sin productos: para eso está Cancelar
+    total, pagado = r["total"], r["pagado"]
+    for n, a, b in (("descuento", o["descuento"] or 0, descuento), ("delivery", round((o["delivery"] or 0) - r["del_extra"], 2), r["delivery"]), ("total", o["total"] or 0, total)):
+        if abs((a or 0) - (b or 0)) > 0.009: cambios.append(f"{n}: {fmt_usd(a)} → {fmt_usd(b)}")
+    if pagado > total + 0.009: cambios.append(f"ojo: ya había pagado {fmt_usd(pagado)}, {fmt_usd(pagado - total)} de más (devolver o dejar a favor)")
+    if cambios: registrar(con, oid, uid, "editada", "Orden editada · " + "; ".join(cambios))
+    con.commit(); return volver(oid, request)
+
+
+def rehacer_totales(con, o, oid, uid, descuento, delivery_b=None):
+    """Después de cambiar los productos de una orden: recalcula IVA (Cashea / factura), total y si está pagada, y rehace
+    las salidas de inventario con lo que quedó. Devuelve None si la orden se quedó sin productos."""
     lineas = con.execute("SELECT l.*, p.costo costo_p FROM orden_lineas l LEFT JOIN productos p ON p.id=l.producto_id WHERE l.orden_id=?", (oid,)).fetchall()
     normales = [l for l in lineas if not l["extra_en"]]
-    if not normales: con.rollback(); return volver(oid, request)   # una orden sin productos: para eso está Cancelar
+    if not normales: return None
     extras = [l for l in lineas if l["extra_en"]]
     del_extra = sum(l["total"] or 0 for l in extras if (l["nombre"] or "").strip().lower() == "delivery")
-    descuento = cifra(f.get("descuento")) if (f.get("descuento") or "").strip() else (o["descuento"] or 0)
-    delivery_b = cifra(f.get("delivery")) if (f.get("delivery") or "").strip() else round((o["delivery"] or 0) - del_extra, 2)
+    if delivery_b is None: delivery_b = round((o["delivery"] or 0) - del_extra, 2)
     sub_n = round(sum(l["total"] or 0 for l in normales), 2)
     con_iva = (o["iva"] or 0) > 0 or o["canal"] == "cashea" or o["requiere_factura"]
     iva = round((sub_n - descuento) * 0.16, 2) if con_iva else 0
     subtotal = round(sub_n + sum(l["total"] or 0 for l in extras), 2)
     total = round(subtotal - descuento + iva + delivery_b, 2)
-    for n, a, b in (("descuento", o["descuento"] or 0, descuento), ("delivery", round((o["delivery"] or 0) - del_extra, 2), delivery_b), ("total", o["total"] or 0, total)):
-        if abs((a or 0) - (b or 0)) > 0.009: cambios.append(f"{n}: {fmt_usd(a)} → {fmt_usd(b)}")
     con.execute("""UPDATE ordenes SET subtotal=?, descuento=?, iva=?, delivery=?, total=?, costo_productos=?, comision=? WHERE id=?""",
                 (subtotal, descuento, iva, round(delivery_b + del_extra, 2), total,
                  round(sum((l["costo_p"] if l["costo_p"] is not None else (l["costo"] or 0)) * (l["cantidad"] or 0) for l in normales), 2),
@@ -2008,8 +2021,60 @@ async def editar_orden(request: Request, oid: int, con=Depends(db)):
     if o["estado_pago"] not in ("por_cobrar", "reembolsada", "por_confirmar", "contra_entrega") or pagado >= total - 0.01:
         con.execute("UPDATE ordenes SET estado_pago=? WHERE id=? AND estado_pago NOT IN ('por_cobrar','reembolsada')", (estado_pago_de(pagado, total), oid))
     fijar_pago_despachador(con, oid)
-    if pagado > total + 0.009: cambios.append(f"ojo: ya había pagado {fmt_usd(pagado)}, {fmt_usd(pagado - total)} de más (devolver o dejar a favor)")
-    if cambios: registrar(con, oid, uid, "editada", "Orden editada · " + "; ".join(cambios))
+    return {"total": total, "pagado": pagado, "delivery": delivery_b, "del_extra": del_extra}
+
+
+@app.post("/ordenes/{oid}/cambio")
+async def cambio_producto(request: Request, oid: int, con=Depends(db)):
+    """El cliente devuelve un producto de su orden y se lleva otro (Sonia, 14 nov: devolvió la rampa mini y se llevó otra).
+    Queda como cambio, con su motivo: lo devuelto sale de la orden y vuelve al inventario (o queda como dañado), lo que se
+    llevó entra a la orden, el descuento se suma y la diferencia que pagó entra ese día. Si el nuevo cuesta menos, le queda a favor."""
+    if "confirmar_pago" not in PERMISOS[rol_de(request)]: return volver(oid, request)
+    f = await request.form(); uid = uid_de(request); hoy = datetime.date.today().isoformat()
+    o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if not o or o["estado"] == "cancelada": return volver(oid, request)
+    l = con.execute("""SELECT l.*, p.sku FROM orden_lineas l JOIN productos p ON p.id=l.producto_id
+                       WHERE l.id=? AND l.orden_id=? AND l.extra_en IS NULL""", (f.get("linea") or 0, oid)).fetchone()
+    p = con.execute("SELECT * FROM productos WHERE id=? AND tipo NOT IN ('opcion','insumo')", (f.get("producto") or 0,)).fetchone()
+    if not l or not p or (l["sku"] or "").startswith("PACK") or (p["sku"] or "").startswith("PACK"): return volver(oid, request)
+    cant_d = min(cifra(f.get("cant_devuelve")) or 1, l["cantidad"] or 1); cant_n = cifra(f.get("cant_lleva")) or 1
+    col = f.get("color") if p["requiere_color"] else None
+    if p["requiere_color"] and col not in PLATO_DE_COLOR: return _falta("Falta elegir el color del plato (azul o rosado) del Slow Chow que se llevó.")
+    motivo = f.get("motivo") if f.get("motivo") in MOTIVOS_CAMBIO else "Otro"
+    if motivo == "Otro" and (f.get("motivo_otro") or "").strip(): motivo = f.get("motivo_otro").strip()[:80]
+    danado = f.get("estado_devuelto") == "danado"
+    desc = max(cifra(f.get("descuento")) or 0, 0)
+    # lo devuelto sale de la orden; lo que se llevó entra con su precio
+    queda = round((l["cantidad"] or 0) - cant_d, 4)
+    if queda <= 0: con.execute("DELETE FROM orden_lineas WHERE id=?", (l["id"],))
+    else: con.execute("UPDATE orden_lineas SET cantidad=?, total=? WHERE id=?", (queda, round((l["precio"] or 0) * queda + (l["extras"] or 0), 2), l["id"]))
+    con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total,color) VALUES (?,?,?,?,?,?,?,?)",
+                (oid, p["id"], p["nombre"], cant_n, p["precio"], p["costo"], round(precio_linea(p, cant_n), 2), col))
+    r = rehacer_totales(con, o, oid, uid, round((o["descuento"] or 0) + desc, 2))
+    if danado:   # volvió pero no se puede vender: queda en los casos de dañados, como cuando se reporta desde el inventario
+        con.execute("INSERT INTO danados (producto_id, cantidad, nota, fecha, usuario_id) VALUES (?,?,?,?,?)",
+                    (l["producto_id"], cant_d, f"devuelto en el cambio de la orden {o['numero']}", hoy, uid))
+        con.execute("INSERT INTO mov_inventario (producto_id, fecha, tipo, cantidad, nota, usuario_id) VALUES (?,?,?,?,?,?)",
+                    (l["producto_id"], hoy, "dañado", -cant_d, f"dañado: devuelto en el cambio de la orden {o['numero']}", uid))
+    # la diferencia que pagó entra hoy, como un cobro
+    monto = round(cifra(f.get("monto")) or 0, 2); forma = (f.get("forma") or "").strip()
+    if monto > 0 and forma and forma != SALDO_FAVOR:
+        en_bs = es_bolivares(forma); tasa = tasa_hoy(con)["valor"]
+        con.execute("INSERT INTO pagos (orden_id,forma,monto_usd,monto_real,moneda,tasa,cuenta,referencia,fecha,estado,confirmado_por,confirmado_en) VALUES (?,?,?,?,?,?,?,?,?,'confirmado',?,datetime('now','localtime'))",
+                    (oid, forma, monto, monto * tasa if en_bs else monto, "VES" if en_bs else "USD", tasa if en_bs else None, FORMA_CUENTA.get(forma), f.get("referencia") or None, hoy, uid))
+    else: monto = 0
+    pagado = con.execute("SELECT COALESCE(SUM(monto_usd),0) FROM pagos WHERE orden_id=? AND estado='confirmado'", (oid,)).fetchone()[0]
+    con.execute("UPDATE ordenes SET estado_pago=? WHERE id=? AND estado_pago NOT IN ('por_cobrar','reembolsada')", (estado_pago_de(pagado, r["total"]), oid))
+    fijar_fecha_pago(con, oid)
+    sobra = sobrante_a_favor(con, oid, uid)
+    con.execute("""INSERT INTO cambios (orden_id,fecha,devuelto_id,devuelto,cant_devuelta,estado_devuelto,llevado_id,llevado,cant_llevada,motivo,descuento,cobrado,forma,autor_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (oid, hoy, l["producto_id"], l["nombre"], cant_d, "dañado" if danado else "inventario", p["id"], p["nombre"] + (f" (plato {col})" if col else ""),
+                 cant_n, motivo, desc, monto, forma if monto else None, uid))
+    registrar(con, oid, uid, "cambio", f"Cambio ({motivo}): devolvió {cant_d:g}× {l['nombre']}" + (" (dañado)" if danado else "")
+              + f" y se llevó {cant_n:g}× {p['nombre']}" + (f" · descuento {fmt_usd(desc)}" if desc else "")
+              + (f" · pagó la diferencia: {forma} {fmt_usd(monto)}" if monto else "") + (f" · {fmt_usd(sobra)} le quedan a favor" if sobra else "")
+              + (f" · queda {fmt_usd(r['total'] - pagado)} por pagar" if pagado < r["total"] - 0.01 else ""))
     con.commit(); return volver(oid, request)
 
 
@@ -2275,7 +2340,7 @@ def borrar_orden(con, oid):
     """Borra una orden y todo lo que cuelga de ella. No hace commit."""
     con.execute("DELETE FROM entregas_repuesto WHERE pack_id IN (SELECT id FROM packs WHERE orden_id=?)", (oid,))
     # el saldo a favor que dejó o que usó esta orden también se va: borrarla es como si nunca hubiera existido
-    for tb in ("packs", "repuestos_prepagados", "pagos", "historial", "incidencias", "orden_lineas", "gastos", "mov_inventario", "fotos", "credito_cliente", "viajes_despachador"): con.execute(f"DELETE FROM {tb} WHERE orden_id=?", (oid,))
+    for tb in ("packs", "repuestos_prepagados", "pagos", "historial", "incidencias", "cambios", "orden_lineas", "gastos", "mov_inventario", "fotos", "credito_cliente", "viajes_despachador"): con.execute(f"DELETE FROM {tb} WHERE orden_id=?", (oid,))
     con.execute("DELETE FROM ordenes WHERE id=?", (oid,))
 
 
