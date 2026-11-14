@@ -1539,6 +1539,22 @@ def _():
         assert f"/ordenes/{oid}/ubicacion" not in c.get("/inicio").text, "ya no falta"
         con.close()
 
+@prueba("Falta el GPS: si recibe en otro lado, el aviso y el mensaje piden la ubicación de ESE lugar, no la de su casa")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono,ciudad) VALUES (52,'María Prueba','María','04142223344','Los Teques')")
+        con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,ciudad,principal) VALUES (52,'Principal','Los Teques','Los Teques',1)")
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,total,tipo_entrega,direccion) VALUES ('#78',52,'pendiente','pagada',93,98,'delivery','Sambil Chacao')").lastrowid
+        con.commit()
+        x = next(x for x in A.falta_ubicacion(con) if x["id"] == oid)
+        assert "de Sambil Chacao, donde lo vas a recibir" in x["msj"] and "tu ubicación" not in x["msj"], x["msj"]
+        sesion_de(c, "admin")
+        h = c.get("/inicio").text
+        assert "María: falta el GPS de Sambil Chacao" in h and "falta la ubicación" not in h
+        assert "falta el link GPS" not in c.get("/clientes/52").text, "la ficha no pide el GPS de su casa"
+        con.close()
+
 @prueba("Pack ya creado: prepagar los deliveries de las próximas entregas entra a su orden y esas entregas no se cobran")
 def _():
     with erp_de_prueba() as c:

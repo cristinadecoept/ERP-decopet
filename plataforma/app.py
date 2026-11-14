@@ -429,9 +429,10 @@ def falta_ubicacion(con):
                             WHERE o.tipo_entrega IN ('delivery','delivery_fuera') AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
                             ORDER BY COALESCE(o.fecha_prometida, o.creado_en), o.id"""):
         if ubicacion_de(con, o["cliente_id"], o["direccion"], o["maps"]): continue
+        donde = (o["direccion"] or "").strip() if _sirve(o["direccion"]) else ""
         msj = (f"¡Hola{' ' + o['quien'] if o['quien'] else ''}! 👋🏻 Te escribimos de Decopet 💚 Para llevarte tu pedido, "
-               f"¿nos compartes tu ubicación por aquí? 📍 Así el despachador llega directo 🙌🏻")
-        out.append({"id": o["id"], "numero": o["numero"], "quien": o["quien"], "msj": msj, "ubicacion": True,
+               f"¿nos compartes la ubicación {'de ' + donde + ', donde lo vas a recibir' if donde else 'de donde lo vas a recibir'}? 📍 Así el despachador llega directo 🙌🏻")
+        out.append({"id": o["id"], "numero": o["numero"], "quien": o["quien"], "donde": donde, "msj": msj, "ubicacion": True,
                     "wa": ("https://api.whatsapp.com/send?phone=" + wa(o["telefono"]).rsplit("/", 1)[1] + "&text=" + quote(msj)) if wa(o["telefono"]) else ""})
     return out
 
