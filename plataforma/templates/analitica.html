@@ -6,9 +6,9 @@
 
 {# ---------- 1 · Cómo le fue al mes #}
 <div class="tiles an-tiles">
- <div class="tile an-hero"><b>{{ am.ventas|usd }}</b><span>Ventas</span><i>{{ flecha(comp.ventas) }} antes {{ bm.ventas|usd }}</i></div>
- <div class="tile"><b>{{ am.pedidos }}</b><span>Órdenes</span><i>{{ flecha(comp.pedidos) }} antes {{ bm.pedidos }}</i></div>
- <div class="tile"><b>{{ am.ticket|usd }}</b><span>Ticket promedio</span><i>{{ flecha(comp.ticket) }} antes {{ bm.ticket|usd }}</i></div>
+ <div class="tile an-hero"><b>{{ am.ventas|usd }}</b><span>Ventas</span><i>{{ flecha(comp.ventas) }} {{ antes_txt }} {{ bm.ventas|usd }}</i></div>
+ <div class="tile"><b>{{ am.pedidos }}</b><span>Órdenes</span><i>{{ flecha(comp.pedidos) }} {{ antes_txt }} {{ bm.pedidos }}</i></div>
+ <div class="tile"><b>{{ am.ticket|usd }}</b><span>Ticket promedio</span><i>{{ flecha(comp.ticket) }} {{ antes_txt }} {{ bm.ticket|usd }}</i></div>
  <div class="tile"><b>{{ am.clientes }}</b><span>Clientes que compraron</span><i>{{ am.nuevos }} nuevo{{ 's' if am.nuevos != 1 }} · {{ am.repiten }} repite{{ 'n' if am.repiten != 1 }}</i></div>
 </div>
 
@@ -110,10 +110,10 @@
 <h2 class="seccion-t">Repuestos y packs</h2>
 <div class="tiles an-tiles">
  <a class="tile" href="/miembros?nuevos={{ mes_act }}" style="text-decoration:none;color:inherit"><b>{{ am.pro_total }}</b><span>Miembros PRO</span><i>{{ am.pro_nuevos }} nuevo{{ 's' if am.pro_nuevos != 1 }} este mes · <u>ver quiénes</u></i></a>
- <div class="tile"><b>{{ am.rep_clientes }}</b><span>Clientes que compraron repuesto</span><i>{{ am.rep_unidades }} repuesto{{ 's' if am.rep_unidades != 1 }} · {{ flecha(comp.rep_clientes) }} antes {{ bm.rep_clientes }}</i></div>
- <div class="tile"><b>{{ am.pack_clientes }}</b><span>Clientes que compraron pack</span><i>{{ am.packs }} pack{{ 's' if am.packs != 1 }} · {{ flecha(comp.pack_clientes) }} antes {{ bm.pack_clientes }}</i></div>
- <div class="tile"><b>{{ am.prepagados }}</b><span>Repuestos dejados pagados</span><i>para entregar después · antes {{ bm.prepagados }}</i></div>
- <div class="tile"><b>{{ am.entregas_rep }}</b><span>Entregas de repuesto hechas</span><i>de packs y prepagados · antes {{ bm.entregas_rep }}</i></div>
+ <div class="tile"><b>{{ am.rep_clientes }}</b><span>Clientes que compraron repuesto</span><i>{{ am.rep_unidades }} repuesto{{ 's' if am.rep_unidades != 1 }} · {{ flecha(comp.rep_clientes) }} {{ antes_txt }} {{ bm.rep_clientes }}</i></div>
+ <div class="tile"><b>{{ am.pack_clientes }}</b><span>Clientes que compraron pack</span><i>{{ am.packs }} pack{{ 's' if am.packs != 1 }} · {{ flecha(comp.pack_clientes) }} {{ antes_txt }} {{ bm.pack_clientes }}</i></div>
+ <div class="tile"><b>{{ am.prepagados }}</b><span>Repuestos dejados pagados</span><i>para entregar después · {{ antes_txt }} {{ bm.prepagados }}</i></div>
+ <div class="tile"><b>{{ am.entregas_rep }}</b><span>Entregas de repuesto hechas</span><i>de packs y prepagados · {{ antes_txt }} {{ bm.entregas_rep }}</i></div>
 </div>
 
 {# ---------- 2 · De dónde vinieron las ventas #}

@@ -657,6 +657,12 @@ def _():
     assert v["Michel Prueba"] == (p[0]["nombre"], [p[1]["nombre"]]), v
     assert v["Ana Excel"] == ("Rampa Nueva", [p[1]["nombre"]]), v
     assert "Juana Vieja" in v and (m["nuevos"], m["repiten"]) == (2, 3), (m["nuevos"], m["repiten"])
+    # el mes en curso se compara con el mismo tramo del anterior: al 14 de noviembre, octubre cuenta solo del 1 al 14
+    con.execute("INSERT INTO ordenes (id,numero,cliente_id,estado,estado_pago,total,origen_excel,creado_en) VALUES (7,'#7',2,'entregada','pagada',98,0,'2026-10-25 10:00')")
+    con.commit()
+    assert A.resumen_mes(con, datetime.date(2026, 10, 1))["pedidos"] == 2
+    assert A.resumen_mes(con, datetime.date(2026, 10, 1), hasta_dia=14)["pedidos"] == 1, "el 25 de octubre no entra en el 1–14"
+    assert A.resumen_mes(con, datetime.date(2026, 2, 1), hasta_dia=31)["pedidos"] == 0, "un día que el mes no tiene llega hasta su último día"
 
 
 @prueba("Slow Chow: al confirmar que llegó se dice cuántos azules y rosados; cada uno se lleva su plato")

@@ -8424,12 +8424,17 @@ def analitica(request: Request, mes: str = "", con=Depends(db)):
     except ValueError: m0 = hoy.replace(day=1)
     ant = (m0 - datetime.timedelta(days=1)).replace(day=1)
     sig = (m0 + datetime.timedelta(days=32)).replace(day=1)
-    a, b = resumen_mes(con, m0), resumen_mes(con, ant)
+    # el mes en curso va por la mitad: se compara con el mismo tramo del anterior (1 al 14 de octubre si hoy es 14 de noviembre),
+    # no con el mes anterior entero, que siempre saldría más alto (Cristina, 14 nov)
+    en_curso = m0 == hoy.replace(day=1)
+    a, b = resumen_mes(con, m0), resumen_mes(con, ant, hoy.day if en_curso else None)
+    ult_ant = (m0 - datetime.timedelta(days=1)).day
+    antes_txt = f"1–{min(hoy.day, ult_ant)} {MESES_N[ant.month - 1][:3]}" if en_curso else "antes"
     def var(x, y):   # cuánto cambió frente al mes anterior
         if not y: return None
         return round((x - y) / y * 100)
     comp = {k: var(a[k], b[k]) for k in ("ventas", "pedidos", "ticket", "clientes", "nuevos", "repiten", "rep_clientes", "rep_unidades", "pack_clientes", "packs")}
-    return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp, graf=grafica_ventas_mes(con, m0, ant, hoy),
+    return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp, antes_txt=antes_txt, graf=grafica_ventas_mes(con, m0, ant, hoy),
                   mes_act=m0.strftime("%Y-%m"), mapa_ciudades=datos_mapa(con, m0.isoformat(), (sig - datetime.timedelta(days=1)).isoformat())["ciudades"],
                   mes_txt=f"{MESES_N[m0.month - 1].capitalize()} {m0.year}", mes_ant=ant.strftime("%Y-%m"),
                   mes_sig=sig.strftime("%Y-%m") if sig <= hoy.replace(day=1) else None, CANAL=CANAL)
@@ -8754,9 +8759,11 @@ def grafica_ventas_mes(con, m0, ant, hoy):
             "mes_antes": MESES_N[ant.month - 1]}
 
 
-def resumen_mes(con, m0):
-    """Los números de un mes (m0 = día 1). Ventas por el día en que entraron, como en Inicio."""
-    fin = ((m0 + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)).isoformat()
+def resumen_mes(con, m0, hasta_dia=None):
+    """Los números de un mes (m0 = día 1). Ventas por el día en que entraron, como en Inicio.
+    Con hasta_dia, solo del día 1 a ese día: para comparar el mes en curso con el mismo tramo del mes anterior."""
+    ult = (m0 + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)
+    fin = (ult if not hasta_dia else m0.replace(day=min(hasta_dia, ult.day))).isoformat()
     ini = m0.isoformat(); rango = (ini, fin)
     ventas = round(sum(m for m, n in ventas_por_dia(con, ini, fin).values()), 2)
     ords = con.execute("""SELECT o.id, o.cliente_id, o.canal, o.total, o.ciudad ciudad_orden, c.ciudad ciudad_cliente,
