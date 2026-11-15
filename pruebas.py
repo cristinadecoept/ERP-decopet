@@ -1460,6 +1460,16 @@ def _():
         assert con.execute("SELECT zona FROM direcciones WHERE cliente_id=71").fetchone()[0] == "Chacao Centro"
         con.close()
 
+@prueba("Productos: el producto con precio en divisas muestra también su margen en divisas")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        con.execute("UPDATE productos SET precio=100, precio_divisas=90, costo=40 WHERE id=(SELECT MIN(id) FROM productos WHERE activo=1)"); con.commit(); con.close()
+        sesion_de(c, "admin")
+        h = c.get("/productos").text
+        assert "en divisas deja" in h and "$50" in h and "56 %" in h, "falta el margen en divisas"
+        assert 'data-div="90' in h
+
 @prueba("Descargar respaldo: la dueña baja la base entera como .backup; nadie más puede")
 def _():
     with erp_de_prueba() as c:
