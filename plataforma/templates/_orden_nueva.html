@@ -72,6 +72,7 @@
 <section class="no-paso"><div class="no-paso-h"><span class="no-num">5</span><b>Pago</b></div>
 <label style="margin-top:0">Fecha de pago <span class="obl" id="f-pago-obl">*</span></label><input type="date" name="fecha_pago" id="f-pago" value="{{ hoy }}" style="max-width:220px">
 <div class="nota-log" id="f-pago-ce" hidden style="margin-top:6px">💵 La fecha de pago se pone sola el día que se entregue y se cobre.</div>
+<label class="chk" id="l-divisas" hidden style="margin:12px 0 4px"><input type="checkbox" id="div-si" onchange="document.getElementById('usar-div').value=this.checked?'1':'';calc()"> El cliente pidió el precio en divisas</label><input type="hidden" name="usar_divisas" id="usar-div" value="">
 <label class="chk" id="l-factura" style="margin:12px 0 4px"><input type="checkbox" id="factura-chk" onchange="document.getElementById('factura').value=this.checked?'1':'';calc()"> El cliente pide factura fiscal (agrega IVA 16 %)</label>
 <div id="cred-w" hidden class="ahora-ln nar" style="margin-bottom:8px"><span class="ahora-dot"></span><span style="flex:1">Tiene <b id="cred-m" style="margin:0"></b> a favor</span><button type="button" class="btn chico" onclick="usarCredito()">Usarlo</button></div>
 <div id="pagos"></div>
@@ -84,7 +85,7 @@
 <div class="no-pie"><div class="no-tot"><div><span>Subtotal</span><b id="t-sub">$0.00</b></div><div id="r-iva" hidden><span>IVA 16 %</span><b id="t-iva">$0.00</b></div><div id="r-deliv" hidden><span>Delivery</span><b id="t-deliv">$0.00</b></div><div id="r-dpack" hidden><span id="t-dpack-n">Deliveries próximas entregas</span><b id="t-dpack">$0.00</b></div><div id="r-desc" hidden><span>Descuento</span><b id="t-desc">$0.00</b></div><div class="g"><span>Total</span><b id="t-tot">$0.00</b></div><div class="mini" id="t-bs"></div></div><button class="btn no-crear">Crear orden</button></div>
 </form>
 <script>
-var PR={{ productos|map(attribute='id')|list|tojson }},PN={{ productos|map(attribute='nombre')|list|tojson }},PP={{ productos|map(attribute='precio')|list|tojson }},P2={{ productos|map(attribute='precio_par')|list|tojson }},
+var PR={{ productos|map(attribute='id')|list|tojson }},PN={{ productos|map(attribute='nombre')|list|tojson }},PP={{ productos|map(attribute='precio')|list|tojson }},P2={{ productos|map(attribute='precio_par')|list|tojson }},PD={{ productos|map(attribute='precio_divisas')|list|tojson }},FORMAS_DIV={{ formas_div|tojson }},
  PC={{ productos|map(attribute='requiere_color')|list|tojson }},PM={{ productos|map(attribute='permite_malla')|list|tojson }},PZ={{ productos|map(attribute='permite_personalizacion')|list|tojson }},PS={{ productos|map(attribute='sku')|list|tojson }},PF={{ productos|map(attribute='foto')|map('mini', 160)|list|tojson }},PFR={{ productos|map(attribute='foto_rosado')|map('mini', 160)|list|tojson }};
 var OP_PERSO={{ opciones['OPC-PERSO'].precio }},OP_MALLA={{ opciones['OPC-MALLA'].precio }};var TASA={{ tasa.valor }};var FORMAS={{ FORMAS_COBRO|tojson }};
 function abrirPicker(){document.getElementById('picker').hidden=!document.getElementById('picker').hidden;}
@@ -122,9 +123,14 @@ function persoOk(){const c=document.getElementById('canal');return !c||['whatsap
 function togPersoLin(cb){const inp=cb.closest('.perso-lin').querySelector('[name=personalizacion]');inp.hidden=!cb.checked;inp.required=cb.checked;if(cb.checked)inp.focus();else inp.value='';calc();}
 function setColor(b,c){b.parentElement.querySelectorAll('.no-mini').forEach(x=>x.classList.toggle('act',x===b));b.parentElement.querySelector('[name=color]').value=c;
  const d=b.closest('.no-linea'),i=+d.dataset.i,img=d.querySelector('.no-linea-foto'),f=(c==='rosado'&&PFR[i])?PFR[i]:PF[i];if(img&&f)img.src=f;calc();}
-function lineaTotal(d){const i=+d.dataset.i,c=Math.max(1,+d.querySelector('[name=cantidad]').value||1);let base=P2[i]&&c>=2?Math.floor(c/2)*P2[i]+(c%2)*PP[i]:PP[i]*c;
+// paga en divisas (todas las formas elegidas están en la lista de Productos, y no es Cashea): va el precio con descuento
+// solo si el cliente lo pide (Cristina, 15 nov): la casilla sale cuando paga con esas formas y algún producto tiene precio en divisas
+function usarDivisas(){const c=document.getElementById('div-si');return !!(c&&c.checked)&&enDivisas();}
+function enDivisas(){const c=document.getElementById('canal');if(c&&c.value==='cashea')return false;const fs=[...document.querySelectorAll('#pagos [name=pago_forma]')].map(x=>x.value).filter(Boolean);return fs.length>0&&fs.every(x=>FORMAS_DIV.includes(x));}
+function lineaTotal(d){const i=+d.dataset.i,c=Math.max(1,+d.querySelector('[name=cantidad]').value||1),dv=usarDivisas()&&PD[i];let base=dv?PD[i]*c:(P2[i]&&c>=2?Math.floor(c/2)*P2[i]+(c%2)*PP[i]:PP[i]*c);
+ const cu=d.querySelector('.no-linea-nom .mini');if(cu)cu.textContent=dv?('$'+PD[i].toFixed(2)+' c/u · divisas'):('$'+PP[i].toFixed(2)+' c/u');
  if(d.querySelector('[name=malla]').value==='1')base+=OP_MALLA;const p=d.querySelector('[name=personalizacion]');if(p&&p.type!=='hidden'&&p.value.trim())base+=OP_PERSO;return base;}
-function calc(){const nh=document.getElementById('nada-hoy');if(nh)nh.hidden=!nadaHoy();let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{const v=lineaTotal(d);d.querySelector('.lt').innerText='$'+v.toFixed(2);s+=v;});
+function calc(){const nh=document.getElementById('nada-hoy');if(nh)nh.hidden=!nadaHoy();const ld=document.getElementById('l-divisas');if(ld)ld.hidden=!(enDivisas()&&[...document.querySelectorAll('#lin .no-linea')].some(d=>PD[+d.dataset.i]));let s=0;document.querySelectorAll('#lin .no-linea').forEach(d=>{const v=lineaTotal(d);d.querySelector('.lt').innerText='$'+v.toFixed(2);s+=v;});
  const px=+document.getElementById('perso-x').value||0;s+=px;document.getElementById('motivo-w').hidden=!(+document.getElementById('desc').value>0);
  const ds=+document.getElementById('desc').value||0,dl=+document.getElementById('deliv').value||0;const conIva=document.getElementById('canal').value==='cashea'||document.getElementById('factura').value==='1';const iva=conIva?(s-ds)*0.16:0;
  document.getElementById('r-iva').hidden=!iva;document.getElementById('r-deliv').hidden=!dl;document.getElementById('r-desc').hidden=!ds;

@@ -1460,6 +1460,33 @@ def _():
         assert con.execute("SELECT zona FROM direcciones WHERE cliente_id=71").fetchone()[0] == "Chacao Centro"
         con.close()
 
+@prueba("Precio en divisas: si el cliente lo pide y paga con una forma marcada en Productos (Zelle, efectivo…) va el precio con descuento; si no lo pide, con Pago Móvil o con Cashea, el normal")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO productos (id,sku,nombre,categoria,tipo,precio,costo,activo) VALUES (903,'RMP-DIV','Rampa Divisas Prueba','accesorio','producto',85,30,1)")
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono,correo,ciudad) VALUES (81,'Dora Prueba','Dora','04140000081','d@x.com','Caracas')")
+        con.commit()
+        sesion_de(c, "admin")
+        # se marca en Productos: el precio en divisas del producto y con qué formas vale
+        f = {f"{k}_903": v for k, v in (("nombre", "Rampa Divisas Prueba"), ("categoria", "accesorio"), ("precio", "85"), ("costo", "30"), ("activo", "1"), ("divisas", "80"))}
+        c.post("/productos/guardar", data=f | {"formas_divisas_presentes": "1", "formas_divisas": ["Zelle", "Efectivo USD"]})
+        assert con.execute("SELECT precio, precio_divisas, costo FROM productos WHERE id=903").fetchone()[:] == (85, 80, 30), "el costo no se toca"
+        assert A.formas_divisas(con) == ["Zelle", "Efectivo USD"]
+        assert "Precio en divisas" in c.get("/productos").text
+        def orden(canal, forma, pidio="1"):
+            c.post("/ordenes/nueva", data={"cliente_id": "81", "canal": canal, "producto_id": "903", "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+                                           "tipo_entrega": "pickup", "delivery": "0", "pago_forma": [forma], "pago_monto": [""], "pago_ref": [""], "usar_divisas": pidio})
+            return con.execute("SELECT l.precio FROM orden_lineas l JOIN ordenes o ON o.id=l.orden_id WHERE o.cliente_id=81 ORDER BY o.id DESC LIMIT 1").fetchone()[0]
+        assert orden("whatsapp", "Zelle") == 80
+        assert orden("whatsapp", "Efectivo USD") == 80
+        assert orden("whatsapp", "Zelle", pidio="") == 85, "si el cliente no lo pidió, va el precio normal"
+        assert orden("whatsapp", "Pago Móvil") == 85, "Pago Móvil no lleva el descuento"
+        assert orden("cashea", "Zelle") == 85, "Cashea nunca lleva el precio en divisas"
+        h = c.get("/ordenes/nueva/panel").text
+        assert 'FORMAS_DIV=["Zelle", "Efectivo USD"]' in h and "function enDivisas" in h and 'name="usar_divisas"' in h, "Nueva orden sabe con qué formas va el descuento"
+        con.close()
+
 @prueba("Orden nueva con la entrega 'Por definir' (el cliente todavía no dice cómo): se guarda sin tipo de entrega, sin delivery, y sale en Operaciones para definirla después")
 def _():
     with erp_de_prueba() as c:

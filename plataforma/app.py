@@ -286,6 +286,18 @@ MODALIDAD = {"cobro_destino": "A cobro en destino", "pagado_decopet": "Envío pa
 ENTREGA = {"pickup": "Pick-up", "delivery": "Delivery Caracas", "delivery_fuera": "Delivery fuera de Caracas", "nacional": "Envío nacional", "distribuidor": "Distribuidor", "otro": "Otro"}
 DISTRIBUIDORES = ["Vivero Maracaibo"]
 CANAL = {"whatsapp": "WhatsApp", "cashea": "Cashea", "web": "Página web", "shopify": "Shopify", "duwu": "Duwu", "vidapets": "Vidapets", "instagram": "Instagram", "presencial": "Presencial", "otro": "Otro"}
+def formas_divisas(con):
+    """Las formas de pago con las que vale el precio en divisas de un producto (se marcan en Productos)."""
+    return cfg_json(con, "formas_divisas", [])
+
+
+def paga_en_divisas(con, canal, formas):
+    """El precio en divisas vale si todo lo que paga es con esas formas (y no es Cashea, que paga en cuotas)."""
+    formas = [x for x in formas if x]
+    ok = set(formas_divisas(con))
+    return canal != "cashea" and bool(formas) and all(x in ok for x in formas)
+
+
 def cfg_json(con, clave, por_defecto=None):
     r = con.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
     return json.loads(r[0]) if r and r[0] else (por_defecto if por_defecto is not None else {})
@@ -721,6 +733,7 @@ async def puerta(request: Request, call_next):
 # Columnas que se fueron agregando con el tiempo y no están en modelo.sql.
 # Se aplican al arrancar, así una base nueva queda igual que la que está en uso.
 COLUMNAS = (
+    ("productos", "precio_divisas", "REAL"),   # precio con descuento si paga en divisas (efectivo, Zelle, Binance…): Cristina, 15 nov
     ("mascotas", "fallecida", "TEXT"),   # el día que se anotó que falleció: no se felicita, no sale en mensajes; si no le queda ninguna, se pausan los repuestos
     ("ordenes", "paga_el", "TEXT"),   # el cliente dijo que paga ese día: hasta entonces no sale en "con saldo pendiente"
     ("ordenes", "a_domicilio", "INTEGER NOT NULL DEFAULT 0"),   # envío nacional que la agencia lleva a la puerta del cliente, no a su oficina
@@ -1764,7 +1777,7 @@ def nueva_panel(request: Request, cliente: int = 0, con=Depends(db)):
                               (SELECT GROUP_CONCAT(n.texto, ' · ') FROM notas_cliente n WHERE n.cliente_id=c.id AND n.mostrar_logistica=1) notas
                               FROM clientes c ORDER BY nombre""").fetchall()
     pre = con.execute("SELECT nombre FROM clientes WHERE id=?", (cliente,)).fetchone() if cliente else None
-    return render(request, "_orden_nueva.html", productos=productos, ciudades_vl=ciudades_conocidas(con), opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", ventas_auto=ventas_automaticas(con), tarifas=con.execute("SELECT zona, tarifa, fuera_caracas FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
+    return render(request, "_orden_nueva.html", formas_div=formas_divisas(con), productos=productos, ciudades_vl=ciudades_conocidas(con), opciones=opciones, clientes=clientes, tasa=tasa_hoy(con), precliente=pre["nombre"] if pre else "", ventas_auto=ventas_automaticas(con), tarifas=con.execute("SELECT zona, tarifa, fuera_caracas FROM tarifas ORDER BY orden, tarifa, zona").fetchall())
 
 
 @app.get("/ordenes/{oid}/panel", response_class=HTMLResponse)
@@ -2588,10 +2601,12 @@ async def crear_orden(request: Request, con=Depends(db)):
     tasa = tasa_hoy(con)["valor"]
     lineas, subtotal, costo = [], 0.0, 0.0
     OPC = {r["sku"]: r for r in con.execute("SELECT * FROM productos WHERE tipo='opcion'")}
+    divisas = f.get("usar_divisas") == "1" and paga_en_divisas(con, f.get("canal"), f.getlist("pago_forma"))   # solo si el cliente lo pidió
     prepagar = f.getlist("prepagar"); pack_inicio = f.getlist("pack_inicio"); pack_deliv = f.getlist("pack_deliv"); packs_inicio_por_linea = {}; packs_deliv_por_linea = {}
     for idx, (pid, cant, perso, color, malla) in enumerate(zip(f.getlist("producto_id"), f.getlist("cantidad"), f.getlist("personalizacion"), f.getlist("color"), f.getlist("malla"))):
         if not pid: continue
         p = con.execute("SELECT * FROM productos WHERE id=?", (pid,)).fetchone(); c = float(cant or 1)
+        if divisas and p["precio_divisas"]: p = dict(p) | {"precio": p["precio_divisas"], "precio_par": None}   # paga en divisas: va su precio con descuento
         base = precio_linea(p, c)
         extras = (OPC["OPC-PERSO"]["precio"] if (perso and p["permite_personalizacion"]) else 0) + (OPC["OPC-MALLA"]["precio"] if (malla == "1" and p["permite_malla"]) else 0)
         extras_costo = (OPC["OPC-PERSO"]["costo"] if (perso and p["permite_personalizacion"]) else 0) + (OPC["OPC-MALLA"]["costo"] if (malla == "1" and p["permite_malla"]) else 0)
@@ -4617,7 +4632,7 @@ def catalogo(request: Request, canal: str = "", q: str = "", con=Depends(db)):
     cats = sorted({p["categoria"] for p in prods if p["categoria"]})
     conteo_canal = {k: sum(1 for p in prods if p["tipo"] == "producto" and p["activo"] and k in (p["canales"] or "").split(",")) for k in CANALES_VENTA}
     if canal: prods = [p for p in prods if p["tipo"] != "producto" or canal in (p["canales"] or "").split(",")]
-    return render(request, "catalogo.html", seccion="catalogo", IVA=IVA, productos=prods, cats=cats, canal=canal, CANALES_VENTA=CANALES_VENTA, conteo_canal=conteo_canal)
+    return render(request, "catalogo.html", seccion="catalogo", IVA=IVA, formas_div=formas_divisas(con), productos=prods, cats=cats, canal=canal, CANALES_VENTA=CANALES_VENTA, conteo_canal=conteo_canal)
 
 
 @app.post("/productos/guardar")
@@ -4631,8 +4646,11 @@ async def catalogo_guardar(request: Request, con=Depends(db)):
         con.execute("""UPDATE productos SET nombre=?, categoria=?, descripcion=?, precio=?, precio_par=?, costo=?, activo=?, requiere_color=?, permite_malla=?, permite_personalizacion=?, minimo=?, descripcion_larga=?, peso_kg=? WHERE id=?""",
                     (g("nombre"), g("categoria") or None, g("descripcion") or None, num("precio"), num("precio_par"), num("costo"), 1 if f.get(f"activo_{i}") else 0,
                      1 if f.get(f"color_{i}") else 0, 1 if f.get(f"malla_{i}") else 0, 1 if f.get(f"perso_{i}") else 0, int(num("minimo") or 0), g("larga") or None, num("peso"), i))
+        if f"divisas_{i}" in f: con.execute("UPDATE productos SET precio_divisas=? WHERE id=?", (num("divisas"), i))
         if f"canales_presentes_{i}" in f:   # solo si el producto estaba en pantalla (el filtro por canal oculta los demás)
             con.execute("UPDATE productos SET canales=? WHERE id=?", (",".join(k for k in CANALES_VENTA if f.get(f"canal_{k}_{i}")) or None, i))
+    if f.get("formas_divisas_presentes"):
+        con.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('formas_divisas', ?)", (json.dumps(f.getlist("formas_divisas"), ensure_ascii=False),))
     if (f.get("nuevo_nombre") or "").strip():
         sku = (f.get("nuevo_sku") or f["nuevo_nombre"]).strip().upper().replace(" ", "-")[:20]
         con.execute("INSERT OR IGNORE INTO productos (sku,nombre,categoria,precio,costo,tipo,orden) VALUES (?,?,?,?,?,?,500)",
