@@ -1723,3 +1723,5 @@ html.oscuro .pack-tag.hora-tag{color:#f0c877;background:rgba(240,200,119,.14)}
 .res-desp>summary::-webkit-details-marker{display:none}.res-desp>summary::after{content:"›";transform:rotate(90deg);font-size:15px}.res-desp[open]>summary::after{transform:rotate(-90deg)}
 .res-orden{margin-top:0}.res-orden>.resumen{margin-top:12px}
 .res-desp>.op-res{margin-top:12px;background:var(--sup);border-radius:18px;padding:16px;box-shadow:var(--sombra)}
+/* Nueva orden: 'Cliente nuevo' va en la misma línea de 'Cliente'; se esconde cuando ya se eligió o se está creando */
+.cl-nuevo-btn{margin:0 0 0 auto;font-size:13.5px}.cl-nuevo-btn .no-masc-ic{width:36px;height:36px}.cl-nuevo-btn svg{width:23px;height:23px}.no-paso:has(#cl-buscar[hidden]) .cl-nuevo-btn{display:none}
