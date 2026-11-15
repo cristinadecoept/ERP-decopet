@@ -599,7 +599,7 @@ button.cf-b.swp{background:var(--tinta-2)}
 .cf-libro tr:hover .cf-x .btn{opacity:1}
 .cf-x .btn{opacity:.25;transition:opacity .12s;padding:2px 8px}
 tr.sin-ventas td{opacity:.45}
-.cat-margen{margin-top:4px;color:var(--verde-osc);font-weight:600}
+.cat-margen{margin-top:4px;color:var(--verde-osc);font-weight:600;font-size:13px;white-space:nowrap}.cat-margen-div{margin-top:2px}
 .clave-caja{max-width:340px;margin:60px auto;background:var(--sup);box-shadow:var(--sombra);border-radius:18px;padding:28px 26px;text-align:center}
 .clave-caja h1{margin:6px 0 4px;font-size:22px}
 .clave-ico{font-size:28px}
