@@ -2244,13 +2244,13 @@ def quitar_delivery(con, oid, uid):
 async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     rol = rol_de(request); f = await request.form()
     if "editar_entrega" not in PERMISOS[rol]: return volver(oid, request)
-    campos = ["tipo_entrega", "direccion", "zona", "maps", "ciudad", "receptor_nombre", "receptor_telefono", "despachador", "agencia", "guia", "distribuidor", "fecha_prometida", "franja", "notas_entrega", "nota_taller", "modalidad_envio", "forma_pago_prevista"]
+    campos = ["tipo_entrega", "direccion", "zona", "maps", "ciudad", "receptor_nombre", "receptor_telefono", "receptor_cedula", "despachador", "agencia", "guia", "distribuidor", "fecha_prometida", "franja", "notas_entrega", "nota_taller", "modalidad_envio", "forma_pago_prevista"]
     f = dict(f)
     te = f.get("tipo_entrega")
-    # cada tipo de entrega solo guarda lo que le corresponde
-    if te == "nacional": f["ciudad"] = f.get("ciudad_nac") or f.get("ciudad"); f["despachador"] = ""; f["distribuidor"] = ""; f["franja"] = ""
     dom = 1 if te == "nacional" and f.get("a_domicilio") == "1" else 0
     if dom: f["direccion"] = (f.get("direccion_dom") or "").strip() or f.get("direccion")   # a domicilio: la dirección es la de la puerta del cliente
+    # cada tipo de entrega solo guarda lo que le corresponde (un envío nacional se queda con su agencia y su modalidad: Cristina, 14 nov)
+    if te == "nacional": f["ciudad"] = f.get("ciudad_nac") or f.get("ciudad"); f["despachador"] = ""; f["distribuidor"] = ""; f["franja"] = ""
     elif te == "distribuidor": f["ciudad"] = f.get("ciudad_dist") or f.get("ciudad"); f["despachador"] = ""; f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["franja"] = ""
     elif te == "pickup": f["despachador"] = ""; f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["distribuidor"] = ""
     else: f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["distribuidor"] = ""
@@ -2258,6 +2258,9 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     if not f.get("fecha_prometida"): f["fecha_prometida"] = datetime.date.today().isoformat()
     if f.get("despachador") == "__otro__": f["despachador"] = (f.get("despachador_otro") or "").strip()
     o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+    if "receptor_cedula" in f: f["receptor_cedula"] = normalizar_cedula(f["receptor_cedula"])
+    for c in campos:   # lo que no viene en el formulario (la guía, por ejemplo) se queda como estaba
+        if c not in f: f[c] = o[c]
     cambios = [f"{c}: '{o[c] or ''}' → '{f.get(c) or ''}'" for c in campos if (o[c] or "") != (f.get(c) or "")]
     con.execute(f"UPDATE ordenes SET {', '.join(c + '=?' for c in campos)} WHERE id=?", [f.get(c) or None for c in campos] + [oid])
     if (o["fecha_prometida"] or "") != (f.get("fecha_prometida") or ""): con.execute("UPDATE ordenes SET espera_aviso=0 WHERE id=?", (oid,))   # ya tiene fecha

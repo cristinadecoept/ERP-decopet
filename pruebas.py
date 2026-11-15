@@ -3126,6 +3126,13 @@ def _():
         c.post(f"/ordenes/{o['id']}/entrega", data={"tipo_entrega": "nacional", "agencia": "Tealca", "ciudad_nac": "Barcelona", "a_domicilio": "1", "direccion_dom": "Calle 5, casa 12"}, follow_redirects=False)
         r = con.execute("SELECT a_domicilio, direccion FROM ordenes WHERE id=?", (o["id"],)).fetchone()
         assert (r[0], r[1]) == (1, "Calle 5, casa 12")
+        # en la oficina (sin domicilio) se guardan la agencia, la modalidad y la cédula de quien recibe; la guía no se borra
+        con.execute("UPDATE ordenes SET agencia=NULL, modalidad_envio=NULL, guia='ZO123' WHERE id=?", (o["id"],)); con.commit()
+        c.post(f"/ordenes/{o['id']}/entrega", data={"tipo_entrega": "nacional", "agencia": "MRW", "modalidad_envio": "cobro_destino", "ciudad_nac": "MRW La Democracia 05100",
+                                                     "receptor_nombre": "Ana Tercera", "receptor_cedula": "12.345.678"}, follow_redirects=False)
+        r = con.execute("SELECT agencia, modalidad_envio, guia, receptor_cedula FROM ordenes WHERE id=?", (o["id"],)).fetchone()
+        assert tuple(r) == ("MRW", "cobro_destino", "ZO123", "V-12345678"), tuple(r)
+        assert 'name="receptor_cedula"' in c.get(f"/ordenes/{o['id']}/panel").text
         con.close()
 
 
