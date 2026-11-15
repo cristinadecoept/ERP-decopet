@@ -16,6 +16,7 @@
  {% else %}<p class="cf-d ln-alerta">Todavía no hay ninguna copia.</p>{% endif %}
  <div style="display:flex;gap:8px;flex-wrap:wrap">
   <form method="post" action="/configuracion/respaldo"><button class="btn chico">Respaldar ahora</button></form>
+  <a class="btn sec chico" href="/configuracion/descargar-respaldo">Descargar respaldo</a>
   <a class="btn sec chico" href="/exportar-todo">Bajar los datos a Excel</a>
  </div>
  <p class="mini" style="margin-top:8px">El respaldo copia la base de datos a la nube, fuera del disco de la Mac; se guardan los últimos 30 días.

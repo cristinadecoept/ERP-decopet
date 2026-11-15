@@ -3638,6 +3638,22 @@ def categoria_guardar(request: Request, categoria: str = Form(""), sub: str = Fo
     con.commit(); return RedirectResponse("/configuracion?ok=cat", status_code=303)
 
 
+@app.get("/configuracion/descargar-respaldo")
+def descargar_respaldo(request: Request):
+    """Baja una copia completa de la base, al día, para guardarla fuera del servidor (Cristina, 15 nov). Solo la dueña.
+    Se hace con la copia de SQLite (no copiando el archivo), así sale entera aunque alguien esté anotando en ese momento."""
+    if not solo_admin(request): return RedirectResponse("/operaciones", status_code=303)
+    import tempfile
+    from starlette.background import BackgroundTask
+    fd, tmp = tempfile.mkstemp(suffix=".backup"); os.close(fd)
+    origen = sqlite3.connect(DB); destino = sqlite3.connect(tmp)
+    try: origen.backup(destino)
+    finally: destino.close(); origen.close()
+    nombre = f"decopet-{datetime.datetime.now().strftime('%Y-%m-%d-%H%M')}.backup"
+    return FileResponse(tmp, media_type="application/octet-stream", filename=nombre,
+                        headers={"Cache-Control": "no-store"}, background=BackgroundTask(os.remove, tmp))
+
+
 @app.post("/configuracion/respaldo")
 
 

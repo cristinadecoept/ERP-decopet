@@ -1460,6 +1460,23 @@ def _():
         assert con.execute("SELECT zona FROM direcciones WHERE cliente_id=71").fetchone()[0] == "Chacao Centro"
         con.close()
 
+@prueba("Descargar respaldo: la dueña baja la base entera como .backup; nadie más puede")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila) VALUES (91,'Respaldo Prueba','Respaldo')"); con.commit(); con.close()
+        sesion_de(c, "admin")
+        assert "/configuracion/descargar-respaldo" in c.get("/configuracion").text
+        r = c.get("/configuracion/descargar-respaldo")
+        assert r.status_code == 200 and r.content[:16] == b"SQLite format 3\x00", r.status_code
+        assert ".backup" in r.headers.get("content-disposition", "")
+        ruta = tempfile.mktemp(suffix=".backup"); open(ruta, "wb").write(r.content)
+        assert sqlite3.connect(ruta).execute("SELECT nombre FROM clientes WHERE id=91").fetchone()[0] == "Respaldo Prueba", "la copia trae los datos"
+        for rol in ("logistica", "taller", "despachador"):
+            sesion_de(c, rol)
+            r = c.get("/configuracion/descargar-respaldo", follow_redirects=False)
+            assert r.status_code != 200 or not r.content.startswith(b"SQLite"), f"{rol} no puede bajar la base"
+
 @prueba("Precio en divisas: si el cliente lo pide y paga con una forma marcada en Productos (Zelle, efectivo…) va el precio con descuento; si no lo pide, con Pago Móvil o con Cashea, el normal")
 def _():
     with erp_de_prueba() as c:
