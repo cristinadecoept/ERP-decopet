@@ -111,6 +111,10 @@ function cerrarPanel(){document.getElementById('panel').classList.remove('on');d
 function trasGuardar(url){const id=url.searchParams.get('abrir');if(!id)return false;url.searchParams.delete('abrir');history.replaceState(null,'',url.pathname+url.search);abrirPanel('/ordenes/'+id+'/panel');return true;}
 trasGuardar(new URL(location.href));
 document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarPanel();});
+// dirección larga: 3 líneas y "Ver más"; tocarlo no abre la orden
+function verDir(b,e){e.stopPropagation();const d=b.previousElementSibling,ab=d.classList.toggle('dir-corta');b.textContent=ab?'Ver más':'Ver menos';}
+addEventListener('load',()=>document.querySelectorAll('.op-donde .op-dir,.op-donde .op-dir-t').forEach(d=>{d.classList.add('dir-corta');
+ if(d.scrollHeight>d.clientHeight+4){const b=document.createElement('button');b.type='button';b.className='no-link dir-mas';b.textContent='Ver más';b.onclick=e=>verDir(b,e);d.after(b);}else d.classList.remove('dir-corta');}));
 </script><script>
 // si paga con su saldo a favor, el monto no puede pasarse de lo que tiene
 function tope(sel){

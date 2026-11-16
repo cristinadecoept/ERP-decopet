@@ -7443,12 +7443,13 @@ def viajes_por_llevar(con, nombre):
     packs_v = [k for k in cargar_packs(con) if k["viaje_id"] and k["saldo"] > 0] if viajes else []
     for v in viajes:
         v["paquetes"] = []
-        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, o.a_domicilio, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
+        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, o.a_domicilio, o.canal, COALESCE(o.requiere_factura,0) requiere_factura, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
                                 o.receptor_cedula, NULLIF(TRIM(o.receptor_correo),'') receptor_correo,
                                 c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo, NULLIF(TRIM(c.ciudad),'') cliente_ciudad FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
             o = quien_retira(dict(o))
             if o["a_domicilio"]: o["direccion"] = "🚪 A DOMICILIO: " + (o["direccion"] or o["ciudad"] or "falta la dirección")   # la agencia lo lleva a la puerta
             o["lleva"] = lo_que_lleva(con, o["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
+            o["factura"] = o["canal"] == "cashea" or bool(o["requiere_factura"])   # va dentro del paquete (Cristina, 16 nov)
             v["paquetes"].append(o)
         for k in (k for k in packs_v if k["viaje_id"] == v["id"]):   # si no dijeron otra cosa, retira el mismo de la compra por agencia
             o = dict(con.execute("""SELECT c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo, o.modalidad_envio, NULLIF(TRIM(o.receptor_nombre),'') recibe,
@@ -7470,7 +7471,8 @@ def ruta_despachador(con, nombre, hoy):
     for o in con.execute("""SELECT o.id, o.numero, o.total, o.estado_pago, o.tipo_entrega, o.estado,
                             COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien, c.telefono,
                             o.direccion, o.maps, o.zona, o.ciudad, c.id cid, o.notas_entrega,
-                            NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel, NULLIF(TRIM(o.franja),'') franja
+                            NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel, NULLIF(TRIM(o.franja),'') franja,
+                            o.canal, COALESCE(o.requiere_factura,0) requiere_factura
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
                             WHERE o.despachador=? AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0 AND COALESCE(o.espera_aviso,0)=0 AND """ + HAY_QUE_ENTREGAR() + """
                               AND o.tipo_entrega NOT IN ('pickup','distribuidor')
@@ -7489,6 +7491,7 @@ def ruta_despachador(con, nombre, hoy):
         d["que_lleva"] = lo_que_lleva(con, d["id"], lambda ya, n, t: f"{ya + 1}/{t}" if n <= 1 else f"{ya + 1}-{ya + n}/{t}")[0]
         d["indicaciones"] = indicaciones_cliente(con, d["cid"], d["notas_entrega"])
         d["kind"] = "orden"
+        d["factura"] = d["canal"] == "cashea" or bool(d["requiere_factura"])   # Cashea o factura fiscal: el despachador la lleva (Cristina, 16 nov)
         d["avisos"] = [dict(r) for r in con.execute("SELECT tipo, descripcion FROM incidencias WHERE orden_id=? AND estado='abierta' ORDER BY id", (d["id"],))]
         filas.append(d)
     # retiros de pack y repuestos prepagados que le tocan: son entregas del mismo pedido, con sus mismos pasos

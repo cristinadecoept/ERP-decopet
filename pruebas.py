@@ -1912,6 +1912,36 @@ def _():
         c2.close(); con.close()
 
 
+@prueba("Despachador: si la orden es de Cashea o pidió factura fiscal, en su lista sale 'Llevar factura'; si no, no")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); hoy = datetime.date.today().isoformat(); desp = A.DESPACHADORES[0]
+        pid = con.execute("INSERT INTO productos (sku,nombre,categoria,tipo,activo,precio) VALUES ('FAC-X','Rampa Aviso Prueba','rampa','producto',1,100)").lastrowid
+        cids = {}
+        for nom, canal, req in (("Ana", "cashea", 0), ("Berta", "whatsapp", 1), ("Carla", "whatsapp", 0)):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES (?,?)", (nom + " Aviso", nom)).lastrowid
+            oid = con.execute("""INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,total,origen_excel,canal,requiere_factura,
+                                 tipo_entrega,despachador,direccion,fecha_prometida) VALUES (?,?,'pendiente','pagada',100,100,0,?,?,'delivery',?,'Chacao',?)""",
+                              ("#F" + nom, cid, canal, req, desp, hoy)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,'Rampa Aviso Prueba',1,100,0,100)", (oid, pid))
+            cids[nom] = cid
+        con.commit()
+        c2 = sqlite3.connect(A.DB); c2.row_factory = sqlite3.Row
+        filas = {f["quien"]: f for f in A.ruta_despachador(c2, desp, hoy) if f["cid"] in cids.values()}
+        assert set(filas) == {"Ana", "Berta", "Carla"}, sorted(filas)
+        assert filas["Ana"]["factura"] and filas["Berta"]["factura"] and not filas["Carla"]["factura"]
+        txt = A.texto_ruta([filas["Ana"], filas["Carla"]], datetime.date.today())
+        assert "FACTURA" not in txt.upper(), "en el mensaje de la ruta no va (Cristina, 16 nov): solo en la pantalla"
+        did = c2.execute("SELECT id FROM despachadores WHERE nombre=?", (desp,)).fetchone()
+        c2.close(); con.close()
+        if did:
+            sesion_de(c, "admin"); h = c.get(f"/despachadores/{did[0]}").text
+            assert h.count("Llevar factura") >= 2, "en la ficha del despachador no sale el aviso"
+    # envío nacional por agencia: sale en la pantalla del despachador, no en los datos que se copian para la agencia
+    o1 = {"recibe": None, "nombre": "Dora Prueba", "lleva": "1× Rampa", "telefono": "0414", "correo": "d@x.com", "cedula": "V-1", "direccion": "Tealca Valencia", "factura": True}
+    assert "FACTURA" not in A.copia_agencia(o1).upper()
+
+
 @prueba("Un pedido que se paga al entregar sale en el Inicio para cobrar, y en 'Con saldo pendiente' tiene su botón de cobro")
 def _():
     with erp_de_prueba() as c:
