@@ -139,6 +139,10 @@
  {% for v in am.volvieron[:6] %}<tr><td><a href="/clientes/{{ v.id }}">{{ v.nombre }}</a></td><td class="mini">{{ v.antes or '—' }}</td><td><b>{{ v.ahora|join(' · ') or '—' }}</b></td></tr>{% endfor %}</table>
  {% if am.volvieron|length > 6 %}<div class="mini" style="margin-top:8px">y {{ am.volvieron|length - 6 }} más</div>{% endif %}
  {% else %}<div class="vacio">Nadie volvió a comprar este mes.</div>{% endif %}</div>
+ <div class="tarjeta"><h3>Mensajes de cumpleaños</h3>
+ {% if cumples_r.felicitados %}<table data-cols="Felicitados:34|Compraron:33|Vendido:33" class="lineas"><tr><th class="num">Felicitados</th><th class="num">Compraron</th><th class="num">Vendido</th></tr>
+ <tr><td class="num"><b>{{ cumples_r.felicitados }}</b></td><td class="num"><b>{{ cumples_r.compraron }}</b> <span class="mini">{{ cumples_r.pct }} %</span></td><td class="num"><b>{{ cumples_r.vendido|usd }}</b></td></tr></table>
+ {% else %}<div class="vacio">Ningún cumpleaños felicitado este mes.</div>{% endif %}</div>
 </div></div>
 
 {# ---------- 3 · Qué se vendió #}

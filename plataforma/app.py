@@ -5978,6 +5978,30 @@ def cumple_de(m, hoy):
     return cumple, (cumple.year - nac.year if nac else None), md
 
 
+DIAS_COMPRA_CUMPLE = 2   # si compra hasta 2 días después del mensaje de cumpleaños, cuenta como que el mensaje funcionó (Cristina, 16 nov)
+
+
+def compra_tras_cumple(con, cliente_id, hecho_en):
+    """Las órdenes que hizo el cliente desde el día que se le felicitó hasta DIAS_COMPRA_CUMPLE días después."""
+    d = datetime.date.fromisoformat((hecho_en or "")[:10])
+    return con.execute("""SELECT id, numero, COALESCE(total,0) total FROM ordenes WHERE cliente_id=? AND estado!='cancelada' AND origen_excel=0
+                          AND substr(creado_en,1,10) BETWEEN ? AND ? ORDER BY id""",
+                       (cliente_id, d.isoformat(), (d + datetime.timedelta(days=DIAS_COMPRA_CUMPLE)).isoformat())).fetchall()
+
+
+def resultado_cumples(con, desde, hasta):
+    """Cuántos clientes se felicitaron entre esas fechas, cuántos compraron después y cuánto se vendió (cada orden una vez)."""
+    filas = con.execute("""SELECT cliente_id, MIN(hecho_en) hecho_en FROM seguimientos WHERE tipo='cumple'
+                           AND substr(hecho_en,1,10) BETWEEN ? AND ? GROUP BY cliente_id""", (desde, hasta)).fetchall()
+    ordenes = {}; compraron = 0
+    for r in filas:
+        os_ = compra_tras_cumple(con, r["cliente_id"], r["hecho_en"])
+        if os_: compraron += 1
+        for o in os_: ordenes[o["id"]] = o["total"]
+    n = len(filas)
+    return {"felicitados": n, "compraron": compraron, "pct": round(compraron / n * 100) if n else 0, "vendido": round(sum(ordenes.values()), 2)}
+
+
 def cumples_proximos(con, ventana=30):
     """Perros que cumplen años en los próximos días. Dos avisos independientes: 2 días antes (ofrecer regalo) y el mismo día (felicitar)."""
     hoy = datetime.date.today(); h = hoy.isoformat(); out = []
@@ -5994,6 +6018,7 @@ def cumples_proximos(con, ventana=30):
                         tamano="", que=(f"🎂 {m['perro']} cumple {edad} año{'s' if edad != 1 else ''}" if edad else f"🎂 Cumpleaños de {m['perro']}"), clave=clave, tipo="cumple", activo=faltan <= 2,
                         tipo_txt=("Felicitar" if faltan == 0 else ("Ofrecer regalo" if faltan <= 2 else f"en {faltan} días")),
                         hecho=bool(r), estado=(estado_resultado(r) if r else ("Pendiente" if faltan <= 2 else "Próximo")),
+                        compro=bool(r) and bool(compra_tras_cumple(con, m["id"], r["hecho_en"])),
                         ofrecer=[t for t, _ in oportunidades_de(con, m["id"])] if faltan <= 2 else [],
                         hogar=hogar_de(con, m["id"], hoy) if faltan <= 2 else None))
         if faltan <= 2: out[-1]["mensajes"] = mensajes_cumple(m["perro"], out[-1]["ofrecer"])
@@ -8474,7 +8499,9 @@ def analitica(request: Request, mes: str = "", con=Depends(db)):
         if not y: return None
         return round((x - y) / y * 100)
     comp = {k: var(a[k], b[k]) for k in ("ventas", "pedidos", "ticket", "clientes", "nuevos", "repiten", "rep_clientes", "rep_unidades", "pack_clientes", "packs")}
-    return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp, antes_txt=antes_txt, graf=grafica_ventas_mes(con, m0, ant, hoy),
+    fin_mes = min(hoy, sig - datetime.timedelta(days=1))
+    cumples_r = resultado_cumples(con, m0.isoformat(), fin_mes.isoformat())
+    return render(request, "analitica.html", seccion="analitica", am=a, bm=b, comp=comp, antes_txt=antes_txt, cumples_r=cumples_r, graf=grafica_ventas_mes(con, m0, ant, hoy),
                   mes_act=m0.strftime("%Y-%m"), mapa_ciudades=datos_mapa(con, m0.isoformat(), (sig - datetime.timedelta(days=1)).isoformat())["ciudades"],
                   mes_txt=f"{MESES_N[m0.month - 1].capitalize()} {m0.year}", mes_ant=ant.strftime("%Y-%m"),
                   mes_sig=sig.strftime("%Y-%m") if sig <= hoy.replace(day=1) else None, CANAL=CANAL)

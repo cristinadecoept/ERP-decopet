@@ -1912,6 +1912,29 @@ def _():
         c2.close(); con.close()
 
 
+@prueba("Cumpleaños: si el cliente felicitado compra en los 2 días siguientes sale 'compró' y cuenta en Analítica; después no")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); hoy = datetime.date.today()
+        def cliente(nom):
+            cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES (?,?)", (nom + " Cumple", nom)).lastrowid
+            con.execute("INSERT INTO seguimientos (cliente_id,tipo,clave,resultado,hecho_en) VALUES (?,'cumple',?,'felicitado',?)", (cid, f"cumple_hoy:x{cid}:2026", hoy.isoformat() + " 10:00:00"))
+            return cid
+        a1, a2, a3 = cliente("Alesia"), cliente("Bruno"), cliente("Celia")
+        def orden(cid, dias, estado="pendiente"):
+            con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,creado_en) VALUES (?,?,?,'pagada',96,0,?)",
+                        (f"#C{cid}{dias}", cid, estado, (hoy + datetime.timedelta(days=dias)).isoformat() + " 12:00:00"))
+        orden(a1, 0); orden(a2, 3); orden(a3, 1, "cancelada")
+        con.commit()
+        c2 = sqlite3.connect(A.DB); c2.row_factory = sqlite3.Row
+        assert A.compra_tras_cumple(c2, a1, hoy.isoformat()) and not A.compra_tras_cumple(c2, a2, hoy.isoformat()) and not A.compra_tras_cumple(c2, a3, hoy.isoformat())
+        r = A.resultado_cumples(c2, hoy.isoformat(), hoy.isoformat())
+        assert r["felicitados"] >= 3 and r["compraron"] >= 1 and r["vendido"] >= 96, r
+        c2.close(); con.close()
+        sesion_de(c, "admin"); h = c.get("/analitica").text
+        assert "Mensajes de cumpleaños" in h
+
+
 @prueba("Despachador: si la orden es de Cashea o pidió factura fiscal, en su lista sale 'Llevar factura'; si no, no")
 def _():
     with erp_de_prueba() as c:
