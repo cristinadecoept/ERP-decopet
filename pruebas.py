@@ -1912,6 +1912,33 @@ def _():
         c2.close(); con.close()
 
 
+@prueba("Cashea Envíos: envío nacional gratis por MRW; no se le pide la oficina al cliente, pero sí la ciudad, cédula, teléfono y correo")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB)
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono,correo,cedula) VALUES (95,'Ena Envio','Ena','0414-1112233','ena@x.com','V-12345678')")
+        con.execute("UPDATE clientes SET ciudad='Valencia' WHERE id=95")
+        pid = con.execute("SELECT id FROM productos WHERE activo=1 AND precio>0 LIMIT 1").fetchone()[0]
+        con.commit(); con.close()
+        sesion_de(c, "admin")
+        assert "Cashea Envíos" in c.get("/ordenes/nueva/panel").text
+        r = c.post("/ordenes/nueva", data={"cliente_id": "95", "canal": "cashea", "producto_id": str(pid), "cantidad": "1", "personalizacion": "", "color": "", "malla": "0",
+                                           "tipo_entrega": "nacional", "modalidad_envio": "cashea_envios", "delivery": "15",
+                                           "pago_forma": [""], "pago_monto": [""], "pago_ref": [""]}, follow_redirects=False)
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        o = con.execute("SELECT * FROM ordenes WHERE cliente_id=95 ORDER BY id DESC").fetchone()
+        assert o, r.status_code
+        assert o["modalidad_envio"] == "cashea_envios" and o["agencia"] == "MRW" and (o["delivery"] or 0) == 0, dict(o)
+        assert o["ciudad"] == "Valencia", "sin oficina, la ciudad es la del cliente"
+        f = [x for x in A.faltan_datos_agencia(con) if x["id"] == o["id"]]
+        assert not f, f"no hay que pedirle la oficina: {f}"
+        con.execute("UPDATE clientes SET correo=NULL WHERE id=95"); con.commit()
+        f = [x for x in A.faltan_datos_agencia(con) if x["id"] == o["id"]]
+        assert f and f[0]["faltan"] == "el correo", f
+        assert "Cashea Envíos" in A.lugar_agencia(dict(o) | {"direccion": ""}) and "FALTA" not in A.lugar_agencia(dict(o) | {"direccion": ""})
+        con.close()
+
+
 @prueba("Cumpleaños: si el cliente felicitado compra en los 2 días siguientes sale 'compró' y cuenta en Analítica; después no")
 def _():
     with erp_de_prueba() as c:
@@ -2424,11 +2451,12 @@ def _():
 
 
 def _cliente_con_repuesto_vencido(con, sku="PRO-M"):
-    """Andrea, con Milo, que recibió su porche hace 40 días: le toca el primer repuesto."""
+    """Andrea, con Milo, que recibió su porche justo hace un ciclo: hoy le toca el primer repuesto.
+    (Antes eran 40 días fijos: desde el 17 nov el vencimiento caía después de INTEGRAR_DESDE y salía como atrasada.)"""
     cid = con.execute("INSERT INTO clientes (nombre,nombre_pila,telefono,porche_version) VALUES ('Andrea Mazhar','Andrea','04145539011','PRO')").lastrowid
     con.execute("INSERT INTO mascotas (cliente_id,nombre) VALUES (?,'Milo')", (cid,))
     pro = con.execute("SELECT id, nombre FROM productos WHERE sku=?", (sku,)).fetchone()
-    entrega = (datetime.date.today() - datetime.timedelta(days=40)).isoformat()
+    entrega = (datetime.date.today() - datetime.timedelta(days=A.CICLO_REPUESTO)).isoformat()
     oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,fecha_entrega) VALUES ('#AN1',?,'entregada','pagada',88,0,?)", (cid, entrega)).lastrowid
     con.execute("INSERT INTO orden_lineas (orden_id,producto_id,nombre,cantidad,precio,costo,total) VALUES (?,?,?,1,88,0,88)", (oid, pro["id"], pro["nombre"]))
     con.commit()

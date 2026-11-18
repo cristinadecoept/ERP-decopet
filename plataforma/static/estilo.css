@@ -250,6 +250,9 @@ tr.fila.e-entregada td{opacity:.9}tr.fila.e-cancelada td{opacity:.5}
 .op-barra2{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}.op-barra2>.mini{font-weight:600}
 .op-selects{display:flex;gap:8px;margin-left:auto}.op-selects select{width:auto;padding:7px 30px 7px 12px;border-radius:10px;font-size:13px;background:var(--sup)}
 .op-tabla td{vertical-align:top}.op-grupo-t td{background:var(--fondo);font-weight:600;font-size:12.5px;color:var(--tinta-2);padding:8px 16px}.op-grupo-t td span{margin-left:6px;background:var(--linea);border-radius:99px;padding:0 7px;font-size:11px}
+/* envío nacional por Cashea Envíos: gratis, por MRW, sin datos que llenar (Cristina, 17 nov) */
+.no-ce{display:none!important}   /* campos que Cashea Envíos no necesita */
+.tag-cashea{display:inline-flex!important;align-items:center;gap:5px;background:#fff;color:#111;border:1px solid #dcdcd8;border-radius:999px;padding:2px 10px 2px 3px;font-size:12.5px;font-weight:700;white-space:nowrap;vertical-align:middle}.tag-cashea i{font-style:italic;letter-spacing:-.01em}
 /* el despachador tiene que verlo de un vistazo (Cristina, 16 nov) */
 .aviso-factura{display:inline-block;background:var(--naranja);color:#fff;font-weight:700;font-size:13px;border-radius:8px;padding:4px 10px;margin-top:6px;white-space:normal}
 .op-prod{max-width:240px}.op-nota{color:#8a5a2b;background:var(--crema);border-radius:8px;padding:3px 8px;margin-top:4px;font-size:12px;white-space:normal}

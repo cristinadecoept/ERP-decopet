@@ -27,14 +27,16 @@
   <button type="button" class="btn sec chico" onclick="copiarAg(this)">Copiar datos para la agencia</button>
   {% if not es_manana %}<form method="post" action="/viajes/{{ v.id }}/llevado"><input type="hidden" name="volver" value="/mis-entregas"><button class="btn chico">Ya los llevé</button></form>{% endif %}</div>
  <div class="ag-paqs">{% for o in v.paquetes %}<div class="ag-paq" data-copia="{{ copia_agencia(o) }}">
-  <div class="ag-cab"><b>{{ o.recibe or o.nombre }}</b><span class="mini">{{ o.numero }}{% if o.recibe %} · cliente: {{ o.nombre }}{% endif %}</span>{% if o.a_domicilio %}<span class="est pendiente" style="margin-left:auto">🚪 A domicilio</span>{% endif %}{% if o.modalidad_envio == 'cobro_destino' %}<span class="est pendiente" style="{{ '' if o.a_domicilio else 'margin-left:auto' }}">Cobro a destino</span>{% endif %}</div>
+  <div class="ag-cab"><b>{{ o.recibe or o.nombre }}</b><span class="mini">{{ o.numero }}{% if o.recibe %} · cliente: {{ o.nombre }}{% endif %}</span>{% if o.a_domicilio %}<span class="est pendiente" style="margin-left:auto">🚪 A domicilio</span>{% endif %}{% if o.modalidad_envio == 'cobro_destino' %}<span class="est pendiente" style="{{ '' if o.a_domicilio else 'margin-left:auto' }}">Cobro a destino</span>{% endif %}{% if o.modalidad_envio == 'cashea_envios' %}<span class="tag-cashea" style="margin-left:auto"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#111"/><path d="M15.6 8.4a5 5 0 1 0 0 7.2" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/></svg><i>cashea envíos</i></span>{% endif %}</div>
+  {% if o.modalidad_envio == 'cashea_envios' %}<dl class="ag-datos"><dt>Guía</dt><dd>{{ o.guia or 'la de Cashea' }}</dd><dt>Ciudad</dt><dd>{{ o.ciudad or '—' }}</dd><dt>Lleva</dt><dd>{{ o.lleva|platos }}</dd></dl>
+  <div class="mini" style="margin-top:4px">No hace falta llenar datos en MRW.</div>{% else %}
   <dl class="ag-datos">
    <dt>Cédula</dt><dd>{% if o.cedula %}{{ o.cedula }}{% else %}<span class="op-punto">Falta · pídela antes de ir</span>{% endif %}</dd>
    <dt>Teléfono</dt><dd>{% if o.recibe_tel or o.telefono %}{{ o.recibe_tel or o.telefono }}{% else %}<span class="op-punto">Falta · pídelo antes de ir</span>{% endif %}</dd>
    <dt>Correo</dt><dd>{% if o.correo %}{{ o.correo }}{% else %}<span class="op-punto">Falta · pídelo antes de ir</span>{% endif %}</dd>
    <dt>Oficina</dt><dd>{% if o.direccion or o.ciudad %}{{ o.direccion or o.ciudad }}{% else %}<span class="op-punto">Falta · pídela antes de ir</span>{% endif %}</dd>
    <dt>Lleva</dt><dd>{{ o.lleva|platos }}</dd>
-  </dl>{% if o.factura %}<div class="aviso-factura">🧾 Llevar factura en el paquete</div>{% endif %}{% if not es_manana %}<div style="margin-top:8px">{{ montar_b('pack:' ~ o.pack_id if o.pack_id else 'orden:' ~ o.id) }}</div>{% endif %}</div>{% endfor %}</div></div>{% endmacro %}
+  </dl>{% endif %}{% if o.factura %}<div class="aviso-factura">🧾 Llevar factura en el paquete</div>{% endif %}{% if not es_manana %}<div style="margin-top:8px">{{ montar_b('pack:' ~ o.pack_id if o.pack_id else 'orden:' ~ o.id) }}</div>{% endif %}</div>{% endfor %}</div></div>{% endmacro %}
 {% for v in viajes_pend %}{{ tarjeta_viaje(v) }}{% endfor %}
 <script>function copiarAg(b){const t=[...b.closest('.viaje-ag').querySelectorAll('[data-copia]')].map(r=>r.dataset.copia).join('\n\n');navigator.clipboard.writeText(t).then(()=>{const o=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=o,1500)});}</script>
 <div class="tabla">

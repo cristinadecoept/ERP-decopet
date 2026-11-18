@@ -282,7 +282,9 @@ def razas_lista(con):
     for (r,) in con.execute("SELECT DISTINCT TRIM(raza) FROM mascotas WHERE raza IS NOT NULL AND TRIM(raza) NOT IN ('', 'Pendiente', 'pet')"):
         if _llave_lugar(r) not in vistas: vistas.add(_llave_lugar(r)); extra.append(r)
     return sorted(RAZAS + extra, key=lambda r: (r != "Mestizo", _llave_lugar(r)))
-MODALIDAD = {"cobro_destino": "A cobro en destino", "pagado_decopet": "Envío pagado por Decopet"}
+MODALIDAD = {"cobro_destino": "A cobro en destino", "pagado_decopet": "Envío pagado por Decopet",
+             "cashea_envios": "Cashea Envíos"}   # Cashea Envíos: gratis para el cliente, siempre por MRW; la oficina la elige el cliente en la app de Cashea (Cristina, 17 nov)
+CASHEA_ENVIOS = "cashea_envios"
 ENTREGA = {"pickup": "Pick-up", "delivery": "Delivery Caracas", "delivery_fuera": "Delivery fuera de Caracas", "nacional": "Envío nacional", "distribuidor": "Distribuidor", "otro": "Otro"}
 DISTRIBUIDORES = ["Vivero Maracaibo"]
 CANAL = {"whatsapp": "WhatsApp", "cashea": "Cashea", "web": "Página web", "shopify": "Shopify", "duwu": "Duwu", "vidapets": "Vidapets", "instagram": "Instagram", "presencial": "Presencial", "otro": "Otro"}
@@ -396,19 +398,21 @@ def faltan_datos_agencia(con):
     """Envíos nacionales por despachar a los que les falta un dato que la agencia va a pedir (Cristina, 6 oct):
     oficina, cédula, teléfono o correo. Salen en Inicio para escribirle al cliente antes de que el despachador vaya."""
     out = []
-    for o in con.execute("""SELECT o.id, o.numero, o.agencia, NULLIF(TRIM(o.direccion),'') direccion, NULLIF(TRIM(o.ciudad),'') ciudad,
+    for o in con.execute("""SELECT o.id, o.numero, o.agencia, o.modalidad_envio, NULLIF(TRIM(o.direccion),'') direccion,
+                            COALESCE(NULLIF(TRIM(o.ciudad),''), NULLIF(NULLIF(TRIM(c.ciudad),''),'Pendiente')) ciudad,
                             NULLIF(TRIM(o.receptor_telefono),'') recibe_tel, COALESCE(NULLIF(c.nombre_pila,''), c.nombre) quien,
                             NULLIF(TRIM(c.telefono),'') telefono, NULLIF(TRIM(c.cedula),'') cedula, NULLIF(TRIM(c.correo),'') correo
                             FROM ordenes o JOIN clientes c ON c.id=o.cliente_id
                             WHERE o.tipo_entrega='nacional' AND o.estado IN ('pendiente','en_ruta') AND o.origen_excel=0
                             ORDER BY COALESCE(o.fecha_prometida, o.creado_en), o.id"""):
-        faltan = [n for n, ok in (("la oficina", o["direccion"] or o["ciudad"]), ("la cédula", o["cedula"]),
+        ce = o["modalidad_envio"] == CASHEA_ENVIOS   # la oficina la pone el cliente en la app de Cashea; la ciudad sí hace falta
+        faltan = [n for n, ok in (("la ciudad", o["ciudad"]) if ce else ("la oficina", o["direccion"] or o["ciudad"]), ("la cédula", o["cedula"]),
                                   ("el teléfono", o["recibe_tel"] or o["telefono"]), ("el correo", o["correo"])) if not ok]
         if not faltan: continue
         lista = faltan[0] if len(faltan) == 1 else ", ".join(faltan[:-1]) + " y " + faltan[-1]
         ag = o["agencia"] or "la agencia"
         pide = lista.replace("la oficina", f"la oficina de {ag} donde lo vas a retirar").replace("la cédula", "tu cédula") \
-                    .replace("el teléfono", "un teléfono de contacto").replace("el correo", "tu correo")
+                    .replace("la ciudad", "la ciudad a donde va").replace("el teléfono", "un teléfono de contacto").replace("el correo", "tu correo")
         msj = (f"¡Hola{' ' + o['quien'] if o['quien'] else ''}! 👋🏻 Te escribimos de Decopet 💚 Para enviarte tu pedido por {ag} "
                + (f"nos falta {pide}: la agencia lo pide para el envío. ¿Nos lo pasas? 🙌🏻" if len(faltan) == 1 else
                   f"nos faltan {pide}: la agencia los pide para el envío. ¿Nos los pasas? 🙌🏻"))
@@ -2263,7 +2267,9 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     dom = 1 if te == "nacional" and f.get("a_domicilio") == "1" else 0
     if dom: f["direccion"] = (f.get("direccion_dom") or "").strip() or f.get("direccion")   # a domicilio: la dirección es la de la puerta del cliente
     # cada tipo de entrega solo guarda lo que le corresponde (un envío nacional se queda con su agencia y su modalidad: Cristina, 14 nov)
-    if te == "nacional": f["ciudad"] = f.get("ciudad_nac") or f.get("ciudad"); f["despachador"] = ""; f["distribuidor"] = ""; f["franja"] = ""
+    if te == "nacional":
+        f["ciudad"] = f.get("ciudad_nac") or f.get("ciudad"); f["despachador"] = ""; f["distribuidor"] = ""; f["franja"] = ""
+        if f.get("modalidad_envio") == CASHEA_ENVIOS and not f.get("agencia"): f["agencia"] = "MRW"   # Cashea Envíos siempre va por MRW
     elif te == "distribuidor": f["ciudad"] = f.get("ciudad_dist") or f.get("ciudad"); f["despachador"] = ""; f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["franja"] = ""
     elif te == "pickup": f["despachador"] = ""; f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["distribuidor"] = ""
     else: f["agencia"] = ""; f["guia"] = ""; f["modalidad_envio"] = ""; f["distribuidor"] = ""
@@ -2626,7 +2632,8 @@ async def crear_orden(request: Request, con=Depends(db)):
         lineas.append((OPC["OPC-PERSO"], 1, (f.get("personalizacion_nombre") or "").strip() or None, None, 0, 0, px, False)); subtotal += px; costo += OPC["OPC-PERSO"]["costo"] or 0
     descuento = float(f.get("descuento") or 0); canal = f.get("canal") or "whatsapp"
     iva = round((subtotal - descuento) * 0.16, 2) if (canal == "cashea" or f.get("factura") == "1") else 0
-    delivery = float(f.get("delivery") or 0); total = round(subtotal - descuento + iva + delivery, 2)
+    cashea_env = f.get("tipo_entrega") == "nacional" and f.get("modalidad_envio") == CASHEA_ENVIOS
+    delivery = 0.0 if cashea_env else float(f.get("delivery") or 0); total = round(subtotal - descuento + iva + delivery, 2)   # Cashea Envíos: el envío es gratis
     # pack con delivery: los deliveries de las próximas entregas que deja pagados hoy se cobran ya (cantidad × tarifa de hoy)
     con_delivery = f.get("tipo_entrega") in ("delivery", "delivery_fuera") and delivery > 0
     deliv_pack = []   # (línea, entregas futuras pagadas por pack, monto)
@@ -2701,7 +2708,10 @@ async def crear_orden(request: Request, con=Depends(db)):
         for c_ in ("receptor_correo", "receptor_cedula"):
             if c_ not in cols: con.execute(f"ALTER TABLE ordenes ADD COLUMN {c_} TEXT")
         con.execute("UPDATE ordenes SET receptor_correo=?, receptor_cedula=? WHERE id=?", ((f.get("receptor_correo") or "").strip() or None, normalizar_cedula(f.get("receptor_cedula")) or None, oid))
-    con.execute("UPDATE ordenes SET despachador=COALESCE(NULLIF(?,''),despachador), agencia=COALESCE(NULLIF(?,''),agencia), guia=COALESCE(NULLIF(?,''),guia) WHERE id=?", (desp, f.get("agencia") or "", f.get("guia") or "", oid))
+    con.execute("UPDATE ordenes SET despachador=COALESCE(NULLIF(?,''),despachador), agencia=COALESCE(NULLIF(?,''),agencia), guia=COALESCE(NULLIF(?,''),guia) WHERE id=?", (desp, f.get("agencia") or ("MRW" if cashea_env else ""), f.get("guia") or "", oid))
+    if cashea_env:   # sin oficina: la ciudad es la del cliente (Cristina, 17 nov)
+        con.execute("""UPDATE ordenes SET ciudad=COALESCE(NULLIF(TRIM(ciudad),''), (SELECT NULLIF(NULLIF(TRIM(ciudad),''),'Pendiente') FROM clientes WHERE id=ordenes.cliente_id))
+                       WHERE id=?""", (oid,))
     if viejo:   # no pasa por Operaciones, ni por facturas, ni por el Registro: lo que dejó para después sí queda por activar
         con.execute("UPDATE ordenes SET origen_excel=?, estado='entregada', fecha_entrega=?, fecha_prometida=?, factura_hecha=COALESCE(requiere_factura,0) WHERE id=?", (PEDIDO_VIEJO, fp_in, fp_in, oid))
     elif f.get("status") == "entregada":
@@ -7468,7 +7478,7 @@ def viajes_por_llevar(con, nombre):
     packs_v = [k for k in cargar_packs(con) if k["viaje_id"] and k["saldo"] > 0] if viajes else []
     for v in viajes:
         v["paquetes"] = []
-        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, o.a_domicilio, o.canal, COALESCE(o.requiere_factura,0) requiere_factura, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
+        for o in con.execute("""SELECT o.id, o.numero, o.ciudad, o.direccion, o.modalidad_envio, NULLIF(TRIM(o.guia),'') guia, o.a_domicilio, o.canal, COALESCE(o.requiere_factura,0) requiere_factura, NULLIF(TRIM(o.receptor_nombre),'') recibe, NULLIF(TRIM(o.receptor_telefono),'') recibe_tel,
                                 o.receptor_cedula, NULLIF(TRIM(o.receptor_correo),'') receptor_correo,
                                 c.nombre, c.cedula, c.telefono, NULLIF(TRIM(c.correo),'') correo, NULLIF(TRIM(c.ciudad),'') cliente_ciudad FROM ordenes o JOIN clientes c ON c.id=o.cliente_id WHERE o.viaje_id=? ORDER BY o.id""", (v["id"],)):
             o = quien_retira(dict(o))
@@ -7551,6 +7561,7 @@ def lugar_agencia(o):
     ofi = (o.get("direccion") or "").strip()
     ciu = (o.get("ciudad") or "").strip() or o.get("cliente_ciudad") or ""
     if ciu == "Pendiente": ciu = ""
+    if not ofi and o.get("modalidad_envio") == CASHEA_ENVIOS: return f"{ciu or 'FALTA la ciudad'} · Cashea Envíos"
     if not ofi: return ciu or "FALTA la oficina"
     if ciu and _llave_lugar(ciu) not in _llave_lugar(ofi): return f"{ofi} · {ciu}"
     return ofi
@@ -7566,7 +7577,7 @@ def copia_agencia(o):
 
 def resumen_agencia(o):
     """Una línea por paquete para la vista corta: quién, a qué ciudad, qué lleva y si le falta algún dato."""
-    falta = [n for n, v in (("teléfono", o.get("recibe_tel") or o.get("telefono")), ("correo", o.get("correo")), ("C.I.", o.get("cedula"))) if not v]
+    falta = [] if o.get("modalidad_envio") == CASHEA_ENVIOS else             [n for n, v in (("teléfono", o.get("recibe_tel") or o.get("telefono")), ("correo", o.get("correo")), ("C.I.", o.get("cedula"))) if not v]   # Cashea Envíos: los datos los pone el cliente en la app
     ciu = (o.get("ciudad") or "").strip() or o.get("cliente_ciudad") or ""
     return {"quien": o.get("recibe") or o.get("nombre") or "", "ciudad": "" if ciu == "Pendiente" else ciu,
             "lleva": re.sub(r"<[^>]+>", "", o.get("lleva") or ""), "falta": falta}
