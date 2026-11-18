@@ -1683,6 +1683,34 @@ def _():
         assert con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()[0] == 1, "la próxima entrega ya está pagada"
         con.close()
 
+@prueba("Pack 'cada semana': al entregar uno, el siguiente queda programado solo para el mismo día de la semana siguiente, hasta que se acaba")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono) VALUES (57,'Mía Miércoles','Mía','04141112299')")
+        oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,subtotal,total,tipo_entrega) VALUES ('#87',57,'entregada','pagada',72,72,'pickup')").lastrowid
+        pid = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,estado) VALUES (57,?,3,0,'activo')", (oid,)).lastrowid
+        con.commit()
+        sesion_de(c, "admin")
+        assert 'name="semanal"' in c.get("/packs").text
+        c.post(f"/packs/{pid}/programar", data={"fecha": "2026-11-18", "tipo_entrega": "pickup", "notas": "pasa en la tarde", "semanal": "1"})
+        assert "cada semana" in c.get("/packs").text
+        c.post(f"/packs/{pid}/entregar", data={"fecha": "2026-11-18"})
+        k = con.execute("SELECT * FROM packs WHERE id=?", (pid,)).fetchone()
+        assert (k["fecha_programada"], k["tipo_programado"], k["nota_programada"], k["repetir_semana"]) == ("2026-11-25", "pickup", "pasa en la tarde", 1), dict(k)
+        c.post(f"/packs/{pid}/entregar", data={"fecha": "2026-11-27"})   # se entregó tarde (viernes): el próximo sigue siendo miércoles
+        assert con.execute("SELECT fecha_programada FROM packs WHERE id=?", (pid,)).fetchone()[0] == "2026-12-02"
+        c.post(f"/packs/{pid}/entregar", data={"fecha": "2026-12-02"})   # el último: no queda nada que programar
+        k = con.execute("SELECT * FROM packs WHERE id=?", (pid,)).fetchone()
+        assert k["fecha_programada"] is None and k["estado"] == "completo", dict(k)
+        # sin la casilla, como siempre: al entregar no se programa nada
+        pid2 = con.execute("INSERT INTO packs (cliente_id,orden_id,unidades,entregadas_inicio,estado) VALUES (57,?,3,0,'activo')", (oid,)).lastrowid; con.commit()
+        c.post(f"/packs/{pid2}/programar", data={"fecha": "2026-11-18", "tipo_entrega": "pickup"})
+        c.post(f"/packs/{pid2}/entregar", data={"fecha": "2026-11-18"})
+        assert con.execute("SELECT fecha_programada FROM packs WHERE id=?", (pid2,)).fetchone()[0] is None
+        con.close()
+
+
 @prueba("Registro de ventas: con varios pagos el mismo día, el pack sale con la forma con que se pagó (unas fechas traen hora y otras no)")
 def _():
     with erp_de_prueba() as c:

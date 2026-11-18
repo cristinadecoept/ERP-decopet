@@ -785,6 +785,7 @@ COLUMNAS = (
     ("packs", "retira_nombre", "TEXT"), ("packs", "retira_cedula", "TEXT"), ("packs", "retira_telefono", "TEXT"), ("packs", "retira_correo", "TEXT"),   # quién retira esta vez; vacío = el cliente, NULL = no se ha preguntado
     ("packs", "viaje_id", "INTEGER"),   # el viaje a la agencia que lleva esta entrega; se suelta al entregarla, para que la próxima se asigne aparte
     ("packs", "retiro_programado", "INTEGER"), ("packs", "tipo_programado", "TEXT"),
+    ("packs", "repetir_semana", "INTEGER NOT NULL DEFAULT 0"),   # 1 = al entregar, el siguiente queda programado solo para el mismo día de la semana siguiente
     ("produccion", "cantidad", "INTEGER NOT NULL DEFAULT 1"), ("produccion", "fecha_pago", "TEXT"),
     ("produccion", "faltaron", "INTEGER"),
     ("cuentas", "cobra", "INTEGER DEFAULT 1"),
@@ -6254,8 +6255,9 @@ def packs(request: Request, ver: str = "activos", q: str = "", con=Depends(db), 
 
 
 @app.post("/packs/{pid}/programar")
-def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entrega: str = Form(""), despachador: str = Form(""), notas: str = Form(""), retiro: str = Form(""), delivery: str = Form("0"), delivery_pagado: str = Form("0"), pago_forma: str = Form(""), diferencia: str = Form(""), diferencia_pagada: str = Form("0"), volver: str = Form(""), direccion: str = Form(""), maps: str = Form(""), agencia: str = Form(""), destino: str = Form(""), retira_pregunta: str = Form(""), retira_nombre: str = Form(""), retira_cedula: str = Form(""), retira_telefono: str = Form(""), retira_correo: str = Form(""), con=Depends(db)):
+def pack_programar(request: Request, pid: int, fecha: str = Form(""), tipo_entrega: str = Form(""), despachador: str = Form(""), notas: str = Form(""), retiro: str = Form(""), delivery: str = Form("0"), delivery_pagado: str = Form("0"), pago_forma: str = Form(""), diferencia: str = Form(""), diferencia_pagada: str = Form("0"), volver: str = Form(""), direccion: str = Form(""), maps: str = Form(""), agencia: str = Form(""), destino: str = Form(""), retira_pregunta: str = Form(""), retira_nombre: str = Form(""), retira_cedula: str = Form(""), retira_telefono: str = Form(""), retira_correo: str = Form(""), semanal: str = Form(""), con=Depends(db)):
     k = con.execute("SELECT * FROM packs WHERE id=?", (pid,)).fetchone()
+    con.execute("UPDATE packs SET repetir_semana=? WHERE id=?", (1 if semanal == "1" and fecha else 0, pid))
     dl = float(delivery or 0) if tipo_entrega in ("delivery", "delivery_fuera") else 0.0
     pagado = 1 if delivery_pagado in ("1", "antes") and dl > 0 else 0
     ya_cobrado = delivery_pagado == "antes" or bool(k and k["delivery_pagado"] == 1)   # lo pagó antes del ERP, o ya se cobró al programar: no entra otra vez
@@ -6297,6 +6299,26 @@ def pago_retiro_despachador(con, desp, monto, fecha, uid, orden_id=None, pack_id
                    VALUES (?,?,?,?,?,?,?,?,?)""", (tipo, orden_id, pack_id, prepagado_id, fecha, desp.strip(), round(monto, 2), motivo, uid))
 
 
+def programar_semana_siguiente(con, k, entregado_el, uid=None):
+    """Pack 'cada semana' (Cristina, 18 nov): al entregar uno, el siguiente queda programado solo para el mismo día de la semana,
+    con el mismo tipo de entrega, despachador, horario y dirección. Así no depende de que alguien se acuerde."""
+    if not k["repetir_semana"] or not k["fecha_programada"]: return
+    r = con.execute("SELECT *, unidades - entregadas_inicio - (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) saldo FROM packs WHERE id=?", (k["id"],)).fetchone()
+    if not r or r["saldo"] <= 0: return
+    sig = datetime.date.fromisoformat(k["fecha_programada"][:10]) + datetime.timedelta(days=7)
+    hecho = datetime.date.fromisoformat((entregado_el or datetime.date.today().isoformat())[:10])
+    while sig <= hecho: sig += datetime.timedelta(days=7)   # si se entregó tarde, el próximo sigue en su día
+    te = k["tipo_programado"]; deliv = te in ("delivery", "delivery_fuera"); prep = deliv and (r["deliveries_prepagados"] or 0) > 0
+    con.execute("""UPDATE packs SET fecha_programada=?, tipo_programado=?, despachador_programado=?, nota_programada=?, franja_programada=?, retiro_programado=?,
+                   delivery_programado=?, delivery_pagado=?, direccion_programada=?, maps_programado=?, agencia_programada=?,
+                   retira_nombre=?, retira_cedula=?, retira_telefono=?, retira_correo=?, en_ruta=0, viaje_id=NULL WHERE id=?""",
+                (sig.isoformat(), te, k["despachador_programado"], k["nota_programada"], k["franja_programada"], min(k["retiro_programado"] or 1, r["saldo"]),
+                 ((r["tarifa_prepagada"] or k["delivery_programado"] or 0) if prep else (k["delivery_programado"] or 0)) if deliv else 0, (1 if prep else 0) if deliv else None,
+                 k["direccion_programada"], k["maps_programado"], k["agencia_programada"],
+                 k["retira_nombre"], k["retira_cedula"], k["retira_telefono"], k["retira_correo"], k["id"]))
+    if k["orden_id"]: registrar(con, k["orden_id"], uid, "estado", f"Próxima entrega del pack programada sola para {(lambda f: f if f in ('hoy', 'mañana') else 'el ' + f)(fmt_fecha(sig.isoformat()))} (cada semana)")
+
+
 def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despachador="", delivery_cobrado="0", pago_forma="", notas="", pago="confirmado"):
     """Se entregaron repuestos de un pack. El delivery que se cobra en ese momento entra a su orden (contado el día de hoy)
     y, si lo llevó un despachador, se le anota para pagarle el delivery."""
@@ -6324,6 +6346,7 @@ def entregar_pack(con, pid, uid, fecha="", cuantos="1", tipo_entrega="", despach
         forma = pago_forma or ("Efectivo USD" if pago == "confirmado" else "")
         cobro_extra(con, k["orden_id"], "Diferencia de delivery · entrega de pack", k["delivery_diferencia"], forma, fecha or datetime.date.today().isoformat(), uid, pago=pago)
     con.execute("UPDATE packs SET delivery_diferencia=NULL, diferencia_pagada=NULL WHERE id=?", (pid,))
+    programar_semana_siguiente(con, k, fecha, uid)
     return True
 
 
@@ -6399,7 +6422,7 @@ def pack_desprogramar(request: Request, pid: int, volver: str = Form(""), con=De
     k = con.execute("SELECT delivery_pagado FROM packs WHERE id=?", (pid,)).fetchone()
     if k:
         pagado = k["delivery_pagado"] in (1, 2)
-        con.execute("""UPDATE packs SET en_ruta=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, franja_programada=NULL,
+        con.execute("""UPDATE packs SET en_ruta=0, repetir_semana=0, fecha_programada=NULL, tipo_programado=NULL, despachador_programado=NULL, nota_programada=NULL, franja_programada=NULL,
                        retiro_programado=NULL, direccion_programada=NULL, maps_programado=NULL, agencia_programada=NULL, viaje_id=NULL,
                        retira_nombre=NULL, retira_cedula=NULL, retira_telefono=NULL, retira_correo=NULL""" +
                     ("" if pagado else ", delivery_programado=NULL, delivery_pagado=NULL") + " WHERE id=?", (pid,))
@@ -8332,7 +8355,7 @@ def taller_pack_entregado(request: Request, pid: int, con=Depends(db)):
     if not solo_taller(request): return RedirectResponse("/operaciones", status_code=303)
     k = next((k for k in cargar_packs(con) if k["id"] == pid), None)
     if k and k["saldo"] > 0:
-        hoy = datetime.date.today().isoformat(); uid = uid_de(request)
+        hoy = datetime.date.today().isoformat(); uid = uid_de(request); antes = con.execute("SELECT * FROM packs WHERE id=?", (pid,)).fetchone()
         for _ in range(min(k["retiro_programado"] or 1, k["saldo"])):
             con.execute("""INSERT INTO entregas_repuesto (pack_id, fecha, tipo_entrega, delivery_cobrado, notas, usuario_id)
                            VALUES (?,?, 'pickup', 0, 'retirado en el taller', ?)""", (pid, hoy, uid))
@@ -8340,6 +8363,7 @@ def taller_pack_entregado(request: Request, pid: int, con=Depends(db)):
                        retiro_programado=NULL, delivery_programado=NULL, delivery_pagado=NULL,
                        estado=CASE WHEN entregadas_inicio + (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=packs.id) >= unidades THEN 'completo' ELSE estado END
                        WHERE id=?""", (pid,))
+        programar_semana_siguiente(con, antes, hoy, uid)
         con.commit()
     return RedirectResponse("/taller", status_code=303)
 
