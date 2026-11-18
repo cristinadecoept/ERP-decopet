@@ -2013,6 +2013,16 @@ async def editar_orden(request: Request, oid: int, con=Depends(db)):
     con.commit(); return volver(oid, request)
 
 
+def perso_cashea(con, o, lineas):
+    """En Cashea el personalizado se cobra aparte (pago móvil): lo que suma para dejarlo sin IVA ni comisión de Cashea."""
+    if o["canal"] != "cashea": return 0
+    precio = (con.execute("SELECT precio FROM productos WHERE sku='OPC-PERSO'").fetchone() or [0])[0] or 0; ids = perso_ids(con)
+    return round(sum((l["total"] or 0) if l["producto_id"] in ids else min(l["extras"] or 0, precio) for l in lineas if l["producto_id"] in ids or (l["personalizacion"] or "").strip()), 2)
+
+
+def perso_ids(con): return {r[0] for r in con.execute("SELECT id FROM productos WHERE sku='OPC-PERSO'")}
+
+
 def rehacer_totales(con, o, oid, uid, descuento, delivery_b=None):
     """Después de cambiar los productos de una orden: recalcula IVA (Cashea / factura), total y si está pagada, y rehace
     las salidas de inventario con lo que quedó. Devuelve None si la orden se quedó sin productos."""
@@ -2024,13 +2034,14 @@ def rehacer_totales(con, o, oid, uid, descuento, delivery_b=None):
     if delivery_b is None: delivery_b = round((o["delivery"] or 0) - del_extra, 2)
     sub_n = round(sum(l["total"] or 0 for l in normales), 2)
     con_iva = (o["iva"] or 0) > 0 or o["canal"] == "cashea" or o["requiere_factura"]
-    iva = round((sub_n - descuento) * 0.16, 2) if con_iva else 0
+    perso_aparte = perso_cashea(con, o, normales)
+    iva = round((sub_n - descuento - perso_aparte) * 0.16, 2) if con_iva else 0
     subtotal = round(sub_n + sum(l["total"] or 0 for l in extras), 2)
     total = round(subtotal - descuento + iva + delivery_b, 2)
     con.execute("""UPDATE ordenes SET subtotal=?, descuento=?, iva=?, delivery=?, total=?, costo_productos=?, comision=? WHERE id=?""",
                 (subtotal, descuento, iva, round(delivery_b + del_extra, 2), total,
                  round(sum((l["costo_p"] if l["costo_p"] is not None else (l["costo"] or 0)) * (l["cantidad"] or 0) for l in normales), 2),
-                 round(total * 0.06, 2) if o["canal"] == "cashea" else (o["comision"] or 0), oid))
+                 round((total - perso_aparte) * 0.06, 2) if o["canal"] == "cashea" else (o["comision"] or 0), oid))
     # el inventario: se rehacen las salidas de esta orden con lo que quedó
     con.execute("DELETE FROM mov_inventario WHERE orden_id=? AND tipo='salida'", (oid,))
     if o["origen_excel"] != PEDIDO_VIEJO: descontar_inventario(con, oid, uid)   # lo de un pedido viejo salió en su momento
@@ -2631,7 +2642,9 @@ async def crear_orden(request: Request, con=Depends(db)):
     if px > 0:   # personalización cobrada aparte (monto libre): entra como línea de opción
         lineas.append((OPC["OPC-PERSO"], 1, (f.get("personalizacion_nombre") or "").strip() or None, None, 0, 0, px, False)); subtotal += px; costo += OPC["OPC-PERSO"]["costo"] or 0
     descuento = float(f.get("descuento") or 0); canal = f.get("canal") or "whatsapp"
-    iva = round((subtotal - descuento) * 0.16, 2) if (canal == "cashea" or f.get("factura") == "1") else 0
+    # Cashea: el personalizado no lo financia Cashea, se cobra aparte (pago móvil): no lleva IVA ni comisión (Cristina, 18 nov)
+    perso_aparte = round(sum(OPC["OPC-PERSO"]["precio"] for (p, _c, pe, *_r) in lineas if pe and p["sku"] != "OPC-PERSO") + px, 2) if canal == "cashea" else 0
+    iva = round((subtotal - descuento - perso_aparte) * 0.16, 2) if (canal == "cashea" or f.get("factura") == "1") else 0
     cashea_env = f.get("tipo_entrega") == "nacional" and f.get("modalidad_envio") == CASHEA_ENVIOS
     delivery = 0.0 if cashea_env else float(f.get("delivery") or 0); total = round(subtotal - descuento + iva + delivery, 2)   # Cashea Envíos: el envío es gratis
     # pack con delivery: los deliveries de las próximas entregas que deja pagados hoy se cobran ya (cantidad × tarifa de hoy)
@@ -2674,7 +2687,7 @@ async def crear_orden(request: Request, con=Depends(db)):
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (f"#{ultimo + 1}", f.get("tipo") or "venta", cid, canal, uid, f.get("ref_externa") or None, "pendiente",
                        "pagada", subtotal, descuento, motivo_desc, iva, delivery, total, tasa,
-                       round(total * 0.06, 2) if canal == "cashea" else 0, (f.get("tipo_entrega") if f.get("tipo_entrega") != "por_definir" else None) or None, f.get("direccion") or None, f.get("zona") or None, f.get("ciudad") or None,
+                       round((total - perso_aparte) * 0.06, 2) if canal == "cashea" else 0, (f.get("tipo_entrega") if f.get("tipo_entrega") != "por_definir" else None) or None, f.get("direccion") or None, f.get("zona") or None, f.get("ciudad") or None,
                        f.get("receptor_nombre") or None, f.get("receptor_telefono") or None, fecha_auto, f.get("franja") or None, f.get("notas_entrega") or None, f.get("notas") or None, costo,
                        " + ".join(formas_elegidas) or ("BNC" if canal == "cashea" else None), f.get("modalidad_envio") or ("cobro_destino" if f.get("tipo_entrega") == "nacional" else None), f.get("maps") or None))
     oid = cur.lastrowid

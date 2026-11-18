@@ -1939,6 +1939,30 @@ def _():
         con.close()
 
 
+@prueba("Cashea con personalizado: se puede personalizar; lo personalizado se cobra aparte (pago móvil), sin IVA ni comisión de Cashea")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        con.execute("INSERT INTO clientes (id,nombre,nombre_pila,telefono,correo,cedula) VALUES (96,'Pía Perso','Pía','0414-2223344','pia@x.com','V-11222333')")
+        p = con.execute("SELECT id, precio FROM productos WHERE activo=1 AND permite_personalizacion=1 AND precio>0 AND requiere_color=0 LIMIT 1").fetchone()
+        perso = con.execute("SELECT precio FROM productos WHERE sku='OPC-PERSO'").fetchone()[0]
+        con.commit(); con.close()
+        sesion_de(c, "admin")
+        assert "'cashea'].includes" in c.get("/ordenes/nueva/panel").text, "en Cashea sale la casilla de personalizar"
+        r = c.post("/ordenes/nueva", data={"cliente_id": "96", "canal": "cashea", "producto_id": str(p["id"]), "cantidad": "1", "personalizacion": "Luna", "color": "", "malla": "0",
+                                       "tipo_entrega": "pickup", "pago_forma": [""], "pago_monto": [""], "pago_ref": [""]}, follow_redirects=False)
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        o = con.execute("SELECT * FROM ordenes WHERE cliente_id=96 ORDER BY id DESC").fetchone()
+        assert o, f"no se creó la orden: {r.status_code} {r.text[:300]}"
+        assert abs(o["iva"] - round(p["precio"] * 0.16, 2)) < 0.01, f"el IVA es solo sobre lo de Cashea: {o['iva']}"
+        assert abs(o["total"] - round(p["precio"] * 1.16 + perso, 2)) < 0.01, dict(o)
+        assert abs(o["comision"] - round(p["precio"] * 1.16 * 0.06, 2)) < 0.01, f"la comisión de Cashea no cobra lo personalizado: {o['comision']}"
+        # al rehacer los totales (editar la orden) se mantiene igual
+        r = A.rehacer_totales(con, o, o["id"], 1, 0); o2 = con.execute("SELECT * FROM ordenes WHERE id=?", (o["id"],)).fetchone()
+        assert abs(o2["iva"] - o["iva"]) < 0.01 and abs(o2["comision"] - o["comision"]) < 0.01, (dict(o2), r)
+        con.close()
+
+
 @prueba("Cumpleaños: si el cliente felicitado compra en los 2 días siguientes sale 'compró' y cuenta en Analítica; después no")
 def _():
     with erp_de_prueba() as c:
