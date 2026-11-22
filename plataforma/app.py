@@ -711,6 +711,12 @@ async def puerta(request: Request, call_next):
             return con_escudos(JSONResponse({"error": "Eso pesa demasiado"}, status_code=413))
     except ValueError:
         return con_escudos(JSONResponse({"error": "Orden mal formada"}, status_code=400))
+    if ruta.startswith("/api/agente/"):   # Tina: entra con su llave (AGENTE_API_KEY), nunca con sesión ni redirección
+        tina = agente_autorizado(request)
+        if not tina:
+            return con_escudos(JSONResponse({"ok": False, "error": "llave", "mensaje": "La llave del agente no es válida."}, status_code=401))
+        request.state.quien = tina
+        return con_escudos(await call_next(request))
     if not ruta.startswith(ABIERTO):
         if (tiene_duena() or EN_SERVIDOR) and not quien_es(request):
             return con_escudos(RedirectResponse("/entrar", status_code=303))
@@ -2562,7 +2568,14 @@ def _sirve(v):
 
 @app.post("/ordenes/nueva")
 async def crear_orden(request: Request, con=Depends(db)):
-    rol = rol_de(request); f = await request.form(); uid = uid_de(request)
+    return _crear_orden(request, con, await request.form())
+
+
+def _crear_orden(request, con, f, modo="pantalla"):
+    """La orden nueva, igual venga de la pantalla o de Tina (API del agente).
+    modo: "pantalla" guarda y vuelve a la lista; "api" guarda y devuelve el id; "cotizar" calcula y devuelve el id
+    SIN guardar (quien llama deshace todo). Si falta un dato devuelve la respuesta de _falta."""
+    rol = rol_de(request); uid = uid_de(request)
     cid = f.get("cliente_id") or None; cliente_recien_creado = False
     nac = f.get("tipo_entrega") == "nacional"
     if not cid and (f.get("cliente_nombre_pila") or "").strip():
@@ -2589,7 +2602,7 @@ async def crear_orden(request: Request, con=Depends(db)):
         cl = con.execute("SELECT telefono, correo, cedula FROM clientes WHERE id=?", (cid,)).fetchone()
         if not _sirve(cl["telefono"]): con.rollback(); return _falta("El teléfono del cliente es obligatorio.")
         if not _sirve(cl["correo"]): con.rollback(); return _falta("El correo del cliente es obligatorio.")
-    if nac:   # la agencia pide una cédula: la del cliente, o la del tercero que va a retirar
+    if nac and modo != "cotizar":   # la agencia pide una cédula: la del cliente, o la del tercero que va a retirar (para cotizar no hace falta)
         ced_ter = normalizar_cedula(f.get("receptor_cedula"))
         ced_cli = normalizar_cedula(f.get("cliente_cedula") or f.get("cl_add_cedula") or f.get("cedula_envio"))
         if ced_cli and cid and not _sirve(con.execute("SELECT cedula FROM clientes WHERE id=?", (cid,)).fetchone()[0]):
@@ -2773,7 +2786,316 @@ async def crear_orden(request: Request, con=Depends(db)):
     actualizar_porche_cliente(con, oid)
     if not viejo:
         fijar_pago_despachador(con, oid); pasar_entrega_a_prepagado(con, oid, uid)
-    con.commit(); return RedirectResponse(volver_tras_crear(oid, request), status_code=303)
+    if modo == "cotizar": return oid
+    con.commit()
+    return oid if modo == "api" else RedirectResponse(volver_tras_crear(oid, request), status_code=303)
+
+
+# ------------------------------------------------------------------ API DEL AGENTE (Tina)
+# Tina, el agente de WhatsApp, consulta y registra pedidos aquí. Usa la misma lógica que la pantalla (_crear_orden),
+# así un pedido de Tina sale idéntico a uno cargado a mano. Entra con la llave AGENTE_API_KEY y queda como el usuario
+# "sistema"; en el servidor además pasa por Cloudflare Access con un service token. Contrato: lo que espera
+# functions/src/support/decopet_erp.js en AGENTS_TOOLS_MCP. Toda respuesta lleva ok; los errores, error y mensaje.
+
+def agente_autorizado(request):
+    """El usuario sistema (Tina) si la llave coincide; None si no. Sin AGENTE_API_KEY la API queda cerrada."""
+    llave = os.environ.get("AGENTE_API_KEY", "").strip()
+    dada = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    if not llave or not dada or not secrets.compare_digest(dada, llave): return None
+    con = sqlite3.connect(DB, timeout=2); con.row_factory = sqlite3.Row
+    try:
+        u = con.execute("SELECT * FROM usuarios WHERE rol='sistema' AND activo=1 ORDER BY id LIMIT 1").fetchone()
+        return dict(u) if u else {"id": 1, "rol": "sistema", "nombre": "Tina"}
+    finally:
+        con.close()
+
+
+def _api_bien(**datos):
+    return JSONResponse({"ok": True, **datos})
+
+
+def _api_mal(error, mensaje, status=400, **extra):
+    """Nunca 502/503/504 (Tina los reintenta) ni redirecciones (las toma por Cloudflare)."""
+    return JSONResponse({"ok": False, "error": error, "mensaje": mensaje, **extra}, status_code=status)
+
+
+class _FormAgente:
+    """Lo que manda Tina, con la forma del formulario de la pantalla (get y getlist), para pasarlo a _crear_orden."""
+    def __init__(s): s.d = {}
+    def poner(s, k, v): s.d[k] = [str(v)]
+    def sumar(s, k, v): s.d.setdefault(k, []).append("" if v is None else str(v))
+    def get(s, k, d=None): return s.d[k][0] if s.d.get(k) else d
+    def getlist(s, k): return list(s.d.get(k, []))
+    def __getitem__(s, k): return s.d[k][0]
+
+
+def resolver_zona(con, texto):
+    """La zona de Tarifas para un texto del cliente. ('exacta'|'parcial', fila) · ('ambigua', [nombres]) · ('ninguna', None)."""
+    q = plano(texto).strip()
+    if not q: return "ninguna", None
+    filas = con.execute("SELECT zona, tarifa, COALESCE(fuera_caracas,0) fuera_caracas FROM tarifas ORDER BY orden, zona").fetchall()
+    exactas = [r for r in filas if plano(r["zona"]).strip() == q]
+    if exactas: return "exacta", exactas[0]
+    parecidas = [r for r in filas if plano(r["zona"]) in q or q in plano(r["zona"])]
+    if len(parecidas) == 1: return "parcial", parecidas[0]
+    if parecidas: return "ambigua", [r["zona"] for r in parecidas]
+    return "ninguna", None
+
+
+def _unidades_pack(sku):
+    m = re.search(r"PACK(\d+)", sku or "")
+    return int(m.group(1)) if m else 3
+
+
+def _faltan_de(msg):
+    t = plano(msg)
+    return [k for k, palabras in (("telefono", ("telefono",)), ("correo", ("correo",)), ("cedula", ("cedula",)),
+                                  ("color", ("color",)), ("productos", ("productos",))) if any(w in t for w in palabras)]
+
+
+def _pedido_a_form(con, b, modo):
+    """Traduce el JSON de Tina (cotizar u ordenes) al formulario de la pantalla. Devuelve (form, None) o (None, error)."""
+    f = _FormAgente()
+    canal = "cashea" if b.get("canal") == "cashea" else "whatsapp"
+    f.poner("canal", canal)
+    if b.get("ref_externa"): f.poner("ref_externa", b["ref_externa"])
+    if b.get("cliente_id"): f.poner("cliente_id", int(b["cliente_id"]))
+    lineas = b.get("productos") or []
+    if not lineas: return None, _api_mal("faltan_datos", "El pedido no tiene productos.", 422, faltan=["productos"])
+    for ln in lineas:
+        p = con.execute("SELECT * FROM productos WHERE sku=? AND activo=1", (str(ln.get("sku") or ""),)).fetchone()
+        if not p: return None, _api_mal("producto_desconocido", f"El ERP no tiene el producto {ln.get('sku')!r}.", 422, sku=ln.get("sku"))
+        f.sumar("producto_id", p["id"]); f.sumar("cantidad", max(1, int(ln.get("cantidad") or 1)))
+        f.sumar("personalizacion", (ln.get("personalizacion") or "").strip() if p["permite_personalizacion"] else "")
+        f.sumar("color", (ln.get("color") or "").strip().lower() if p["requiere_color"] else "")
+        f.sumar("malla", "1" if ln.get("malla") and p["permite_malla"] else "0")
+        f.sumar("prepagar", "1" if ln.get("dejar_pagado") else "0")
+        es_pack = (p["sku"] or "").startswith("PACK")
+        hoy = ln.get("pack_se_lleva_hoy")
+        f.sumar("pack_inicio", str(int(hoy)) if es_pack and hoy is not None and str(hoy).strip() != "" else ("1" if es_pack else ""))
+        dv = ln.get("pack_deliveries")
+        f.sumar("pack_deliv", (str(_unidades_pack(p["sku"])) if dv == "todos" else str(int(dv))) if es_pack and dv not in (None, "") else "")
+    e = b.get("entrega") or {}; tipo = e.get("tipo")
+    if tipo == "pickup":
+        f.poner("tipo_entrega", "pickup"); f.poner("dir_modo", "ninguna")
+    elif tipo == "delivery":
+        clase, z = resolver_zona(con, e.get("zona") or "")
+        if clase == "ambigua": return None, _api_mal("zona_ambigua", "Hay varias zonas que se parecen.", 422, candidatas=z)
+        if clase == "ninguna": return None, _api_mal("zona_sin_tarifa", "Esa zona no tiene tarifa de delivery.", 422)
+        f.poner("tipo_entrega", "delivery_fuera" if z["fuera_caracas"] else "delivery")
+        f.poner("zona_tarifa", z["zona"]); f.poner("delivery", z["tarifa"] or 0)
+        if (e.get("direccion_nueva") or "").strip():
+            f.poner("dir_modo", "nueva"); f.poner("direccion", e["direccion_nueva"].strip())
+    elif tipo == "nacional":
+        f.poner("tipo_entrega", "nacional"); f.poner("dir_modo", "ninguna")
+        mod = e.get("modalidad_envio") or "cobro_destino"
+        f.poner("modalidad_envio", mod)
+        if mod == CASHEA_ENVIOS:
+            f.poner("agencia", "MRW")
+        else:
+            if e.get("agencia"): f.poner("agencia", e["agencia"])
+            if e.get("a_domicilio"):
+                f.poner("a_domicilio", "1")
+                if (e.get("direccion") or "").strip(): f.poner("direccion", e["direccion"].strip())
+            elif (e.get("oficina") or "").strip():
+                f.poner("oficina_agencia", e["oficina"].strip())
+    else:
+        return None, _api_mal("faltan_datos", "Falta el tipo de entrega (pickup, delivery o nacional).", 422, faltan=["entrega.tipo"])
+    rec = e.get("receptor") or {}
+    for k in ("nombre", "telefono", "cedula"):
+        if (rec.get(k) or "").strip(): f.poner(f"receptor_{k}", rec[k].strip())
+    if (e.get("nota_despachador") or "").strip(): f.poner("notas_entrega", e["nota_despachador"].strip())
+    if b.get("factura"): f.poner("factura", "1")
+    if float(b.get("descuento") or 0) > 0: f.poner("descuento", float(b["descuento"]))
+    if b.get("notas"): f.poner("notas", b["notas"])
+    for pg in (b.get("pagos") or []):
+        if pg.get("forma") not in FORMAS_COBRO:
+            return None, _api_mal("forma_de_pago", f"El ERP no tiene la forma de pago {pg.get('forma')!r}.", 422, forma=pg.get("forma"))
+        f.sumar("pago_forma", pg["forma"]); f.sumar("pago_monto", float(pg.get("monto") or 0)); f.sumar("pago_ref", pg.get("referencia") or "")
+    if b.get("fecha_pago"): f.poner("fecha_pago", b["fecha_pago"])
+    return f, None
+
+
+def _orden_json(con, oid):
+    o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
+    lineas = con.execute("SELECT nombre, cantidad, precio, extras, total FROM orden_lineas WHERE orden_id=? AND producto_id IS NOT NULL ORDER BY id", (oid,)).fetchall()
+    faltan = []
+    if o["cliente_id"]:
+        c = con.execute("SELECT * FROM clientes WHERE id=?", (o["cliente_id"],)).fetchone()
+        if c and not c["sin_mascota_ok"] and not con.execute("SELECT 1 FROM mascotas WHERE cliente_id=?", (c["id"],)).fetchone():
+            faltan.append("cliente.mascota")
+    return {"id": o["id"], "numero": o["numero"], "subtotal": round(o["subtotal"] or 0, 2), "descuento": round(o["descuento"] or 0, 2),
+            "iva": round(o["iva"] or 0, 2), "delivery": round(o["delivery"] or 0, 2), "total": round(o["total"] or 0, 2),
+            "estado_pago": o["estado_pago"], "entrega": {"tipo": o["tipo_entrega"], "zona": o["zona"]},
+            "lineas": [{"nombre": l["nombre"], "cantidad": l["cantidad"], "total": round(l["total"] or 0, 2)} for l in lineas],
+            "datos_que_faltan": faltan}
+
+
+def _error_de_crear(resp):
+    """_crear_orden devolvió la pantalla de 'falta un dato': se pasa a JSON."""
+    msg = re.sub(r"<[^>]+>", "", resp.body.decode("utf-8", "ignore")).replace("Vuelve atrás y agrégalo.", "").replace("Vuelve atrás y agrega al menos uno.", "").strip()
+    faltan = _faltan_de(msg)
+    return _api_mal("faltan_datos" if faltan else "orden_invalida", msg, 422, **({"faltan": faltan} if faltan else {}))
+
+
+@app.get("/api/agente/catalogo")
+def agente_catalogo(con=Depends(db)):
+    prods = con.execute("""SELECT sku, nombre, precio, precio_divisas, permite_personalizacion, permite_malla, requiere_color
+                           FROM productos WHERE activo=1 AND sku IS NOT NULL AND COALESCE(tipo,'') NOT IN ('insumo','opcion') ORDER BY orden, nombre""").fetchall()
+    return _api_bien(productos=[{"sku": p["sku"], "nombre": p["nombre"], "precio": p["precio"], "precio_divisas": p["precio_divisas"],
+                                 "se_personaliza": bool(p["permite_personalizacion"]), "admite_malla": bool(p["permite_malla"]),
+                                 "requiere_color": bool(p["requiere_color"])} for p in prods],
+                     formas_pago=list(FORMAS_COBRO), agencias=[a for a in AGENCIAS if a != "Otra"])
+
+
+def _cliente_json(con, c, coincide_por):
+    d = con.execute("SELECT direccion, zona, ciudad, maps FROM direcciones WHERE cliente_id=? ORDER BY principal DESC, id LIMIT 1", (c["id"],)).fetchone()
+    packs_ = []
+    for k in con.execute("""SELECT k.id, k.tamano, k.unidades, k.entregadas_inicio,
+                            (SELECT COUNT(*) FROM entregas_repuesto e WHERE e.pack_id=k.id) posteriores
+                            FROM packs k WHERE k.cliente_id=? ORDER BY k.creado_en""", (c["id"],)):
+        quedan = (k["unidades"] or 0) - (k["entregadas_inicio"] or 0) - (k["posteriores"] or 0)
+        if quedan > 0:
+            packs_.append({"id": k["id"], "tamano": k["tamano"], "unidades": k["unidades"],
+                           "entregados": (k["entregadas_inicio"] or 0) + (k["posteriores"] or 0), "quedan": quedan})
+    pendientes = con.execute("SELECT COUNT(*) FROM repuestos_prepagados WHERE cliente_id=? AND entregado_en IS NULL", (c["id"],)).fetchone()[0]
+    return {"id": c["id"], "nombre": c["nombre"], "coincide_por": coincide_por,
+            "telefono": c["telefono"] if _sirve(c["telefono"]) else None, "correo": c["correo"] if _sirve(c["correo"]) else None,
+            "cedula": c["cedula"] if _sirve(c["cedula"]) else None, "ciudad": c["ciudad"] if _sirve(c["ciudad"]) else None,
+            "direccion_habitual": dict(d) if d else None,
+            "porche": {"version": c["porche_version"], "tamano": c["porche_tamano"]} if c["porche_version"] else None,
+            "mascotas": [{"nombre": m["nombre"], "raza": m["raza"]} for m in con.execute(
+                "SELECT nombre, raza FROM mascotas WHERE cliente_id=? AND COALESCE(fallecida,0)=0 ORDER BY id", (c["id"],))],
+            "packs_activos": packs_, "repuestos_pagados_por_entregar": pendientes,
+            "datos_pendientes": [k for k in ("telefono", "correo", "cedula") if not _sirve(c[k])]}
+
+
+def _buscar_clientes(con, correo="", telefono="", nombre=""):
+    if correo.strip():
+        filas = con.execute("SELECT * FROM clientes WHERE lower(trim(correo))=lower(trim(?))", (correo,)).fetchall(); por = "correo"
+    elif telefono.strip():
+        dig = re.sub(r"\D", "", telefono)[-10:]
+        filas = [r for r in con.execute("SELECT * FROM clientes WHERE telefono IS NOT NULL")
+                 if dig and len(dig) >= 7 and re.sub(r"\D", "", r["telefono"] or "")[-10:] == dig]; por = "telefono"
+    elif nombre.strip():
+        filas = con.execute("SELECT * FROM clientes WHERE plano(nombre) LIKE ? ORDER BY id DESC LIMIT 5", (f"%{plano(nombre).strip()}%",)).fetchall(); por = "nombre"
+    else:
+        return None, None
+    return filas, por
+
+
+@app.get("/api/agente/clientes")
+def agente_clientes(correo: str = "", telefono: str = "", nombre: str = "", con=Depends(db)):
+    filas, por = _buscar_clientes(con, correo, telefono, nombre)
+    if filas is None: return _api_mal("faltan_datos", "Busca por correo, teléfono o nombre.", 422, faltan=["correo|telefono|nombre"])
+    return _api_bien(clientes=[_cliente_json(con, c, por) for c in filas])
+
+
+@app.post("/api/agente/clientes")
+async def agente_guardar_cliente(request: Request, con=Depends(db)):
+    try: b = await request.json()
+    except Exception: return _api_mal("json", "El cuerpo no es JSON.", 400)
+    correo = (b.get("correo") or "").strip().lower(); tel = normalizar_telefono(b.get("telefono") or "")
+    existe = None
+    if correo: existe = con.execute("SELECT * FROM clientes WHERE lower(trim(correo))=?", (correo,)).fetchone()
+    if not existe and tel:
+        filas, _ = _buscar_clientes(con, telefono=tel); existe = filas[0] if filas else None
+    avisos = []
+    if existe:   # completa lo que le falta, sin pisar lo que ya tiene
+        cid = existe["id"]; creado = False
+        for campo, dato in (("telefono", tel), ("correo", correo), ("cedula", normalizar_cedula(b.get("cedula")))):
+            if dato and not _sirve(existe[campo]): con.execute(f"UPDATE clientes SET {campo}=? WHERE id=?", (dato, cid))
+        if (b.get("ciudad") or "").strip() and not _sirve(existe["ciudad"]):
+            ciu, edo = lugar(con, b["ciudad"]); con.execute("UPDATE clientes SET ciudad=?, estado=COALESCE(estado, ?) WHERE id=?", (ciu, edo, cid))
+    else:
+        faltan = [k for k, v in (("nombre", (b.get("nombre") or "").strip()), ("telefono", tel), ("correo", correo)) if not v]
+        if faltan: return _api_mal("faltan_datos", "Para registrar al cliente faltan datos.", 422, faltan=faltan)
+        np_, ap = partir_nombre(capitalizar(b["nombre"]), capitalizar(b.get("apellido"), inicio=False) or None)
+        ciu, edo = lugar(con, b.get("ciudad") or "", None) if (b.get("ciudad") or "").strip() else ("Pendiente", None)
+        cid = con.execute("""INSERT INTO clientes (nombre_pila,apellido,nombre,telefono,cedula,correo,ciudad,estado,canal_habitual,origen)
+                             VALUES (?,?,?,?,?,?,?,?,?,?)""", (np_, ap, nombre_completo(np_, ap), tel, normalizar_cedula(b.get("cedula")) or None,
+                                                              correo, ciu or "Pendiente", edo, "whatsapp", "Tina")).lastrowid
+        creado = True
+    if ((b.get("direccion") or "").strip() or (b.get("maps") or "").strip()) and not con.execute("SELECT 1 FROM direcciones WHERE cliente_id=?", (cid,)).fetchone():
+        con.execute("INSERT INTO direcciones (cliente_id,etiqueta,direccion,maps,principal) VALUES (?,?,?,?,1)",
+                    (cid, "Principal", (b.get("direccion") or "").strip(), (b.get("maps") or "").strip() or None))
+    ya = {plano(r[0]).strip() for r in con.execute("SELECT nombre FROM mascotas WHERE cliente_id=?", (cid,))}
+    f = _FormAgente()
+    for m in (b.get("mascotas") or []):
+        n = (m.get("nombre") or "").strip()
+        if not n or plano(n).strip() in ya: continue
+        f.sumar("mascota_nombre", n); f.sumar("mascota_raza", m.get("raza") or ""); f.sumar("mascota_nacimiento", "")
+        f.sumar("mascota_peso", ""); f.sumar("mascota_cumple", m.get("cumple") or ""); f.sumar("mascota_anio", m.get("anio") or "")
+    guardar_mascotas(con, cid, f)
+    con.commit()
+    c = con.execute("SELECT * FROM clientes WHERE id=?", (cid,)).fetchone()
+    return _api_bien(cliente_id=cid, creado=creado, cliente=_cliente_json(con, c, "correo" if correo else "telefono"), avisos=avisos)
+
+
+@app.post("/api/agente/cotizar")
+async def agente_cotizar(request: Request, con=Depends(db)):
+    """El mismo cálculo que crear la orden, sin guardar nada: se crea dentro de la transacción y se deshace."""
+    try: b = await request.json()
+    except Exception: return _api_mal("json", "El cuerpo no es JSON.", 400)
+    f, err = _pedido_a_form(con, {k: v for k, v in b.items() if k not in ("ref_externa", "pagos", "fecha_pago")}, "cotizar")
+    if err: return err
+    try:
+        r = _crear_orden(request, con, f, modo="cotizar")
+        if not isinstance(r, int): return _error_de_crear(r)
+        orden = _orden_json(con, r); orden.pop("id"); orden.pop("numero"); orden.pop("estado_pago"); orden.pop("datos_que_faltan")
+        return _api_bien(orden=orden)
+    finally:
+        con.rollback()
+
+
+@app.post("/api/agente/ordenes")
+async def agente_crear_orden(request: Request, con=Depends(db)):
+    try: b = await request.json()
+    except Exception: return _api_mal("json", "El cuerpo no es JSON.", 400)
+    ref = (b.get("ref_externa") or "").strip()
+    if not ref: return _api_mal("faltan_datos", "Falta ref_externa.", 422, faltan=["ref_externa"])
+    ya = con.execute("SELECT id FROM ordenes WHERE ref_externa=?", (ref,)).fetchone()
+    if ya: return _api_bien(orden=_orden_json(con, ya[0]), avisos=["El pedido ya estaba registrado."])   # mismo ref_externa: la misma orden
+    if not b.get("cliente_id") or not con.execute("SELECT 1 FROM clientes WHERE id=?", (int(b["cliente_id"]),)).fetchone():
+        return _api_mal("faltan_datos", "Falta el cliente (guárdalo primero en /api/agente/clientes).", 422, faltan=["cliente_id"])
+    f, err = _pedido_a_form(con, b, "api")
+    if err: return err
+    try:
+        r = _crear_orden(request, con, f, modo="api")
+    except Exception:
+        con.rollback(); raise
+    if not isinstance(r, int):
+        con.rollback(); return _error_de_crear(r)
+    return _api_bien(orden=_orden_json(con, r), avisos=[])
+
+
+@app.get("/api/agente/zonas")
+def agente_zonas(texto: str = "", con=Depends(db)):
+    if not texto.strip():
+        return _api_bien(zonas=[{"zona": r["zona"], "tarifa": r["tarifa"], "fuera_caracas": bool(r["fuera_caracas"])}
+                                for r in con.execute("SELECT zona, tarifa, COALESCE(fuera_caracas,0) fuera_caracas FROM tarifas ORDER BY orden, zona")])
+    clase, z = resolver_zona(con, texto)
+    if clase == "ambigua": return _api_bien(coincidencia="ambigua", candidatas=z, zona=None, tarifa=None)
+    if clase == "ninguna": return _api_bien(coincidencia="ninguna", candidatas=[], zona=None, tarifa=None)
+    return _api_bien(coincidencia=clase, zona=z["zona"], tarifa=z["tarifa"], fuera_caracas=bool(z["fuera_caracas"]), candidatas=[z["zona"]])
+
+
+@app.get("/api/agente/lugar")
+def agente_lugar(texto: str = "", con=Depends(db)):
+    ciu, edo = lugar(con, texto) if texto.strip() else (None, None)
+    return _api_bien(ciudad=ciu if ciu != "Pendiente" else None, estado=edo)
+
+
+@app.post("/api/agente/ordenes/{ref}/despachador")
+async def agente_despachador(ref: str, request: Request, con=Depends(db)):
+    try: b = await request.json()
+    except Exception: return _api_mal("json", "El cuerpo no es JSON.", 400)
+    desp = (b.get("despachador") or "").strip()
+    o = con.execute("SELECT id FROM ordenes WHERE ref_externa=? OR numero=?", (ref, ref)).fetchone()
+    if not o: return _api_mal("no_existe", "No hay una orden con esa referencia.", 404)
+    if not desp: return _api_mal("faltan_datos", "Falta el despachador.", 422, faltan=["despachador"])
+    con.execute("UPDATE ordenes SET despachador=? WHERE id=?", (desp, o["id"])); registrar(con, o["id"], uid_de(request), "despachador", f"Tina le asignó {desp}"); con.commit()
+    return _api_bien(orden={"id": o["id"], "despachador": desp})
 
 
 @app.get("/tasa", response_class=HTMLResponse)

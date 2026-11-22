@@ -4517,6 +4517,147 @@ def _():
         con.close()
 
 
+
+# ─────────────────────────────────────────────── API del agente (Tina)
+print("\nAPI DEL AGENTE (TINA)")
+
+LLAVE_TINA = "llave-de-prueba-tina"
+
+
+@contextmanager
+def api_tina():
+    """El ERP de prueba con la llave de Tina puesta, un cliente HTTP con esa llave y dos tarifas de delivery."""
+    antes = os.environ.get("AGENTE_API_KEY")
+    os.environ["AGENTE_API_KEY"] = LLAVE_TINA
+    try:
+        with erp_de_prueba() as c:
+            con = sqlite3.connect(A.DB)
+            con.execute("INSERT INTO tarifas (zona,tarifa,orden,fuera_caracas) VALUES ('Chacao',5,1,0),('Los Teques',15,2,1),('Chacaíto',6,3,0)")
+            con.commit(); con.close()
+            c.headers.update({"Authorization": f"Bearer {LLAVE_TINA}"})
+            yield c
+    finally:
+        if antes is None: os.environ.pop("AGENTE_API_KEY", None)
+        else: os.environ["AGENTE_API_KEY"] = antes
+
+
+def _cliente_tina(c, correo="nueva@ejemplo.com", telefono="0414-5550101"):
+    r = c.post("/api/agente/clientes", json={"nombre": "Ana", "apellido": "Prueba", "telefono": telefono, "correo": correo,
+                                             "mascotas": [{"nombre": "Toby", "raza": "golden", "cumple": "25/09"}]})
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    return r.json()["cliente_id"]
+
+
+@prueba("API de Tina: sin llave o con llave mala responde 401 en JSON, nunca redirige ni deja entrar")
+def _():
+    with api_tina() as c:
+        for llave in (None, "mala"):
+            h = {} if llave is None else {"Authorization": f"Bearer {llave}"}
+            c.headers.pop("Authorization", None)
+            r = c.get("/api/agente/catalogo", headers=h, follow_redirects=False)
+            assert r.status_code == 401 and r.json() == {"ok": False, "error": "llave", "mensaje": "La llave del agente no es válida."}
+    os.environ.pop("AGENTE_API_KEY", None)
+    with erp_de_prueba() as c:   # sin AGENTE_API_KEY la API queda cerrada para todos
+        r = c.get("/api/agente/catalogo", headers={"Authorization": "Bearer "}, follow_redirects=False)
+        assert r.status_code == 401
+
+
+@prueba("API de Tina: catálogo con SKU, si se personaliza, formas de pago (las cajas) y agencias")
+def _():
+    with api_tina() as c:
+        d = c.get("/api/agente/catalogo").json()
+        assert d["ok"] and "Otra" not in d["agencias"] and "MRW" in d["agencias"]
+        skus = {p["sku"]: p for p in d["productos"]}
+        assert "PRO-M" in skus and skus["SLOW-10"]["requiere_color"] is True
+        assert d["formas_pago"] == list(A.FORMAS_COBRO) and d["formas_pago"]
+
+
+@prueba("API de Tina: guarda un cliente nuevo, lo encuentra por correo y por teléfono en otro formato, y no pisa lo que ya tiene")
+def _():
+    with api_tina() as c:
+        r = c.post("/api/agente/clientes", json={"nombre": "Sin Correo", "telefono": "04140000000"})
+        assert r.status_code == 422 and r.json()["faltan"] == ["correo"]
+        cid = _cliente_tina(c)
+        r = c.post("/api/agente/clientes", json={"nombre": "Otra Persona", "telefono": "0414-5550101", "correo": "nueva@ejemplo.com",
+                                                 "cedula": "12345678", "mascotas": [{"nombre": "toby"}, {"nombre": "Luna"}]}).json()
+        assert r["cliente_id"] == cid and r["creado"] is False
+        assert r["cliente"]["nombre"] == "Ana Prueba", "no pisa el nombre que ya tenía"
+        assert r["cliente"]["cedula"] == "V-12345678", "completa lo que le faltaba"
+        assert [m["nombre"] for m in r["cliente"]["mascotas"]] == ["Toby", "Luna"], "no repite a Toby"
+        por_correo = c.get("/api/agente/clientes", params={"correo": "NUEVA@ejemplo.com"}).json()["clientes"]
+        assert [x["id"] for x in por_correo] == [cid] and por_correo[0]["coincide_por"] == "correo"
+        por_tel = c.get("/api/agente/clientes", params={"telefono": "+58 414 555 0101"}).json()["clientes"]
+        assert [x["id"] for x in por_tel] == [cid] and por_tel[0]["coincide_por"] == "telefono"
+        assert c.get("/api/agente/clientes", params={"correo": "nadie@x.com"}).json() == {"ok": True, "clientes": []}
+
+
+@prueba("API de Tina: cotizar da lo mismo que crear la orden y no guarda nada")
+def _():
+    with api_tina() as c:
+        cid = _cliente_tina(c)
+        pedido = {"canal": "whatsapp", "productos": [{"sku": "PRO-M", "cantidad": 1, "malla": True}, {"sku": "SLOW-10", "cantidad": 1, "color": "rosado"}],
+                  "entrega": {"tipo": "delivery", "zona": "chacao", "direccion_nueva": "Av. Principal, Edif. Sol, piso 2"}, "factura": True}
+        con = sqlite3.connect(A.DB); n0 = con.execute("SELECT COUNT(*) FROM ordenes").fetchone()[0]
+        q = c.post("/api/agente/cotizar", json=pedido).json()
+        assert q["ok"] and con.execute("SELECT COUNT(*) FROM ordenes").fetchone()[0] == n0, "cotizar no guarda"
+        o = q["orden"]
+        assert len(o["lineas"]) == 2 and o["delivery"] == 5 and o["entrega"]["zona"] == "Chacao" and o["iva"] > 0
+        r = c.post("/api/agente/ordenes", json={**pedido, "ref_externa": "tina-1", "cliente_id": cid,
+                                                "pagos": [{"forma": A.FORMAS_COBRO[0], "monto": o["total"]}], "fecha_pago": datetime.date.today().isoformat()}).json()
+        assert r["ok"] and r["orden"]["total"] == o["total"] and r["orden"]["subtotal"] == o["subtotal"], (r, o)
+        assert con.execute("SELECT COUNT(*) FROM ordenes").fetchone()[0] == n0 + 1
+        con.close()
+
+
+@prueba("API de Tina: el mismo ref_externa devuelve la misma orden (Tina reintenta sin duplicar)")
+def _():
+    with api_tina() as c:
+        cid = _cliente_tina(c)
+        pedido = {"ref_externa": "tina-2", "cliente_id": cid, "canal": "whatsapp", "productos": [{"sku": "COM-10", "cantidad": 1}],
+                  "entrega": {"tipo": "pickup"}, "pagos": []}
+        a = c.post("/api/agente/ordenes", json=pedido).json(); b = c.post("/api/agente/ordenes", json=pedido).json()
+        assert a["ok"] and b["ok"] and a["orden"]["id"] == b["orden"]["id"] and a["orden"]["numero"] == b["orden"]["numero"]
+        con = sqlite3.connect(A.DB)
+        assert con.execute("SELECT COUNT(*) FROM ordenes WHERE ref_externa='tina-2'").fetchone()[0] == 1
+        assert con.execute("SELECT creada_por FROM ordenes WHERE ref_externa='tina-2'").fetchone()[0] == con.execute("SELECT id FROM usuarios WHERE rol='sistema'").fetchone()[0], "queda a nombre de Tina"
+        con.close()
+
+
+@prueba("API de Tina: envío nacional a domicilio (sin oficina) y Cashea Envíos (MRW, sin delivery)")
+def _():
+    with api_tina() as c:
+        cid = _cliente_tina(c)
+        base = {"cliente_id": cid, "productos": [{"sku": "RAMPA-N", "cantidad": 1}], "pagos": []}
+        sin_ced = c.post("/api/agente/ordenes", json={**base, "ref_externa": "tina-3", "canal": "whatsapp",
+                                                      "entrega": {"tipo": "nacional", "agencia": "Tealca", "a_domicilio": True, "direccion": "Av. Alberto Ravell, Puerto La Cruz"}})
+        assert sin_ced.status_code == 422 and "cedula" in sin_ced.json()["faltan"], "sin cédula de quien recibe no se registra"
+        r = c.post("/api/agente/ordenes", json={**base, "ref_externa": "tina-3", "canal": "whatsapp",
+                                                "entrega": {"tipo": "nacional", "agencia": "Tealca", "a_domicilio": True, "direccion": "Av. Alberto Ravell, Puerto La Cruz",
+                                                            "receptor": {"nombre": "Ana Prueba", "cedula": "11222333"}}}).json()
+        assert r["ok"], r
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        o = con.execute("SELECT * FROM ordenes WHERE ref_externa='tina-3'").fetchone()
+        assert o["a_domicilio"] == 1 and o["direccion"] == "Av. Alberto Ravell, Puerto La Cruz" and o["agencia"] == "Tealca" and o["receptor_cedula"] == "V-11222333"
+        r = c.post("/api/agente/ordenes", json={**base, "ref_externa": "tina-4", "canal": "cashea",
+                                                "entrega": {"tipo": "nacional", "modalidad_envio": "cashea_envios", "receptor": {"cedula": "11222333"}}}).json()
+        assert r["ok"] and r["orden"]["delivery"] == 0, r
+        o = con.execute("SELECT * FROM ordenes WHERE ref_externa='tina-4'").fetchone()
+        assert o["modalidad_envio"] == "cashea_envios" and o["agencia"] == "MRW" and o["canal"] == "cashea" and o["iva"] > 0
+        con.close()
+
+
+@prueba("API de Tina: zonas exacta, parecida, ambigua y sin tarifa; cotizar avisa la zona ambigua")
+def _():
+    with api_tina() as c:
+        assert {z["zona"] for z in c.get("/api/agente/zonas").json()["zonas"]} >= {"Chacao", "Los Teques"}
+        z = c.get("/api/agente/zonas", params={"texto": "los teques"}).json()
+        assert z["ok"] and z["coincidencia"] == "exacta" and z["tarifa"] == 15 and z["fuera_caracas"] is True
+        amb = c.get("/api/agente/zonas", params={"texto": "chaca"}).json()
+        assert amb["ok"] and amb["coincidencia"] == "ambigua" and set(amb["candidatas"]) == {"Chacao", "Chacaíto"}
+        assert c.get("/api/agente/zonas", params={"texto": "Marte"}).json()["coincidencia"] == "ninguna"
+        r = c.post("/api/agente/cotizar", json={"canal": "whatsapp", "productos": [{"sku": "COM-10"}], "entrega": {"tipo": "delivery", "zona": "chaca"}})
+        assert r.status_code == 422 and r.json()["error"] == "zona_ambigua" and len(r.json()["candidatas"]) == 2
+
 print()
 print("─" * 52)
 print(f"  {_ok} bien · {_mal} mal")
