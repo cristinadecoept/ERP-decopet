@@ -4655,6 +4655,14 @@ def _():
         amb = c.get("/api/agente/zonas", params={"texto": "chaca"}).json()
         assert amb["ok"] and amb["coincidencia"] == "ambigua" and set(amb["candidatas"]) == {"Chacao", "Chacaíto"}
         assert c.get("/api/agente/zonas", params={"texto": "Marte"}).json()["coincidencia"] == "ninguna"
+        n0 = sqlite3.connect(A.DB).execute("SELECT COUNT(*) FROM clientes").fetchone()[0]
+        q = c.post("/api/agente/cotizar", json={"canal": "whatsapp", "productos": [{"sku": "PACK3-M", "pack_se_lleva_hoy": True, "pack_deliveries": "todos"}],
+                                                "entrega": {"tipo": "delivery", "zona": "Chacao", "direccion_nueva": "Av. Principal"}})
+        assert q.status_code == 200 and q.json()["ok"], ("cotizar un pack sin cliente todavía", q.text[:300])
+        assert sqlite3.connect(A.DB).execute("SELECT COUNT(*) FROM clientes").fetchone()[0] == n0, "el cliente de paso no queda guardado"
+        o = q.json()["orden"]
+        assert len(o["lineas"]) == 1 and o["cargos"] and o["cargos"][0]["total"] == 10, ("los 2 deliveries que quedan del pack, a $5", o)
+        assert abs(o["subtotal"] - sum(x["total"] for x in o["lineas"] + o["cargos"])) < 0.01, "líneas + cargos = subtotal"
         r = c.post("/api/agente/cotizar", json={"canal": "whatsapp", "productos": [{"sku": "COM-10"}], "entrega": {"tipo": "delivery", "zona": "chaca"}})
         assert r.status_code == 422 and r.json()["error"] == "zona_ambigua" and len(r.json()["candidatas"]) == 2
 

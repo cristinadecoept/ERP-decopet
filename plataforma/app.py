@@ -2919,6 +2919,7 @@ def _pedido_a_form(con, b, modo):
 def _orden_json(con, oid):
     o = con.execute("SELECT * FROM ordenes WHERE id=?", (oid,)).fetchone()
     lineas = con.execute("SELECT nombre, cantidad, precio, extras, total FROM orden_lineas WHERE orden_id=? AND producto_id IS NOT NULL ORDER BY id", (oid,)).fetchall()
+    cargos = con.execute("SELECT nombre, cantidad, total FROM orden_lineas WHERE orden_id=? AND producto_id IS NULL ORDER BY id", (oid,)).fetchall()   # p. ej. deliveries del pack pagados por adelantado
     faltan = []
     if o["cliente_id"]:
         c = con.execute("SELECT * FROM clientes WHERE id=?", (o["cliente_id"],)).fetchone()
@@ -2928,6 +2929,7 @@ def _orden_json(con, oid):
             "iva": round(o["iva"] or 0, 2), "delivery": round(o["delivery"] or 0, 2), "total": round(o["total"] or 0, 2),
             "estado_pago": o["estado_pago"], "entrega": {"tipo": o["tipo_entrega"], "zona": o["zona"]},
             "lineas": [{"nombre": l["nombre"], "cantidad": l["cantidad"], "total": round(l["total"] or 0, 2)} for l in lineas],
+            "cargos": [{"nombre": l["nombre"], "cantidad": l["cantidad"], "total": round(l["total"] or 0, 2)} for l in cargos],
             "datos_que_faltan": faltan}
 
 
@@ -3040,6 +3042,8 @@ async def agente_cotizar(request: Request, con=Depends(db)):
     f, err = _pedido_a_form(con, {k: v for k, v in b.items() if k not in ("ref_externa", "pagos", "fecha_pago")}, "cotizar")
     if err: return err
     try:
+        if not b.get("cliente_id"):   # sin cliente aún: uno de paso dentro de la transacción (un pack necesita a quién anotarse); se deshace al final
+            f.poner("cliente_id", con.execute("INSERT INTO clientes (nombre_pila,nombre,telefono,correo,ciudad) VALUES ('Cotización','Cotización','0000000000','cotizacion@tina.local','Pendiente')").lastrowid)
         r = _crear_orden(request, con, f, modo="cotizar")
         if not isinstance(r, int): return _error_de_crear(r)
         orden = _orden_json(con, r); orden.pop("id"); orden.pop("numero"); orden.pop("estado_pago"); orden.pop("datos_que_faltan")
