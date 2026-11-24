@@ -5956,7 +5956,12 @@ def seguimientos_pendientes(con, umbral=None, ventana=1):
     # Desde el día siguiente, si no se contactaron, pasan a 'atrasado' como cualquier otro.
     integrados = dict(con.execute("SELECT cliente_id, dia FROM seguimientos_integrados").fetchall())
     cupo = VIEJOS_POR_DIA - sum(1 for d_ in integrados.values() if d_ == h)
-    viejos.sort(key=lambda s: (s["_ult"], s["_n"]), reverse=True)
+    # El orden de la fila usa la última compra REAL: la más reciente entre el ERP y el Registro de ventas (Cristina, 23 nov:
+    # Francisca Toro recibió repuestos en julio y agosto, pero el ERP solo tenía la fecha aproximada de mayo y quedó al fondo).
+    def ult_real(s):
+        u, _ = registro.get((s["cliente"] or "").strip().lower(), (None, 0))
+        return max(s["_ult"], u or "")
+    viejos.sort(key=lambda s: (ult_real(s), s["_n"]), reverse=True)
     for s in viejos:
         if s["cliente_id"] not in integrados:
             if cupo <= 0: continue

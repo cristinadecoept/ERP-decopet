@@ -2810,6 +2810,19 @@ def _():
     finally:
         A.VIEJOS_POR_DIA, A.INTEGRAR_DESDE = antes
 
+@prueba("Seguimientos: en la fila de clientes viejos manda la última compra real; si el Registro de ventas tiene una más reciente que el ERP, entra antes")
+def _():
+    antes = _con_ajustes(1)
+    try:
+        con, ids = _seguimientos_viejos()
+        hace30 = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+        con.execute("INSERT INTO registro_ventas (fecha,cliente,producto,precio,cantidad) VALUES (?,'Vieja Prueba','DELIVERY',0,0)", (hace30,)); con.commit()
+        viejos_hoy = [s_["cliente_id"] for s_ in A.seguimientos_pendientes(con) if s_.get("fase") == "hoy" and s_["cliente_id"] != ids["normal"]]
+        assert viejos_hoy == [ids["vieja"]], f"en el ERP lleva 300 días, pero en el Registro recibió hace 30: entra primero ({viejos_hoy})"
+    finally:
+        A.VIEJOS_POR_DIA, A.INTEGRAR_DESDE = antes
+
+
 @prueba("Crear orden: la casilla 'Registrar en Cash flow' solo la tiene Cristina; anota cada pago en su caja con la fecha de pago, y el efectivo no entra")
 def _():
     with erp_de_prueba() as c:
