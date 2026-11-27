@@ -2295,6 +2295,14 @@ async def editar_entrega(request: Request, oid: int, con=Depends(db)):
     cambios = [f"{c}: '{o[c] or ''}' → '{f.get(c) or ''}'" for c in campos if (o[c] or "") != (f.get(c) or "")]
     con.execute(f"UPDATE ordenes SET {', '.join(c + '=?' for c in campos)} WHERE id=?", [f.get(c) or None for c in campos] + [oid])
     if (o["fecha_prometida"] or "") != (f.get("fecha_prometida") or ""): con.execute("UPDATE ordenes SET espera_aviso=0 WHERE id=?", (oid,))   # ya tiene fecha
+    # ya no va por agencia (pasó a delivery o pick-up): sale del viaje que tenía asignado, si todavía no se llevó (Cristina, 27 nov)
+    if f.get("tipo_entrega") != "nacional" and o["viaje_id"]:
+        v = con.execute("SELECT id FROM viajes_agencia WHERE id=? AND llevado_en IS NULL", (o["viaje_id"],)).fetchone()
+        if v:
+            con.execute("UPDATE ordenes SET viaje_id=NULL WHERE id=?", (oid,))
+            con.execute("UPDATE viajes_agencia SET pedidos=MAX(0, pedidos-1) WHERE id=?", (v["id"],))
+            if not con.execute("SELECT 1 FROM ordenes WHERE viaje_id=? UNION ALL SELECT 1 FROM packs WHERE viaje_id=?", (v["id"], v["id"])).fetchone():
+                con.execute("DELETE FROM viajes_agencia WHERE id=? AND pagado=0", (v["id"],))   # quedó vacío: no hay viaje
     if dom != (o["a_domicilio"] or 0):
         con.execute("UPDATE ordenes SET a_domicilio=? WHERE id=?", (dom, oid)); cambios.append("a domicilio" if dom else "en la oficina de la agencia")
     # pasó a pick-up: el delivery se quita solo si Cristina lo pidió (si no, queda como estaba)

@@ -2265,6 +2265,31 @@ def _():
         con.close()
 
 
+@prueba("Viajes a la agencia: si un pedido se pasa a delivery o pick-up, sale del viaje (ya no sale en la pantalla del despachador); si el viaje queda vacío, se quita")
+def _():
+    with erp_de_prueba() as c:
+        con = sqlite3.connect(A.DB); con.row_factory = sqlite3.Row
+        hoy = datetime.date.today().isoformat()
+        ofi = list(A.oficinas_agencia(con).get("Tealca") or {"": 0})[0]
+        cid = con.execute("INSERT INTO clientes (nombre,nombre_pila) VALUES ('Cambio Viaje','Cambio')").lastrowid; con.commit()
+        pr = con.execute("SELECT id FROM productos WHERE COALESCE(tipo,'producto')='producto' LIMIT 1").fetchone()[0]
+        def orden(n):
+            oid = con.execute("INSERT INTO ordenes (numero,cliente_id,estado,estado_pago,total,origen_excel,tipo_entrega,agencia) VALUES (?,?,'pendiente','pagada',60,0,'nacional','Tealca')", (n, cid)).lastrowid
+            con.execute("INSERT INTO orden_lineas (orden_id,producto_id,cantidad,precio) VALUES (?,?,1,60)", (oid, pr)); con.commit(); return oid
+        sesion_de(c, "admin")
+        a, b = orden("#CV1"), orden("#CV2")
+        c.post("/viajes/crear", data={"despachador": "Pepa Cambio", "agencia": "Tealca", "oficina": ofi, "monto": "10", "fecha": hoy, "orden_id": [str(a), str(b)], "volver": "/operaciones"})
+        vid = con.execute("SELECT viaje_id FROM ordenes WHERE id=?", (a,)).fetchone()[0]
+        assert vid and con.execute("SELECT pedidos FROM viajes_agencia WHERE id=?", (vid,)).fetchone()[0] == 2
+        c.post(f"/ordenes/{a}/entrega", data={"tipo_entrega": "delivery", "despachador": "Pepa Cambio", "fecha_prometida": hoy}, follow_redirects=False)
+        assert con.execute("SELECT viaje_id FROM ordenes WHERE id=?", (a,)).fetchone()[0] is None, "pasó a delivery: ya no va a la agencia"
+        assert con.execute("SELECT pedidos FROM viajes_agencia WHERE id=?", (vid,)).fetchone()[0] == 1
+        assert [p_["numero"] for v in A.viajes_por_llevar(con, "Pepa Cambio") for p_ in v["paquetes"]] == ["#CV2"]
+        c.post(f"/ordenes/{b}/entrega", data={"tipo_entrega": "pickup", "fecha_prometida": hoy}, follow_redirects=False)
+        assert con.execute("SELECT COUNT(*) FROM viajes_agencia WHERE id=?", (vid,)).fetchone()[0] == 0, "quedó vacío: el viaje se quita"
+        con.close()
+
+
 @prueba("Viajes a la agencia: lo que se asigna al mismo despachador y la misma oficina entra al viaje que ya está por llevar (una sola ida); los separados de antes se juntan")
 def _():
     with erp_de_prueba() as c:
